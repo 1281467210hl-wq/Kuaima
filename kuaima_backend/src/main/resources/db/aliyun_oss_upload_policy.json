@@ -10,7 +10,8 @@
       ],
       "Resource": [
         "acs:oss:*:*:resume-storage-20260923/academy/*",
-        "acs:oss:*:*:resume-storage-20260923/enterprise/license/*"
+        "acs:oss:*:*:resume-storage-20260923/enterprise/license/*",
+        "acs:oss:*:*:resume-storage-20260923/insurance/*"
       ]
     }
   ]

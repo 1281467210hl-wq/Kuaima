@@ -46,7 +46,7 @@
         <strong class="warning-text">{{ formatNumber(stats.pendingCount) }}</strong> 条待结算
       </div>
       <div class="batch-actions">
-        <el-button type="primary" :disabled="!pendingRows.length" @click="handleBatchSettle">
+        <el-button v-permission="'permOrder.settlement.settle'" type="primary" :disabled="!pendingRows.length" @click="handleBatchSettle">
           <i class="fas fa-coins"></i> 批量结算
         </el-button>
         <el-button @click="handleExport"><i class="fas fa-download"></i> 导出报表</el-button>
@@ -147,7 +147,7 @@
           <template #default="{ row }">
             <div class="action-btns">
               <el-button link type="primary" size="small" @click="openDetail(row)">详情</el-button>
-              <el-button v-if="row.status === '待结算'" link type="success" size="small" @click="openDetail(row)">结算</el-button>
+              <el-button v-if="row.status === '待结算'" v-permission="'permOrder.settlement.settle'" link type="success" size="small" @click="openDetail(row)">结算</el-button>
             </div>
           </template>
         </el-table-column>
@@ -221,7 +221,7 @@
         <div class="dialog-footer">
           <el-button @click="detailVisible = false">关闭</el-button>
           <el-button class="reminder-button" @click="showReminder"><i class="fas fa-comment-dots"></i> 发消息提醒</el-button>
-          <el-button v-if="detailRow.status === '待结算'" type="primary" @click="openConfirm(detailRow)"><i class="fas fa-check-circle"></i> 财务确认结算</el-button>
+          <el-button v-if="detailRow.status === '待结算'" v-permission="'permOrder.settlement.settle'" type="primary" @click="openConfirm(detailRow)"><i class="fas fa-check-circle"></i> 财务确认结算</el-button>
         </div>
       </template>
     </el-dialog>

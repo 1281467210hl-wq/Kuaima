@@ -1,69 +1,106 @@
 package com.kuaima.app.security.filter;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.mockito.Mockito.doNothing;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-import jakarta.servlet.FilterChain;
+import java.util.Optional;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.mock.web.MockFilterChain;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
-import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 
+import com.kuaima.app.admin.entity.AdminUser;
+import com.kuaima.app.admin.repository.AdminUserRepository;
 import com.kuaima.app.security.model.LoginUser;
 import com.kuaima.app.security.util.JwtUtil;
 
 class JwtAuthenticationFilterTests {
+
     @AfterEach
-    void clearContext() {
+    void cleanup() {
         SecurityContextHolder.clearContext();
     }
 
     @Test
-    void filter_shouldCarryAccountGroupOwnerIdForQuickLoginToken() throws Exception {
+    void shouldRejectDisabledAdminTokenImmediately() throws Exception {
         JwtUtil jwtUtil = mock(JwtUtil.class);
-        JwtAuthenticationFilter filter = new JwtAuthenticationFilter(jwtUtil);
+        AdminUserRepository admins = mock(AdminUserRepository.class);
+        AdminUser disabled = new AdminUser();
+        disabled.setId(5L);
+        disabled.setStatus("禁用");
+        disabled.setAllowLogin(true);
+        stubToken(jwtUtil, "token", 5L, "ADMIN_EDITOR");
+        when(admins.findById(5L)).thenReturn(Optional.of(disabled));
         MockHttpServletRequest request = new MockHttpServletRequest();
-        request.addHeader("Authorization", "Bearer quick-login-token");
+        request.addHeader("Authorization", "Bearer token");
         MockHttpServletResponse response = new MockHttpServletResponse();
-        FilterChain chain = mock(FilterChain.class);
-        doNothing().when(chain).doFilter(request, response);
-        when(jwtUtil.isAccessToken("quick-login-token")).thenReturn(true);
-        when(jwtUtil.getUsername("quick-login-token")).thenReturn("boss-31");
-        when(jwtUtil.getRole("quick-login-token")).thenReturn("BOSS");
-        when(jwtUtil.getUserId("quick-login-token")).thenReturn(31L);
-        when(jwtUtil.getAccountGroupOwnerId("quick-login-token")).thenReturn(7L);
+        MockFilterChain chain = new MockFilterChain();
 
-        filter.doFilterInternal(request, response, chain);
+        new JwtAuthenticationFilter(jwtUtil, admins).doFilter(request, response, chain);
 
-        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        LoginUser principal = (LoginUser) authentication.getPrincipal();
-        assertEquals(31L, principal.id());
-        assertEquals(7L, principal.accountGroupOwnerId());
+        assertEquals(401, response.getStatus());
+        assertEquals("{\"code\":401,\"message\":\"账号已被禁用，请重新登录\"}", response.getContentAsString());
+        assertNull(SecurityContextHolder.getContext().getAuthentication());
+        assertNull(chain.getRequest());
     }
 
     @Test
-    void filter_shouldFallbackGroupOwnerToUserIdForNormalToken() throws Exception {
+    void shouldAcceptEnabledAdminToken() throws Exception {
         JwtUtil jwtUtil = mock(JwtUtil.class);
-        JwtAuthenticationFilter filter = new JwtAuthenticationFilter(jwtUtil);
+        AdminUserRepository admins = mock(AdminUserRepository.class);
+        AdminUser enabled = new AdminUser();
+        enabled.setId(5L);
+        enabled.setStatus("启用");
+        enabled.setAllowLogin(true);
+        stubToken(jwtUtil, "token", 5L, "ADMIN_EDITOR");
+        when(admins.findById(5L)).thenReturn(Optional.of(enabled));
         MockHttpServletRequest request = new MockHttpServletRequest();
-        request.addHeader("Authorization", "Bearer normal-token");
+        request.addHeader("Authorization", "Bearer token");
         MockHttpServletResponse response = new MockHttpServletResponse();
-        FilterChain chain = mock(FilterChain.class);
-        doNothing().when(chain).doFilter(request, response);
-        when(jwtUtil.isAccessToken("normal-token")).thenReturn(true);
-        when(jwtUtil.getUsername("normal-token")).thenReturn("boss");
-        when(jwtUtil.getRole("normal-token")).thenReturn("BOSS");
-        when(jwtUtil.getUserId("normal-token")).thenReturn(7L);
-        when(jwtUtil.getAccountGroupOwnerId("normal-token")).thenReturn(null);
+        MockFilterChain chain = new MockFilterChain();
 
-        filter.doFilterInternal(request, response, chain);
+        new JwtAuthenticationFilter(jwtUtil, admins).doFilter(request, response, chain);
 
-        LoginUser principal = (LoginUser) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
-        assertEquals(7L, principal.accountGroupOwnerId());
+        assertEquals(200, response.getStatus());
+        assertNotNull(SecurityContextHolder.getContext().getAuthentication());
+        assertEquals(5L, ((LoginUser) SecurityContextHolder.getContext().getAuthentication().getPrincipal()).id());
+    }
+
+    @Test
+    void shouldNeverBlockSuperAdminEvenIfAllowLoginDisabled() throws Exception {
+        JwtUtil jwtUtil = mock(JwtUtil.class);
+        AdminUserRepository admins = mock(AdminUserRepository.class);
+        AdminUser superAdmin = new AdminUser();
+        superAdmin.setId(1L);
+        superAdmin.setRole("SUPER_ADMIN");
+        superAdmin.setStatus("启用");
+        superAdmin.setAllowLogin(false);
+        stubToken(jwtUtil, "token", 1L, "ADMIN_SUPER_ADMIN");
+        when(admins.findById(1L)).thenReturn(Optional.of(superAdmin));
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.addHeader("Authorization", "Bearer token");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        MockFilterChain chain = new MockFilterChain();
+
+        new JwtAuthenticationFilter(jwtUtil, admins).doFilter(request, response, chain);
+
+        assertEquals(200, response.getStatus());
+        assertNotNull(SecurityContextHolder.getContext().getAuthentication());
+    }
+
+    private void stubToken(JwtUtil jwtUtil, String token, Long adminId, String role) {
+        when(jwtUtil.isAccessToken(token)).thenReturn(true);
+        when(jwtUtil.getUsername(token)).thenReturn("editor");
+        when(jwtUtil.getRole(token)).thenReturn(role);
+        when(jwtUtil.getUserId(token)).thenReturn(adminId);
+        when(jwtUtil.getAccountGroupOwnerId(token)).thenReturn(adminId);
+        when(jwtUtil.getEnterpriseId(token)).thenReturn(null);
+        when(jwtUtil.getMemberRole(token)).thenReturn(null);
     }
 }

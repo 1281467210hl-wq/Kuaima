@@ -29,7 +29,7 @@
         <el-table-column label="信用等级" width="100"><template #default="{ row }"><span :class="['level-text', `credit-${row.level}`]">{{ levelText(row.level) }}</span></template></el-table-column>
         <el-table-column label="累计加分" width="100"><template #default="{ row }"><span class="num-in">+{{ row.addTotal }}</span></template></el-table-column>
         <el-table-column label="累计扣分" width="100"><template #default="{ row }"><span class="num-out">-{{ row.subTotal }}</span></template></el-table-column>
-        <el-table-column label="操作" width="190" fixed="right" align="right" header-align="right"><template #default="{ row }"><div class="action-links"><el-button link type="primary" @click="openDetail(row)"><i class="fas fa-list"></i> 明细</el-button><el-button link type="primary" @click="openAdjust(row)"><i class="fas fa-scale-balanced"></i> 调整</el-button></div></template></el-table-column>
+        <el-table-column label="操作" width="190" fixed="right" align="right" header-align="right"><template #default="{ row }"><div class="action-links"><el-button v-permission="'permUser.credits.detail'" link type="primary" @click="openDetail(row)"><i class="fas fa-list"></i> 明细</el-button><el-button v-permission="'permUser.credits.adjust'" link type="primary" @click="openAdjust(row)"><i class="fas fa-scale-balanced"></i> 调整</el-button></div></template></el-table-column>
       </el-table>
       <div class="pagination"><span>共 {{ total }} 条记录</span><el-pagination v-model:current-page="page" v-model:page-size="size" :page-sizes="[10, 20, 50]" :total="total" layout="sizes, prev, pager, next, jumper" background @size-change="load" @current-change="load" /></div>
     </div>

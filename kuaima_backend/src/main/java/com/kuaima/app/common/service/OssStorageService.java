@@ -3,7 +3,10 @@ package com.kuaima.app.common.service;
 import com.aliyun.oss.OSS;
 import com.aliyun.oss.OSSClientBuilder;
 import com.aliyun.oss.OSSException;
+import com.aliyun.oss.HttpMethod;
+import com.aliyun.oss.model.GeneratePresignedUrlRequest;
 import com.aliyun.oss.model.ObjectMetadata;
+import com.aliyun.oss.model.ResponseHeaderOverrides;
 import com.kuaima.app.common.ForbiddenBusinessException;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -196,6 +199,39 @@ public class OssStorageService {
         Date expires = new Date(System.currentTimeMillis() + expirationMillis(expirationSeconds));
         return getClient().generatePresignedUrl(bucketName, objectKey, expires).toString()
                 .replaceFirst("^http://", "https://");
+    }
+
+    /**
+     * 浏览器内联预览地址：强制 Content-Disposition: inline，并按扩展名纠正 Content-Type，
+     * 避免对象元数据为 octet-stream 时浏览器直接触发下载。
+     */
+    public String inlinePreviewUrl(String value) {
+        if (!StringUtils.hasText(value) || !StringUtils.hasText(endpoint)
+                || !StringUtils.hasText(bucketName) || !StringUtils.hasText(accessKeyId)
+                || !StringUtils.hasText(accessKeySecret)) {
+            return value;
+        }
+        String objectKey = objectKey(value);
+        if (!StringUtils.hasText(objectKey)) return value;
+        GeneratePresignedUrlRequest request =
+                new GeneratePresignedUrlRequest(bucketName, objectKey, HttpMethod.GET);
+        request.setExpiration(new Date(System.currentTimeMillis() + expirationMillis(signedUrlExpirationSeconds)));
+        ResponseHeaderOverrides overrides = new ResponseHeaderOverrides();
+        overrides.setContentDisposition("inline");
+        overrides.setContentType(previewContentType(objectKey));
+        request.setResponseHeaders(overrides);
+        return getClient().generatePresignedUrl(request).toString()
+                .replaceFirst("^http://", "https://");
+    }
+
+    private String previewContentType(String objectKey) {
+        String lower = objectKey.toLowerCase();
+        if (lower.endsWith(".pdf")) return "application/pdf";
+        if (lower.endsWith(".doc")) return "application/msword";
+        if (lower.endsWith(".docx")) return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+        if (lower.endsWith(".xls")) return "application/vnd.ms-excel";
+        if (lower.endsWith(".xlsx")) return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+        return "application/octet-stream";
     }
 
     private OssUploadResult result(String objectKey) {

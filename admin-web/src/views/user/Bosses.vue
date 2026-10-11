@@ -144,8 +144,8 @@
             <div class="action-btns">
               <el-button link type="primary" size="small" @click="openDetail(row)">查看</el-button>
               <el-button v-if="isPending(row)" link type="primary" size="small" @click="handleAudit(row)">审核</el-button>
-              <el-button v-if="isNormal(row.status)" link type="danger" size="small" @click="handleFreeze(row)">冻结</el-button>
-              <el-button v-else link type="success" size="small" @click="handleUnfreeze(row)">解冻</el-button>
+              <el-button v-if="isNormal(row.status)" v-permission="'permUser.bosses.freeze'" link type="danger" size="small" @click="handleFreeze(row)">冻结</el-button>
+              <el-button v-else v-permission="'permUser.bosses.unfreeze'" link type="success" size="small" @click="handleUnfreeze(row)">解冻</el-button>
             </div>
           </template>
         </el-table-column>

@@ -421,6 +421,31 @@ export function uploadExpenseFile(filePath) {
   return uploadFile({ url: "/files/upload", filePath, name: "file" });
 }
 
+/** 上传实名认证图片（身份证人像面 / 人脸照片）。 */
+export function uploadRealnameImage(filePath) {
+  return uploadFile({ url: "/files/upload", filePath, name: "file" });
+}
+
+/** 查询当前用户实名认证状态与照片。 */
+export function getBossRealnameStatus() {
+  return request({ url: "/boss/realname/status" });
+}
+
+/** 提交人脸比对实名认证。 */
+export function verifyBossRealname(data) {
+  return request({ url: "/boss/realname/verify", method: "POST", data });
+}
+
+/** 零工端：查询实名认证状态与照片。 */
+export function getWorkerRealnameStatus() {
+  return request({ url: "/worker/realname/status" });
+}
+
+/** 零工端：提交人脸比对实名认证。 */
+export function verifyWorkerRealname(data) {
+  return request({ url: "/worker/realname/verify", method: "POST", data });
+}
+
 /** 上传企业认证营业执照，后端保存到 OSS enterprise/license 目录。 */
 export function uploadEnterpriseLicense(filePath) {
   return uploadFile({

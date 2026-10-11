@@ -137,6 +137,14 @@ public class User extends BaseEntity {
     @Column(length = 500)
     private String licenseImageUrl;
 
+    /** 实名认证身份证人像面图片地址 */
+    @Column(length = 500)
+    private String realnameIdCardImageUrl;
+
+    /** 实名认证人脸照片地址 */
+    @Column(length = 500)
+    private String realnameFaceImageUrl;
+
     /** 法人代表（企业认证） */
     @Column(length = 50)
     private String legalRep;

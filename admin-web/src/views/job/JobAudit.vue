@@ -48,10 +48,10 @@
         </el-table-column>
         <el-table-column label="操作" width="200" fixed="right">
           <template #default="{ row }">
-            <el-button link type="primary" size="small" @click="handleDetail(row)">查看详情</el-button>
+            <el-button v-permission="'permJob.audit.detail'" link type="primary" size="small" @click="handleDetail(row)">查看详情</el-button>
             <template v-if="isAuditable(row)">
-              <el-button link type="success" size="small" @click="handleApprove(row)">{{ row.status === '审核拒绝' ? '重新审核' : '通过' }}</el-button>
-              <el-button link type="danger" size="small" @click="handleReject(row)">拒绝</el-button>
+              <el-button v-permission="row.status === '审核拒绝' ? 'permJob.audit.reaudit' : 'permJob.audit.approve'" link type="success" size="small" @click="handleApprove(row)">{{ row.status === '审核拒绝' ? '重新审核' : '通过' }}</el-button>
+              <el-button v-permission="'permJob.audit.reject'" link type="danger" size="small" @click="handleReject(row)">拒绝</el-button>
             </template>
           </template>
         </el-table-column>
@@ -78,7 +78,7 @@
       <div v-if="currentItem">
         <div v-if="isAuditable(currentItem)" class="audit-action-bar">
           <div><div class="action-title">{{ currentItem.status === '审核拒绝' ? '重新审核' : '招工审核' }} <span class="risk-tag">低风险</span></div><div class="action-desc">请仔细审核以下招工信息，确认无误后通过审核</div></div>
-          <div class="action-buttons"><button class="btn btn-success" @click="confirmApprove"><i class="fas fa-check-circle"></i> 一键通过</button><button class="btn btn-danger" @click="confirmReject"><i class="fas fa-times-circle"></i> 拒绝</button></div>
+          <div class="action-buttons"><button v-permission="'permJob.audit.approve'" class="btn btn-success" @click="confirmApprove"><i class="fas fa-check-circle"></i> 一键通过</button><button v-permission="'permJob.audit.reject'" class="btn btn-danger" @click="confirmReject"><i class="fas fa-times-circle"></i> 拒绝</button></div>
         </div>
         <div class="detail-section-title">招工信息预览</div>
         <div class="audit-preview-grid">
@@ -121,8 +121,8 @@
       <template #footer>
         <el-button @click="detailVisible = false">关闭</el-button>
         <template v-if="isAuditable(currentItem)">
-          <el-button type="danger" @click="confirmReject">拒绝</el-button>
-          <el-button type="primary" @click="confirmApprove">通过审核</el-button>
+          <el-button v-permission="'permJob.audit.reject'" type="danger" @click="confirmReject">拒绝</el-button>
+          <el-button v-permission="'permJob.audit.approve'" type="primary" @click="confirmApprove">通过审核</el-button>
         </template>
       </template>
     </el-dialog>

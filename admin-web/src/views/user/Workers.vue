@@ -103,8 +103,8 @@
           <template #default="{ row }">
             <div class="action-cell">
               <button class="btn btn-outline btn-sm" @click="handleDetail(row)">查看</button>
-              <button class="btn btn-danger btn-sm" v-if="isNormal(row.status)" @click="handleFreeze(row)">冻结</button>
-              <button class="btn btn-primary btn-sm" v-else @click="handleUnfreeze(row)">解冻</button>
+              <button v-permission="'permUser.workers.freeze'" class="btn btn-danger btn-sm" v-if="isNormal(row.status)" @click="handleFreeze(row)">冻结</button>
+              <button v-permission="'permUser.workers.unfreeze'" class="btn btn-primary btn-sm" v-else @click="handleUnfreeze(row)">解冻</button>
             </div>
           </template>
         </el-table-column>

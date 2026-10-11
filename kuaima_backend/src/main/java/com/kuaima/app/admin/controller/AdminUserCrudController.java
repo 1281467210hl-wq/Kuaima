@@ -121,11 +121,16 @@ public class AdminUserCrudController {
             if (patch.getStatus() != null && !patch.getStatus().equals(existing.getStatus())) {
                 return Result.error(403, "超级管理员账号不可禁用");
             }
+            if (Boolean.FALSE.equals(patch.getAllowLogin())) {
+                return Result.error(403, "超级管理员账号不可禁止登录");
+            }
         } else if (!canOperate) {
             // 非自己创建的账号（且当前不是超级管理员）：只能编辑基本信息
             if ((patch.getRole() != null && !patch.getRole().equals(existing.getRole()))
                     || (patch.getPermissions() != null && !patch.getPermissions().equals(existing.getPermissions()))
                     || (patch.getStatus() != null && !patch.getStatus().equals(existing.getStatus()))
+                    || (patch.getAllowLogin() != null && !patch.getAllowLogin().equals(existing.getAllowLogin()))
+                    || (patch.getReceiveNotifications() != null && !patch.getReceiveNotifications().equals(existing.getReceiveNotifications()))
                     || (patch.getPassword() != null && !patch.getPassword().isBlank())) {
                 return Result.error(403, "只能编辑自己创建的账号的角色/权限/状态");
             }
@@ -140,6 +145,8 @@ public class AdminUserCrudController {
         if (patch.getRemark() != null) existing.setRemark(patch.getRemark());
         if (patch.getPermissions() != null && !targetIsSuperAdmin && canOperate) existing.setPermissions(patch.getPermissions());
         if (patch.getStatus() != null && canOperate) existing.setStatus(patch.getStatus());
+        if (patch.getAllowLogin() != null && canOperate) existing.setAllowLogin(patch.getAllowLogin());
+        if (patch.getReceiveNotifications() != null && canOperate) existing.setReceiveNotifications(patch.getReceiveNotifications());
         if (patch.getPassword() != null && !patch.getPassword().isBlank() && canOperate) {
             existing.setPassword(passwordEncoder.encode(patch.getPassword()));
         }

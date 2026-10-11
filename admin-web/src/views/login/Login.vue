@@ -205,8 +205,11 @@ const handleLogin = async () => {
     } else {
       ElMessage.error(res?.message || '登录失败，请检查账号密码')
     }
-  } catch {
-    ElMessage.error('登录失败，请检查后端服务是否启动')
+  } catch (error) {
+    // 业务错误和 HTTP 错误已由 request 拦截器展示后端返回的具体原因
+    if (error?.message?.includes('Network Error')) {
+      ElMessage.error('无法连接服务器，请检查后端服务是否启动')
+    }
   } finally {
     loading.value = false
   }

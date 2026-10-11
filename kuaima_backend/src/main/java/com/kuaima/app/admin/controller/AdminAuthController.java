@@ -68,6 +68,10 @@ public class AdminAuthController {
             logService.record(dto.getUsername(), admin.getId(), "登录", "后台登录", ip, "失败", "账号已被禁用");
             return Result.error(403, "账号已被禁用");
         }
+        if (!"SUPER_ADMIN".equals(admin.getRole()) && Boolean.FALSE.equals(admin.getAllowLogin())) {
+            logService.record(dto.getUsername(), admin.getId(), "登录", "后台登录", ip, "失败", "账号已被禁止登录");
+            return Result.error(403, "该账号已被禁止登录");
+        }
         admin.setLastLoginTime(LocalDateTime.now());
         adminUserRepository.save(admin);
 

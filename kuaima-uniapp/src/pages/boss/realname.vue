@@ -1,431 +1,273 @@
 <template>
   <view class="container">
-    <!-- 导航栏 -->
-    <view class="nav-bar" :style="{ paddingTop: `${statusBarHeight}px`, height: `${50 + statusBarHeight}px` }">
-      <view class="nav-back" @click="goBack">
-        <text>←</text>
-      </view>
-      <text class="nav-title">手机号验证</text>
-      <view class="nav-space"></view>
-    </view>
-
-    <scroll-view scroll-y class="content">
-      <!-- 图标 -->
-      <view class="phone-icon">
-        <text style="font-size:32px;color:#FF6B35;">📱</text>
+    <view class="page-bg">
+      <view class="nav-bar" :style="{ paddingTop: `${statusBarHeight + 14}px` }">
+        <view class="nav-back" @click="goBack"><text>←</text></view>
+        <text class="nav-title">实名认证</text>
+        <view class="nav-placeholder"></view>
       </view>
 
-      <text class="page-title">验证手机号</text>
-      <text class="page-desc">为了保障您的账户安全，需要验证<br>您绑定的手机号 {{ maskedPhone }}</text>
+      <scroll-view scroll-y class="content">
+        <!-- Step 1 上传 -->
+        <view v-if="step === 'upload'">
+          <view class="top-shield"><text>🛡</text></view>
+          <text class="page-title">完成实名后开启招工</text>
+          <text class="page-desc">根据国家法律法规，需要您实名认证</text>
 
-      <!-- 表单 -->
-      <view class="form-card">
-        <view class="form-item">
-          <text class="form-label">手机号</text>
-          <input type="tel" class="form-input phone" :value="maskedPhone" disabled />
-        </view>
-        <view class="form-item">
-          <text class="form-label">验证码</text>
-          <input type="text" class="form-input" placeholder="请输入6位验证码" v-model="code" maxlength="6" />
-          <button class="send-code-btn" :class="{ disabled: countdown > 0 || sending }" @click="sendCode">
-            {{ sending ? '发送中...' : countdown > 0 ? countdown + 's 后重试' : (sent ? '重新获取' : '获取验证码') }}
+          <view class="upload-group">
+            <text class="upload-label">上传身份证人像面</text>
+            <view class="upload-box" :class="{ 'has-img': idCardImageUrl }" @click="chooseImage('idCard')">
+              <image v-if="idCardImageUrl" :src="idCardImageUrl" mode="aspectFill" />
+              <template v-else>
+                <text class="up-icon">🪪</text>
+                <text class="up-text">点击上传身份证人像面</text>
+              </template>
+              <view v-if="idCardImageUrl" class="re-upload"><text>重新上传</text></view>
+              <view v-if="uploading === 'idCard'" class="uploading"><text>上传中...</text></view>
+            </view>
+          </view>
+
+          <view class="upload-group">
+            <text class="upload-label">上传人脸图片</text>
+            <view class="upload-box" :class="{ 'has-img': faceImageUrl }" @click="chooseImage('face')">
+              <image v-if="faceImageUrl" :src="faceImageUrl" mode="aspectFill" />
+              <template v-else>
+                <text class="up-icon">👤</text>
+                <text class="up-text">点击上传人脸图片</text>
+              </template>
+              <view v-if="faceImageUrl" class="re-upload"><text>重新上传</text></view>
+              <view v-if="uploading === 'face'" class="uploading"><text>上传中...</text></view>
+            </view>
+          </view>
+
+          <button class="face-btn" :disabled="!canVerify || verifying" @click="startVerify">
+            {{ verifying ? '验证中...' : '🛡 开始验证' }}
           </button>
+
+          <view class="agreement">
+            <view class="checkbox-custom" :class="{ checked: agreed }" @click="agreed = !agreed"></view>
+            <text class="agreement-text">
+              您已阅读并同意<text class="agree-link" @click.stop="openAgreement">《快马日结实名认证&人脸验证服务协议》</text><text class="agree-link" @click.stop="openAgreement">《快马日结信息发布规则》</text>
+            </text>
+          </view>
         </view>
-      </view>
 
-      <button class="verify-btn" :disabled="code.length !== 6 || verifying" @click="doVerify">{{ verifying ? '验证中...' : '确 认 验 证' }}</button>
+        <!-- Step 2 比对中 -->
+        <view v-else-if="step === 'matching'" class="step-center">
+          <view class="top-shield"><text>🪞</text></view>
+          <text class="page-title">人脸匹配验证</text>
+          <text class="page-desc">正在比对人脸图片与身份证照片\n请稍候...</text>
+          <view class="match-area">
+            <view class="match-photo">
+              <image :src="idCardImageUrl" mode="aspectFill" />
+              <view class="ph-label"><text>身份证照</text></view>
+            </view>
+            <view class="match-vs">
+              <text>⇄</text>
+              <text>VS</text>
+            </view>
+            <view class="match-photo">
+              <image :src="faceImageUrl" mode="aspectFill" />
+              <view class="ph-label"><text>人脸照</text></view>
+            </view>
+          </view>
+          <text class="match-hint">{{ matchHint }}</text>
+        </view>
 
-      <!-- 提示 -->
-      <view class="tip-box">
-        <view class="tip-icon">!</view>
-        <text class="tip-text">未收到短信？请检查手机号码是否正确，或尝试稍后再获取。</text>
-      </view>
+        <!-- Step 3 结果 -->
+        <view v-else-if="step === 'result'" class="step-center">
+          <view class="result-icon" :class="passed ? 'success' : 'fail'">
+            <text>{{ passed ? '✓' : '✕' }}</text>
+          </view>
+          <text class="page-title">{{ passed ? '实名认证成功' : '认证失败' }}</text>
+          <text class="page-desc">{{ resultMessage }}</text>
+          <button class="face-btn" @click="finish">{{ passed ? '完 成' : '重新上传' }}</button>
+        </view>
 
-      <!-- 协议 -->
-      <view class="agreement">
-        <view class="checkbox-custom" :class="{ checked: agreed }" @click="agreed = !agreed"></view>
-        <text class="agreement-text">
-          您已阅读并同意<text style="color:#FF6B35;" @click.stop="navigateTo('user-agreement')">《快马日结隐私政策》</text>
-        </text>
-      </view>
-    </scroll-view>
+        <!-- 已认证 -->
+        <view v-else-if="step === 'verified'" class="step-center">
+          <view class="result-icon success"><text>✓</text></view>
+          <text class="page-title">已实名认证</text>
+          <text class="page-desc">您的账户已完成实名认证，无需重复认证</text>
+          <view class="match-area">
+            <view class="match-photo">
+              <image :src="idCardImageUrl" mode="aspectFill" />
+              <view class="ph-label"><text>身份证照</text></view>
+            </view>
+            <view class="match-photo">
+              <image :src="faceImageUrl" mode="aspectFill" />
+              <view class="ph-label"><text>人脸照</text></view>
+            </view>
+          </view>
+          <button class="face-btn" @click="goBack">返 回</button>
+        </view>
+
+        <view class="scroll-bottom-space"></view>
+      </scroll-view>
+    </view>
   </view>
 </template>
 
 <script>
-import { request } from '@/api/http'
-import { sendSmsCode } from '@/api/auth'
+import { getBossRealnameStatus, uploadRealnameImage, verifyBossRealname } from "@/api/backend";
+
+const MATCH_HINTS = ["正在提取身份证人脸特征...", "正在提取上传人脸特征...", "特征比对中..."];
 
 export default {
   data() {
     return {
       statusBarHeight: 0,
-      phone: uni.getStorageSync('userPhone') || '',
-      code: '',
-      countdown: 0,
-      sent: false,
-      agreed: true,
-      sending: false,
+      step: "upload",
+      agreed: false,
+      idCardImageUrl: "",
+      faceImageUrl: "",
+      uploading: "",
       verifying: false,
-      timer: null
-    }
+      passed: false,
+      resultMessage: "",
+      matchHint: MATCH_HINTS[0],
+      hintTimer: null,
+    };
   },
   computed: {
-    maskedPhone() {
-      if (!this.phone || this.phone.length < 7) return this.phone || '未绑定'
-      return this.phone.slice(0, 3) + '****' + this.phone.slice(-4)
-    }
+    canVerify() {
+      return this.agreed && !!this.idCardImageUrl && !!this.faceImageUrl;
+    },
   },
   onLoad() {
     try {
-      const info = typeof uni.getWindowInfo === 'function' ? uni.getWindowInfo() : uni.getSystemInfoSync()
-      this.statusBarHeight = Number(info.statusBarHeight || 0)
+      const info = typeof uni.getWindowInfo === "function" ? uni.getWindowInfo() : uni.getSystemInfoSync();
+      this.statusBarHeight = Number(info.statusBarHeight || 0);
     } catch (_) {}
+    this.loadStatus();
   },
-  beforeDestroy() {
-    if (this.timer) clearInterval(this.timer)
+  onUnload() {
+    if (this.hintTimer) clearInterval(this.hintTimer);
   },
   methods: {
-    goBack() {
-      uni.navigateBack()
-    },
-    navigateTo(page) {
-      const url = page === 'user-agreement' ? '/pages/worker/user-agreement' : `/pages/${page}`
-      uni.navigateTo({ url })
-    },
-    startCountdown() {
-      this.sent = true
-      this.countdown = 60
-      this.timer = setInterval(() => {
-        this.countdown--
-        if (this.countdown <= 0) {
-          clearInterval(this.timer)
-          this.timer = null
+    async loadStatus() {
+      try {
+        const result = await getBossRealnameStatus();
+        const data = result?.data || result || {};
+        this.idCardImageUrl = data.idCardImageUrl || "";
+        this.faceImageUrl = data.faceImageUrl || "";
+        if (data.realnameStatus === "APPROVED" || data.realnameStatus === "已通过") {
+          this.step = "verified";
         }
-      }, 1000)
-    },
-    async sendCode() {
-      if (this.countdown > 0 || this.sending) return
-      if (!this.phone) {
-        uni.showToast({ title: '未获取到手机号', icon: 'none' })
-        return
-      }
-      this.sending = true
-      try {
-        await sendSmsCode(this.phone)
-        this.startCountdown()
-        uni.showToast({ title: `验证码已发送至 ${this.maskedPhone}`, icon: 'success' })
-      } catch (err) {
-        uni.showToast({ title: err?.message || '发送失败', icon: 'none' })
-      } finally {
-        this.sending = false
+      } catch (error) {
+        console.warn("[Realname] 加载认证状态失败:", error);
       }
     },
-    async doVerify() {
-      if (!this.agreed) {
-        uni.showToast({ title: '请先阅读并同意隐私政策', icon: 'none' })
-        return
-      }
-      if (this.code.length !== 6) {
-        uni.showToast({ title: '请输入6位验证码', icon: 'none' })
-        return
-      }
-      if (this.verifying) return
-      this.verifying = true
+    goBack() {
+      uni.navigateBack({ fail: () => uni.switchTab({ url: "/pages/boss/home" }) });
+    },
+    openAgreement() {
+      uni.navigateTo({ url: "/pages/worker/user-agreement" });
+    },
+    chooseImage(type) {
+      if (this.uploading || this.verifying) return;
+      uni.chooseImage({
+        count: 1,
+        sizeType: ["compressed"],
+        sourceType: ["album", "camera"],
+        success: async (res) => {
+          const filePath = res.tempFilePaths?.[0];
+          if (!filePath) return;
+          this.uploading = type;
+          try {
+            const uploaded = await uploadRealnameImage(filePath);
+            const url = uploaded?.url || uploaded?.objectKey || "";
+            if (!url) throw new Error("上传结果缺少文件地址");
+            if (type === "idCard") this.idCardImageUrl = url;
+            else this.faceImageUrl = url;
+          } catch (error) {
+            console.warn("[Realname] 图片上传失败:", error);
+            uni.showToast({ title: "图片上传失败，请重试", icon: "none" });
+          } finally {
+            this.uploading = "";
+          }
+        },
+      });
+    },
+    async startVerify() {
+      if (!this.canVerify || this.verifying) return;
+      this.verifying = true;
+      this.step = "matching";
+      this.matchHint = MATCH_HINTS[0];
+      let hintIndex = 0;
+      this.hintTimer = setInterval(() => {
+        hintIndex = Math.min(hintIndex + 1, MATCH_HINTS.length - 1);
+        this.matchHint = MATCH_HINTS[hintIndex];
+      }, 1200);
       try {
-        await request({
-          url: `/auth/sms/verify?phone=${encodeURIComponent(this.phone)}&code=${encodeURIComponent(this.code)}`,
-          method: 'POST'
-        })
-        uni.showToast({ title: '验证成功！', icon: 'success' })
-        uni.setStorageSync('certStatus', '已通过')
-        uni.setStorageSync('bossCertStatus', '已通过')
-        setTimeout(() => {
-          uni.navigateBack()
-        }, 1000)
-      } catch (err) {
-        uni.showToast({ title: err?.message || '验证失败', icon: 'none' })
+        const result = await verifyBossRealname({
+          idCardImageUrl: this.idCardImageUrl,
+          faceImageUrl: this.faceImageUrl,
+        });
+        const data = result?.data || result || {};
+        this.passed = !!data.passed;
+        this.resultMessage = data.message || (this.passed ? "人脸与身份证匹配成功" : "人脸与身份证不匹配");
+        this.step = "result";
+      } catch (error) {
+        this.passed = false;
+        this.resultMessage = error?.message || "人脸比对失败，请稍后重试";
+        this.step = "result";
       } finally {
-        this.verifying = false
+        if (this.hintTimer) clearInterval(this.hintTimer);
+        this.verifying = false;
       }
-    }
-  }
-}
+    },
+    finish() {
+      if (this.passed) {
+        this.step = "verified";
+        return;
+      }
+      this.step = "upload";
+    },
+  },
+};
 </script>
 
-<style lang="scss" scoped>
-.container {
-  width: 100%;
-  height: 100vh;
-  background: #fff;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-.status-bar {
-  height: 47px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 0 28px;
-  font-size: 15px;
-  font-weight: 600;
-  color: #333;
-  background: transparent;
-}
-
-.status-icons {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.nav-bar {
-  height: 50px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 16px;
-  background: #fff;
-  position: relative;
-  z-index: 10;
-  box-sizing: border-box;
-}
-
-.nav-back {
-  width: 32px;
-  height: 32px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.nav-space {
-  width: 32px;
-  height: 32px;
-}
-
-.nav-title {
-  font-size: 17px;
-  font-weight: 600;
-  color: #333;
-}
-
-.nav-right {
-  display: flex;
-  align-items: center;
-  background: rgba(255,255,255,0.8);
-  backdrop-filter: blur(10px);
-  border-radius: 9999px;
-  padding: 3px 6px;
-  gap: 2px;
-}
-
-.nav-btn {
-  width: 22px;
-  height: 22px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.nav-divider {
-  width: 1px;
-  height: 10px;
-  background: #ddd;
-}
-
-.content {
-  flex: 1;
-  height: 0;
-  min-height: 0;
-  overflow-y: auto;
-  overflow-x: hidden;
-  box-sizing: border-box;
-  padding: 20px 20px calc(24px + env(safe-area-inset-bottom));
-}
-
-.phone-icon {
-  width: 72px;
-  height: 72px;
-  margin: 10px auto 16px;
-  background: linear-gradient(135deg, #FFE4B5, #FFD966);
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 8px 24px rgba(255, 180, 50, 0.3);
-}
-
-.page-title {
-  font-size: 22px;
-  font-weight: 700;
-  color: #333;
-  text-align: center;
-  margin-bottom: 8px;
-  display: block;
-}
-
-.page-desc {
-  font-size: 13px;
-  color: #999;
-  text-align: center;
-  margin-bottom: 28px;
-  line-height: 1.6;
-  display: block;
-}
-
-.form-card {
-  background: #FAFAFA;
-  border-radius: 16px;
-  padding: 8px 20px;
-  margin-bottom: 24px;
-}
-
-.form-item {
-  display: flex;
-  align-items: center;
-  padding: 16px 0;
-  border-bottom: 1px solid #EFEFEF;
-}
-
-.form-item:last-child {
-  border-bottom: none;
-}
-
-.form-label {
-  font-size: 15px;
-  color: #333;
-  font-weight: 500;
-  width: 70px;
-  flex-shrink: 0;
-}
-
-.form-input {
-  flex: 1;
-  min-width: 0;
-  font-size: 15px;
-  color: #333;
-  border: none;
-  outline: none;
-  background: transparent;
-}
-
-.form-input::placeholder {
-  color: #bbb;
-}
-
-.form-input.phone {
-  letter-spacing: 1px;
-}
-
-.send-code-btn {
-  flex-shrink: 0;
-  font-size: 13px;
-  color: #FF6B35;
-  font-weight: 500;
-  padding: 7px 12px;
-  margin: 0 0 0 8px;
-  border: 1px solid #FF6B35;
-  border-radius: 999px;
-  background: transparent;
-  white-space: nowrap;
-}
-
-.send-code-btn::after,
-.verify-btn::after {
-  border: none;
-}
-
-.send-code-btn.disabled {
-  color: #bbb;
-  border-color: #ddd;
-}
-
-.verify-btn {
-  width: 100%;
-  margin-top: 32px;
-  background: linear-gradient(135deg, #FFD700, #FFA500);
-  color: #fff;
-  padding: 16px;
-  border-radius: 28px;
-  font-size: 17px;
-  font-weight: 600;
-  box-shadow: 0 8px 20px rgba(255, 180, 50, 0.4);
-  border: none;
-}
-
-.verify-btn:disabled {
-  opacity: 0.6;
-}
-
-.tip-box {
-  background: #FFF8F0;
-  border-radius: 12px;
-  padding: 14px 16px;
-  margin-top: 20px;
-  display: flex;
-  gap: 10px;
-  align-items: flex-start;
-}
-
-.tip-icon {
-  width: 20px;
-  height: 20px;
-  flex-shrink: 0;
-  background: #FF6B35;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #fff;
-  font-size: 11px;
-  font-weight: 700;
-  margin-top: 1px;
-}
-
-.tip-text {
-  font-size: 12px;
-  color: #666;
-  line-height: 1.7;
-}
-
-.agreement {
-  display: flex;
-  align-items: flex-start;
-  justify-content: center;
-  margin-top: 20px;
-  gap: 6px;
-}
-
-.checkbox-custom {
-  width: 16px;
-  height: 16px;
-  border: 2px solid #ddd;
-  border-radius: 4px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  margin-top: 1px;
-}
-
-.checkbox-custom.checked {
-  background: #FF6B35;
-  border-color: #FF6B35;
-}
-
-.checkbox-custom.checked::after {
-  content: '✓';
-  color: #fff;
-  font-size: 10px;
-  font-weight: bold;
-}
-
-.agreement-text {
-  font-size: 12px;
-  color: #999;
-  line-height: 1.6;
-}
+<style scoped>
+.container { min-height: 100vh; background: #f5f5f5; }
+.page-bg { min-height: 100vh; background: #f5f5f5; }
+.nav-bar { display: flex; align-items: center; justify-content: space-between; padding: 0 32rpx 20rpx; background: #f5f5f5; }
+.nav-back { width: 56rpx; height: 56rpx; border-radius: 50%; background: #fff; display: flex; align-items: center; justify-content: center; font-size: 32rpx; color: #333; }
+.nav-title { font-size: 32rpx; font-weight: 600; color: #333; }
+.nav-placeholder { width: 56rpx; }
+.content { height: calc(100vh - 120rpx); padding: 0 40rpx; box-sizing: border-box; }
+.step-center { display: flex; flex-direction: column; align-items: center; padding-top: 80rpx; }
+.top-shield { width: 120rpx; height: 120rpx; margin: 40rpx auto 24rpx; border-radius: 50%; background: linear-gradient(135deg, #ff8c42, #ff6b35); display: flex; align-items: center; justify-content: center; font-size: 56rpx; color: #fff; box-shadow: 0 12rpx 32rpx rgba(255,107,53,.25); }
+.page-title { display: block; text-align: center; font-size: 36rpx; font-weight: 600; color: #222; }
+.page-desc { display: block; margin-top: 12rpx; text-align: center; font-size: 26rpx; color: #999; line-height: 1.6; }
+.upload-group { margin-top: 40rpx; }
+.upload-label { display: block; font-size: 28rpx; color: #666; margin-bottom: 20rpx; }
+.upload-box { position: relative; width: 100%; height: 260rpx; border: 3rpx dashed #ddd; border-radius: 20rpx; background: #fafafa; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12rpx; overflow: hidden; }
+.upload-box.has-img { border-style: solid; border-color: #eaeaea; background: #fff; }
+.upload-box image { width: 100%; height: 100%; }
+.up-icon { font-size: 52rpx; }
+.up-text { font-size: 26rpx; color: #999; }
+.re-upload { position: absolute; right: 12rpx; bottom: 12rpx; padding: 6rpx 16rpx; border-radius: 20rpx; background: rgba(0,0,0,.5); color: #fff; font-size: 22rpx; }
+.uploading { position: absolute; left: 0; right: 0; top: 0; bottom: 0; display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,.7); color: #ff6b35; font-size: 26rpx; }
+.face-btn { width: 100%; margin-top: 48rpx; height: 96rpx; line-height: 96rpx; border: none; border-radius: 14rpx; background: linear-gradient(135deg, #ffd96f, #ffc95a); color: #040600; font-size: 32rpx; font-weight: 600; box-shadow: 0 12rpx 32rpx rgba(255,201,90,.35); }
+.face-btn[disabled] { opacity: .55; color: #040600; background: linear-gradient(135deg, #ffd96f, #ffc95a); }
+.face-btn::after { border: none; }
+.agreement { display: flex; align-items: flex-start; gap: 14rpx; margin-top: 32rpx; padding: 0 8rpx; }
+.checkbox-custom { width: 36rpx; height: 36rpx; border: 2rpx solid #ddd; border-radius: 8rpx; background: #fff; flex-shrink: 0; margin-top: 2rpx; }
+.checkbox-custom.checked { background: #ff6b35; border-color: #ff6b35; position: relative; }
+.checkbox-custom.checked::after { content: "✓"; position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 22rpx; }
+.agreement-text { font-size: 24rpx; color: #999; line-height: 1.6; }
+.agree-link { color: #ff6b35; }
+.match-area { display: flex; align-items: center; gap: 24rpx; margin-top: 56rpx; }
+.match-photo { position: relative; width: 220rpx; height: 280rpx; border-radius: 20rpx; overflow: hidden; background: #fff; box-shadow: 0 8rpx 24rpx rgba(0,0,0,.06); }
+.match-photo image { width: 100%; height: 100%; }
+.ph-label { position: absolute; left: 0; right: 0; bottom: 0; padding: 10rpx 0; background: rgba(0,0,0,.45); color: #fff; font-size: 22rpx; text-align: center; }
+.match-vs { display: flex; flex-direction: column; align-items: center; gap: 4rpx; color: #ff6b35; font-size: 24rpx; font-weight: 600; }
+.match-hint { margin-top: 48rpx; font-size: 26rpx; color: #999; }
+.result-icon { width: 140rpx; height: 140rpx; margin: 24rpx auto 24rpx; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 64rpx; }
+.result-icon.success { background: linear-gradient(135deg, #52c41a, #73d13d); box-shadow: 0 12rpx 36rpx rgba(82,196,26,.3); }
+.result-icon.fail { background: linear-gradient(135deg, #ef4444, #f87171); box-shadow: 0 12rpx 36rpx rgba(239,68,68,.3); }
+.result-icon + .page-title, .step-center .page-title { margin-top: 8rpx; }
+.step-center .face-btn { margin-top: 56rpx; }
+.scroll-bottom-space { height: 60rpx; }
 </style>

@@ -126,6 +126,12 @@
 			<artifactId>dysmsapi20170525</artifactId>
 			<version>3.0.0</version>
 		</dependency>
+		<!-- 阿里云视觉智能：人脸 1:1 比对（CompareFace），用于实名认证 -->
+		<dependency>
+			<groupId>com.aliyun</groupId>
+			<artifactId>facebody20191230</artifactId>
+			<version>6.0.0</version>
+		</dependency>
 		<dependency>
 			<groupId>org.apache.poi</groupId>
 			<artifactId>poi-ooxml</artifactId>

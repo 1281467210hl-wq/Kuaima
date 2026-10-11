@@ -95,7 +95,15 @@ public class CertificationService {
         String realname = resolveStatus(user, REALNAME, user.getRealnameStatus());
         String enterprise = resolveStatus(user, ENTERPRISE, user.getEnterpriseStatus());
         List<String> missing = new ArrayList<>();
-        if (!CertificationStatus.APPROVED.equals(realname)) missing.add("REALNAME");
+        // 发布招工的实名口径与人脸认证一致：比对通过且两张认证照片齐全才算完成。
+        // 旧流程（姓名/证号人工审核）遗留的 APPROVED 没有人脸照片，不能放行发布。
+        boolean faceVerified = CertificationStatus.APPROVED.equals(realname)
+                && StringUtils.hasText(user.getRealnameIdCardImageUrl())
+                && StringUtils.hasText(user.getRealnameFaceImageUrl());
+        if (!faceVerified) {
+            realname = CertificationStatus.UNVERIFIED;
+            missing.add("REALNAME");
+        }
         if (!CertificationStatus.APPROVED.equals(enterprise)) missing.add("ENTERPRISE");
         return Map.of("canPublish", missing.isEmpty(),
                 "realnameStatus", realname,
@@ -106,7 +114,7 @@ public class CertificationService {
     public void requirePublishEligibility(Long userId) {
         Map<String, Object> result = publishEligibility(userId);
         if (!Boolean.TRUE.equals(result.get("canPublish"))) {
-            throw new ForbiddenBusinessException("请先完成个人实名认证和企业认证");
+            throw new ForbiddenBusinessException("请先完成人脸实名认证和企业认证");
         }
     }
 

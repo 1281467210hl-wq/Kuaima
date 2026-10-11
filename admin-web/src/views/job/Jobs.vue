@@ -83,14 +83,14 @@
           <template #default="{ row }">
             <div class="action-btns">
               <el-button link type="primary" size="small" @click="showDetail(row)">查看</el-button>
-              <router-link :to="`/admin/jobs/applicants/${row.id}`">
+              <router-link v-permission="'permJob.jobs.applicants'" :to="`/admin/jobs/applicants/${row.id}`">
                 <el-button link type="primary" size="small"><i class="fas fa-users"></i> 报名人员</el-button>
               </router-link>
-              <router-link :to="`/admin/jobs/edit/${row.id}`">
+              <router-link v-permission="'permJob.jobs.edit'" :to="`/admin/jobs/edit/${row.id}`">
                 <el-button link type="primary" size="small">编辑</el-button>
               </router-link>
-              <el-button v-if="row.orderStatus === '招工中'" link type="danger" size="small" @click="handleClose(row)">关闭</el-button>
-              <el-button v-else-if="row.orderStatus === '取消招工'" link type="success" size="small" @click="handleOpen(row)">开启</el-button>
+              <el-button v-if="row.orderStatus === '招工中'" v-permission="'permJob.jobs.toggle'" link type="danger" size="small" @click="handleClose(row)">关闭</el-button>
+              <el-button v-else-if="row.orderStatus === '取消招工'" v-permission="'permJob.jobs.toggle'" link type="success" size="small" @click="handleOpen(row)">开启</el-button>
             </div>
           </template>
         </el-table-column>
@@ -139,6 +139,12 @@
           <div class="detail-grid">
             <div class="detail-item"><span class="label">已报名</span><span class="value" style="color:var(--primary);font-weight:600;">{{ currentJob.currentApply || 0 }} 人</span></div>
             <div class="detail-item"><span class="label">需求人数</span><span class="value">{{ currentJob.orderNum || 0 }} 人</span></div>
+            <div class="detail-item detail-item-full">
+              <span class="label">保险信息</span>
+              <span class="value insurance-value" :class="{ insured: hasInsurance(currentJob) }">
+                <i class="fas fa-shield-halved"></i>{{ insuranceText(currentJob) }}
+              </span>
+            </div>
           </div>
         </div>
       </div>
@@ -153,7 +159,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { listJobs, closeJob, openJob } from '@/api/job'
+import { getJob, listJobs, closeJob, openJob } from '@/api/job'
 
 const searchKeyword = ref('')
 const statusFilter = ref('')
@@ -262,9 +268,28 @@ const onPageChange = (page) => {
   loadJobs()
 }
 
-const showDetail = (row) => {
+const showDetail = async (row) => {
   currentJob.value = row
   detailVisible.value = true
+  try {
+    const res = await getJob(row.id)
+    currentJob.value = { ...row, ...(res?.data || {}) }
+  } catch (e) {
+    console.warn('[Jobs] 加载招工详情失败:', e)
+  }
+}
+
+const hasInsurance = (job) => !!job?.insurance
+const insuranceText = (job) => {
+  const insurance = job?.insurance
+  if (!insurance) return '未选择保险'
+  const type = insurance.type || '意外险'
+  const amount = Number(insurance.amount || 0)
+  if (amount <= 0) return type
+  const wan = amount / 10000
+  const wanText = Number.isInteger(wan) ? wan : wan.toFixed(1)
+  const count = Number(insurance.count || 1)
+  return `${type} · ${wanText}万意外保障${count > 1 ? `（${count} 份保单）` : ''}`
 }
 
 const handleClose = async (row) => {
@@ -366,6 +391,10 @@ onMounted(loadJobs)
 }
 .detail-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px 20px; }
 .detail-item { display: flex; flex-direction: column; gap: 2px; }
+.detail-item-full { grid-column: 1 / -1; }
 .detail-item .label { font-size: 12px; color: var(--text-muted); }
 .detail-item .value { font-size: 14px; color: var(--text-primary); font-weight: 500; }
+.insurance-value { display: inline-flex; align-items: center; color: var(--text-muted); }
+.insurance-value i { margin-right: 6px; font-size: 13px; }
+.insurance-value.insured { color: #16A34A; font-weight: 600; }
 </style>

@@ -65,6 +65,14 @@ public class AdminUser {
     @Column(nullable = false, length = 20)
     private String status = "启用";
 
+    /** 是否允许登录；关闭后账号即使启用也不能登录后台 */
+    @Column(nullable = false)
+    private Boolean allowLogin = true;
+
+    /** 是否接收系统通知 */
+    @Column(nullable = false)
+    private Boolean receiveNotifications = true;
+
     /** 创建者管理员 ID（who created this admin account）；新建时由当前登录管理员填入 */
     @Column
     private Long createdBy;

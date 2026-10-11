@@ -32,6 +32,8 @@ import com.kuaima.app.domain.boss.entity.BossOrder;
 import com.kuaima.app.domain.boss.repository.BaseOrderItemRespository;
 import com.kuaima.app.domain.boss.repository.BossOrderRespository;
 import com.kuaima.app.domain.boss.service.BossOrderService;
+import com.kuaima.app.domain.insurance.entity.Insurance;
+import com.kuaima.app.domain.insurance.repository.InsuranceRepository;
 import com.kuaima.app.domain.jobcategory.entity.JobCategory;
 import com.kuaima.app.domain.jobcategory.repository.JobCategoryRepository;
 import com.kuaima.app.domain.jobcategory.repository.JobIndustryRepository;
@@ -58,6 +60,7 @@ public class AdminJobController {
     private final JobCategoryRepository jobCategoryRepository;
     private final JobIndustryRepository jobIndustryRepository;
     private final ReportRepository reportRepository;
+    private final InsuranceRepository insuranceRepository;
 
     public AdminJobController(BossOrderRespository orderRepository,
                               BossOrderService bossOrderService,
@@ -65,7 +68,8 @@ public class AdminJobController {
                               BaseOrderItemRespository orderItemRepository,
                               JobCategoryRepository jobCategoryRepository,
                               JobIndustryRepository jobIndustryRepository,
-                              ReportRepository reportRepository) {
+                              ReportRepository reportRepository,
+                              InsuranceRepository insuranceRepository) {
         this.orderRepository = orderRepository;
         this.bossOrderService = bossOrderService;
         this.userRepository = userRepository;
@@ -73,6 +77,7 @@ public class AdminJobController {
         this.jobCategoryRepository = jobCategoryRepository;
         this.jobIndustryRepository = jobIndustryRepository;
         this.reportRepository = reportRepository;
+        this.insuranceRepository = insuranceRepository;
     }
 
     /** 招工列表（全部状态），批量填充雇主名称 */
@@ -243,6 +248,19 @@ public class AdminJobController {
                 }
             }
         }
+        // 保险区域：同一订单可能有多名零工的保单，取首条展示险种与保额，并附保单数
+        List<Insurance> insurances = insuranceRepository.findByOrderId(order.getId());
+        if (!insurances.isEmpty()) {
+            Insurance insurance = insurances.get(0);
+            Map<String, Object> insuranceInfo = new HashMap<>();
+            insuranceInfo.put("type", insurance.getType());
+            insuranceInfo.put("amount", insurance.getAmount());
+            insuranceInfo.put("premium", insurance.getPremium());
+            insuranceInfo.put("status", insurance.getStatus());
+            insuranceInfo.put("count", insurances.size());
+            result.put("insurance", insuranceInfo);
+        }
+
         result.put("benefits", extractBenefits(order.getOrderRemark()));
         result.put("submittedMaterials", result.getOrDefault("submittedMaterials", null));
         return Result.success(result);

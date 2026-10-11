@@ -55,13 +55,13 @@
         <el-table-column label="操作" width="220" fixed="right">
           <template #default="{ row }">
             <div class="action-cell">
-              <el-button link type="primary" size="small" @click="showDetail(row)">详情</el-button>
+              <el-button v-permission="'permUser.cert.detail'" link type="primary" size="small" @click="showDetail(row)">详情</el-button>
               <template v-if="row.enterpriseStatus === 'PENDING' || row.enterpriseStatus === '待审核'">
-                <el-button link type="success" size="small" @click="handlePass(row)">通过</el-button>
-                <el-button link type="danger" size="small" @click="handleReject(row)">拒绝</el-button>
+                <el-button v-permission="'permUser.cert.approve'" link type="success" size="small" @click="handlePass(row)">通过</el-button>
+                <el-button v-permission="'permUser.cert.reject'" link type="danger" size="small" @click="handleReject(row)">拒绝</el-button>
               </template>
-              <el-button v-if="row.status === '正常' || row.status === 'NORMAL' || row.status === 1" link type="warning" size="small" @click="handleFreeze(row)">冻结</el-button>
-              <el-button v-else link type="success" size="small" @click="handleUnfreeze(row)">解冻</el-button>
+              <el-button v-if="row.status === '正常' || row.status === 'NORMAL' || row.status === 1" v-permission="'permUser.cert.unfreeze'" link type="warning" size="small" @click="handleFreeze(row)">冻结</el-button>
+              <el-button v-else v-permission="'permUser.cert.unfreeze'" link type="success" size="small" @click="handleUnfreeze(row)">解冻</el-button>
             </div>
           </template>
         </el-table-column>
@@ -142,10 +142,10 @@
         <div v-else class="empty-document">暂无证件图片</div>
 
         <div class="action-buttons" v-if="currentRow.enterpriseStatus === 'PENDING' || currentRow.enterpriseStatus === '待审核'">
-          <el-button type="success" style="width:100%;" @click="handlePass(currentRow)">
+          <el-button v-permission="'permUser.cert.approve'" type="success" style="width:100%;" @click="handlePass(currentRow)">
             <i class="fas fa-check-circle"></i> 通过审核
           </el-button>
-          <el-button type="danger" style="width:100%;" @click="handleReject(currentRow)">
+          <el-button v-permission="'permUser.cert.reject'" type="danger" style="width:100%;" @click="handleReject(currentRow)">
             <i class="fas fa-times-circle"></i> 拒绝审核
           </el-button>
         </div>

@@ -71,52 +71,53 @@ const menuGroups = [
     id: 'user',
     name: '用户管理',
     items: [
-      { path: '/admin/workers', name: '零工管理', icon: 'fa-user', permKey: 'permUser.u1' },
-      { path: '/admin/credit-manage', name: '信用分管理', icon: 'fa-star', permKey: 'permUser.u1' },
-      { path: '/admin/bosses', name: '老板管理', icon: 'fa-building', permKey: 'permUser.u2' },
-      { path: '/admin/enterprise-cert', name: '企业认证', icon: 'fa-id-card', permKey: 'permUser.u2' }
+      { path: '/admin/workers', name: '零工管理', icon: 'fa-user', permKey: 'permUser.workers' },
+      { path: '/admin/credit-manage', name: '信用分管理', icon: 'fa-star', permKey: 'permUser.credits' },
+      { path: '/admin/bosses', name: '老板管理', icon: 'fa-building', permKey: 'permUser.bosses' },
+      { path: '/admin/enterprise-cert', name: '企业认证', icon: 'fa-id-card', permKey: 'permUser.cert' },
+      { path: '/admin/insurance', name: '保险管理', icon: 'fa-shield-halved', permKey: 'permUser.insurance' }
     ]
   },
   {
     id: 'job',
     name: '招工管理',
     items: [
-      { path: '/admin/jobs', name: '招工管理', icon: 'fa-briefcase', permKey: 'permJob.j1' },
-      { path: '/admin/job-audit', name: '招工审核', icon: 'fa-check-circle', badgeKey: 'jobAudit', permKey: 'permJob.j2' }
+      { path: '/admin/jobs', name: '招工管理', icon: 'fa-briefcase', permKey: 'permJob.jobs' },
+      { path: '/admin/job-audit', name: '招工审核', icon: 'fa-check-circle', badgeKey: 'jobAudit', permKey: 'permJob.audit' }
     ]
   },
   {
     id: 'marketing',
     name: '营销管理',
     items: [
-      { path: '/admin/point-purchase', name: '积分管理', icon: 'fa-coins' },
-      { path: '/admin/coupon-manage', name: '优惠券管理', icon: 'fa-ticket-alt' },
-      { path: '/admin/reward-manage', name: '奖励金管理', icon: 'fa-gift' }
+      { path: '/admin/point-purchase', name: '积分管理', icon: 'fa-coins', permKey: 'permMarketing.points' },
+      { path: '/admin/coupon-manage', name: '优惠券管理', icon: 'fa-ticket-alt', permKey: 'permMarketing.coupons' },
+      { path: '/admin/reward-manage', name: '奖励金管理', icon: 'fa-gift', permKey: 'permMarketing.rewards' }
     ]
   },
   {
     id: 'order',
     name: '订单结算',
     items: [
-      { path: '/admin/orders', name: '用工订单', icon: 'fa-clipboard-list', permKey: 'permOrder.o1' },
-      { path: '/admin/settlement', name: '结算管理', icon: 'fa-coins', permKey: 'permOrder.o3' }
+      { path: '/admin/orders', name: '用工订单', icon: 'fa-clipboard-list', permKey: 'permOrder.orders' },
+      { path: '/admin/settlement', name: '结算管理', icon: 'fa-coins', permKey: 'permOrder.settlement' }
     ]
   },
   {
     id: 'employee',
     name: '企业工作台',
     items: [
-      { path: '/admin/employees', name: '员工管理', icon: 'fa-users', permKey: 'permEmployee.e1' },
-      { path: '/admin/project-salary', name: '发薪管理', icon: 'fa-money-bill-wave', permKey: 'permPayroll.p1' }
+      { path: '/admin/employees', name: '员工管理', icon: 'fa-users', permKey: 'permEmployee.employees' },
+      { path: '/admin/project-salary', name: '发薪管理', icon: 'fa-money-bill-wave', permKey: 'permPayroll.payroll' }
     ]
   },
   {
     id: 'content',
     name: '内容管理',
     items: [
-      { path: '/admin/notices', name: '公告管理', icon: 'fa-bullhorn', permKey: 'permContent.c3' },
-      { path: '/admin/academy', name: '学堂管理', icon: 'fa-graduation-cap' },
-      { path: '/admin/rules', name: '规则管理', icon: 'fa-book', permKey: 'permContent.c4' },
+      { path: '/admin/notices', name: '公告管理', icon: 'fa-bullhorn', permKey: 'permContent.notices' },
+      { path: '/admin/academy', name: '学堂管理', icon: 'fa-graduation-cap', permKey: 'permMarketing.academy' },
+      { path: '/admin/rules', name: '规则管理', icon: 'fa-book', permKey: 'permContent.rules' },
       // { path: '/admin/banners', name: 'Banner管理', icon: 'fa-image', permKey: 'permContent.c2' }
     ]
   },
@@ -124,16 +125,16 @@ const menuGroups = [
     id: 'message',
     name: '消息客服',
     items: [
-      { path: '/admin/messages', name: '消息管理', icon: 'fa-envelope', permKey: 'permService.s1' },
-      { path: '/admin/service', name: '客服管理', icon: 'fa-headset', permKey: 'permService.s2' }
+      { path: '/admin/messages', name: '消息管理', icon: 'fa-envelope', permKey: 'permService.messages' },
+      { path: '/admin/service', name: '客服管理', icon: 'fa-headset', permKey: 'permService.service' }
     ]
   },
   {
     id: 'system',
     name: '系统管理',
     items: [
-      { path: '/admin/settings', name: '系统设置', icon: 'fa-cog', permKey: 'permSystem.sys3' },
-      { path: '/admin/logs', name: '操作日志', icon: 'fa-file-alt', permKey: 'permSystem.sys4' }
+      { path: '/admin/settings', name: '系统设置', icon: 'fa-cog', permKey: 'permSystem.settings' },
+      { path: '/admin/logs', name: '操作日志', icon: 'fa-file-alt', permKey: 'permSystem.logs' }
     ]
   }
 ]

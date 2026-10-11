@@ -188,6 +188,28 @@
           </view>
         </view>
 
+        <!-- 零工意外保障 -->
+        <view class="section-card" @click="navigateTo('insurance')">
+          <view class="form-row" style="border-bottom: none">
+            <view class="insurance-entry">
+              <view class="insurance-entry-title">
+                <text class="insurance-entry-icon">🛡</text>
+                <text>零工意外保障</text>
+              </view>
+              <view class="insurance-entry-sub">
+                <text>{{ insuranceSubtitle }}</text>
+              </view>
+            </view>
+            <view
+              class="form-value selected"
+              style="flex: 1; justify-content: flex-end"
+            >
+              <text class="insurance-job-tag">{{ insurancePlan.job }}</text>
+              <text class="› arrow"></text>
+            </view>
+          </view>
+        </view>
+
         <!-- 招工设置 -->
         <view class="section-card" @click="navigateTo('recruit-settings')">
           <view class="single-row">
@@ -339,6 +361,14 @@ export default {
       sourceOrderId: "",
       templateId: "",
       selectedInviteCount: 0,
+      insurancePlan: {
+        enabled: true,
+        amount: 33,
+        points: 2,
+        death: 30,
+        medical: 3,
+        job: "普工",
+      },
       workTimeVersion: 0,
       contactPhone: "暂无手机号",
       eligibilityReady: false,
@@ -346,6 +376,11 @@ export default {
     };
   },
   computed: {
+    insuranceSubtitle() {
+      const plan = this.insurancePlan || {};
+      if (plan.enabled === false) return "未开启保障";
+      return `${plan.amount}万意外保障 · 保24小时、保开完工`;
+    },
     workHours() {
       this.workTimeVersion;
       const workTime = uni.getStorageSync("workTimeSelection") || {};
@@ -386,7 +421,9 @@ export default {
     this.templateId = options?.templateId || "";
     uni.$on("recruitSettingsSaved", this.applyRecruitSettings);
     uni.$on("inviteWorkersSelected", this.applyInviteSelection);
+    uni.$on("insurancePlanSaved", this.applyInsurancePlan);
     this.loadRecruitSettings();
+    this.loadInsurancePlan();
     if (this.templateId) await this.loadTemplateDraft(this.templateId);
     if (this.orderId) await this.loadOrder(this.orderId);
     if (this.sourceOrderId) await this.loadOrder(this.sourceOrderId);
@@ -398,11 +435,13 @@ export default {
     this.loadRecruitSettings();
     this.loadContactPhone();
     this.loadInviteSelection();
+    this.loadInsurancePlan();
     this.workTimeVersion += 1;
   },
   onUnload() {
     uni.$off("recruitSettingsSaved", this.applyRecruitSettings);
     uni.$off("inviteWorkersSelected", this.applyInviteSelection);
+    uni.$off("insurancePlanSaved", this.applyInsurancePlan);
     uni.removeStorageSync("recruitDraftSettings");
   },
   methods: {
@@ -541,6 +580,8 @@ export default {
       const query =
         page === "invite-worker" && this.orderId
           ? `?orderId=${encodeURIComponent(this.orderId)}`
+          : page === "insurance"
+          ? `?job=${encodeURIComponent(this.jobName || "普工")}`
           : "";
       uni.navigateTo({ url: `/pages/boss/${page}${query}` });
     },
@@ -577,6 +618,25 @@ export default {
       return {
         invited: workerIds.length - failedIds.length,
         failed: failedIds.length,
+      };
+    },
+    loadInsurancePlan() {
+      const saved = uni.getStorageSync("recruitInsurancePlan");
+      if (saved && typeof saved === "object") {
+        this.applyInsurancePlan(saved);
+        return;
+      }
+      this.applyInsurancePlan({ job: this.jobName || "普工" });
+    },
+    applyInsurancePlan(plan = {}) {
+      const current = this.insurancePlan || {};
+      this.insurancePlan = {
+        enabled: plan.enabled !== undefined ? !!plan.enabled : current.enabled,
+        amount: Number(plan.amount) || current.amount || 33,
+        points: Number(plan.points) || current.points || 2,
+        death: Number(plan.death) || current.death || 30,
+        medical: Number(plan.medical) || current.medical || 3,
+        job: plan.job || current.job || "普工",
       };
     },
     loadRecruitSettings() {
@@ -850,6 +910,13 @@ function formatLocalDate(date) {
 </script>
 
 <style lang="scss" scoped>
+
+/* 零工意外保障入口 */
+.insurance-entry { display: flex; flex-direction: column; gap: 6rpx; }
+.insurance-entry-title { display: flex; align-items: center; gap: 12rpx; font-size: 28rpx; color: #333; }
+.insurance-entry-icon { font-size: 30rpx; }
+.insurance-entry-sub { font-size: 24rpx; color: #999; }
+.insurance-job-tag { margin-right: 16rpx; padding: 6rpx 16rpx; border-radius: 8rpx; background: #fff3e0; color: #ff6b35; font-size: 22rpx; }
 .container {
   width: 100%;
   height: 100vh;
