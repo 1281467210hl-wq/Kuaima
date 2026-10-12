@@ -418,13 +418,18 @@ public class BossController {
     @PostMapping("/enterprise-cert")
     public Result<User> submitEnterpriseCert(@RequestBody Map<String, String> body, Authentication authentication) {
         Long userId = requireCurrentBossId(authentication);
+        java.time.LocalDate foundingDate = null;
+        if (body.get("foundingDate") != null && !body.get("foundingDate").isBlank()) {
+            foundingDate = java.time.LocalDate.parse(body.get("foundingDate").trim());
+        }
         return Result.success(certificationService.submitEnterprise(userId,
                 body.get("companyName"), body.get("industry"),
-                body.get("licenseNo"), body.get("legalRep"), body.get("licenseImageUrl")));
+                body.get("licenseNo"), body.get("legalRep"), body.get("licenseImageUrl"),
+                foundingDate, body.get("businessScope")));
     }
 
     /** 上传企业营业执照到 OSS：POST /boss/enterprise-cert/license-upload */
-    @Operation(summary = "上传营业执照", description = "仅支持 JPG、JPEG、PNG，文件大小不超过 5MB，保存到 enterprise/license 目录")
+    @Operation(summary = "上传营业执照", description = "仅支持 JPG、JPEG、PNG，文件大小不超过 5MB，保存到 insurance/enterprise-license 目录")
     @PostMapping("/enterprise-cert/license-upload")
     public Result<OssUploadResult> uploadEnterpriseLicense(@RequestParam("file") MultipartFile file,
                                                              Authentication authentication) {
@@ -439,7 +444,12 @@ public class BossController {
                 || !(java.util.Set.of("image/jpeg", "image/png").contains(contentType))) {
             throw new IllegalArgumentException("仅支持 JPG、JPEG、PNG 图片");
         }
-        return Result.success(ossStorageService.uploadResult(file, "enterprise/license", "." + extension));
+        com.kuaima.app.common.service.OssUploadResult uploaded =
+                ossStorageService.uploadResult(file, "insurance/enterprise-license", "." + extension);
+        // 私有 Bucket：objectKey 用于落库/回显状态，url 生成限时签名地址供页面直接查看。
+        return Result.success(new com.kuaima.app.common.service.OssUploadResult(
+                uploaded.objectKey(), ossStorageService.playableUrl(uploaded.objectKey()),
+                uploaded.fileName()));
     }
 
     private String extension(String name) {

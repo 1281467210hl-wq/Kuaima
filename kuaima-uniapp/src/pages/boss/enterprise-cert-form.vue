@@ -72,13 +72,36 @@
             type="number"
           />
         </view>
+        <view class="form-item">
+          <text class="form-label">成立日期</text>
+          <picker class="form-input date-picker" mode="date" :value="foundingDate" @change="onFoundingDateChange">
+            <view class="date-picker-value" :class="{ placeholder: !foundingDate }">
+              {{ foundingDate || "请选择成立日期" }}
+            </view>
+          </picker>
+        </view>
+        <view class="form-item">
+          <text class="form-label">经营范围</text>
+          <textarea
+            class="form-input scope-input"
+            placeholder="请输入营业执照上的经营范围"
+            v-model="businessScope"
+            maxlength="500"
+          />
+        </view>
       </view>
 
       <!-- 上传营业执照 -->
       <view class="form-card">
         <text class="form-title">上传营业执照</text>
-        <view class="upload-area" @click="uploadLicense">
-          <view class="upload-icon">
+        <view class="upload-area" :class="{ 'has-image': licensePreview }" @click="uploadLicense">
+          <image
+            v-if="licensePreview"
+            class="license-preview"
+            :src="licensePreview"
+            mode="aspectFill"
+          />
+          <view v-else class="upload-icon">
             <image
               src="/static/icons/enterprise-cert-form/cloud-arrow-up.svg"
               mode="aspectFit"
@@ -87,11 +110,13 @@
           <text class="upload-text">{{
           licenseUploading
             ? "营业执照上传中..."
-            : licenseImageUrl
-              ? "营业执照已上传"
-              : "点击上传营业执照"
+            : licensePreview
+              ? "点击替换营业执照"
+              : licenseImageUrl
+                ? "营业执照已上传，点击更换"
+                : "点击上传营业执照"
           }}</text>
-          <text class="upload-hint"
+          <text v-if="!licensePreview" class="upload-hint"
             >请上传原件或加盖公章的复印件，支持JPG/PNG格式，不超过5M</text
           >
         </view>
@@ -149,7 +174,10 @@ export default {
       creditCode: "",
       legalPerson: "",
       contactPhone: "",
+      foundingDate: "",
+      businessScope: "",
       licensePath: "",
+      licensePreview: "",
       licenseImageUrl: "",
       licenseUploading: false,
       agreed: false,
@@ -173,9 +201,13 @@ export default {
         const profile = await getBossProfile(this.userId);
         if (!profile) return;
         this.companyName = profile.companyName || "";
+        this.creditCode = profile.licenseNo || "";
         this.legalPerson = profile.legalRep || profile.realName || "";
         this.contactPhone = profile.contactPhone || profile.phone || "";
+        this.foundingDate = profile.foundingDate || "";
+        this.businessScope = profile.businessScope || "";
         this.licenseImageUrl = profile.licenseImageUrl || "";
+        this.licensePreview = "";
       } catch (_) {
         // 未登录或接口不可用时保留空表单，不用演示数据覆盖用户输入。
       }
@@ -204,11 +236,13 @@ export default {
           this.licenseUploading = true;
           try {
             const uploaded = await uploadEnterpriseLicense(path);
-            this.licenseImageUrl = uploaded?.url || uploaded?.objectKey || "";
+            this.licenseImageUrl = uploaded?.objectKey || "";
+            this.licensePreview = path;
             if (!this.licenseImageUrl) throw new Error("上传结果缺少文件地址");
             uni.showToast({ title: "营业执照上传成功", icon: "success" });
           } catch (error) {
             this.licensePath = "";
+            this.licensePreview = "";
             this.licenseImageUrl = "";
             uni.showToast({ title: error.message || "营业执照上传失败", icon: "none" });
           } finally {
@@ -216,6 +250,9 @@ export default {
           }
         },
       });
+    },
+    onFoundingDateChange(event) {
+      this.foundingDate = event.detail.value || "";
     },
     showAgreement(type) {
       if (type === "service") {
@@ -231,6 +268,8 @@ export default {
         [this.creditCode, "请填写统一社会信用代码"],
         [this.legalPerson, "请填写法定代表人"],
         [this.contactPhone, "请填写联系电话"],
+        [this.foundingDate, "请选择成立日期"],
+        [this.businessScope, "请填写经营范围"],
       ];
       const missing = checks.find(([value]) => !String(value || "").trim());
       if (missing) {
@@ -258,6 +297,8 @@ export default {
           licenseNo: creditCode,
           legalRep: this.legalPerson.trim(),
           contactPhone: this.contactPhone.trim(),
+          foundingDate: this.foundingDate,
+          businessScope: this.businessScope.trim(),
           licenseImageUrl: this.licenseImageUrl,
         });
         uni.showToast({ title: "提交成功，请等待审核", icon: "success" });
@@ -499,5 +540,29 @@ export default {
 
 .submit-btn:disabled {
   opacity: 0.5;
+}
+.date-picker {
+  padding: 0;
+}
+.date-picker-value {
+  padding: 22rpx 24rpx;
+  color: #333;
+  font-size: 28rpx;
+}
+.date-picker-value.placeholder {
+  color: #999;
+}
+.scope-input {
+  height: 168rpx;
+  line-height: 1.6;
+  padding: 20rpx 24rpx;
+}
+.license-preview {
+  width: 100%;
+  height: 320rpx;
+  border-radius: 12rpx;
+}
+.upload-area.has-image {
+  padding: 12rpx;
 }
 </style>

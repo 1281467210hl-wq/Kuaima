@@ -129,8 +129,8 @@
     </view>
 
     <view class="bottom-bar">
-      <button class="submit-btn" :disabled="eligibilityChecking" @click="nextStep">
-        {{ eligibilityChecking ? "检查中..." : "下一步" }}
+      <button class="submit-btn" @click="nextStep">
+        下一步
       </button>
     </view>
 
@@ -390,7 +390,6 @@
 
 <script>
 import { getBossOrderTemplate, getOrder, listBossRecruitAddresses } from "@/api/backend";
-import { checkBossPublishEligibility } from "@/api/publish-eligibility";
 import { handleTokenInvalid } from "@/api/auth";
 import { normalizeBossAddressSelection, readAddressCoordinates } from "@/utils/boss-address";
 
@@ -565,8 +564,6 @@ export default {
       dates: buildDateOptions(),
       startDate: formatLocalDate(new Date()),
       endDate: formatLocalDate(new Date()),
-      eligibilityReady: false,
-      eligibilityChecking: false,
       activeSheet: "",
       taskDraft: {
         title: "",
@@ -719,8 +716,6 @@ export default {
     if (this.orderId) await this.loadOrder(this.orderId);
     if (this.sourceOrderId) await this.loadOrder(this.sourceOrderId);
     this.loadCommonAddresses();
-    this._eligibilityInitialized = true;
-    this.ensurePublishEligibility();
   },
   onUnload() {
     uni.$off("taskContentSaved", this.applyTaskContent);
@@ -730,11 +725,6 @@ export default {
     uni.$off("jobsSelected", this.applyJobsSelected);
   },
   onShow() {
-    if (this._eligibilityInitialized) {
-      // 从认证页返回后必须重新请求后端，不复用上一次的跳转结果。
-      if (uni.getStorageSync("token")) this._eligibilityRedirected = false;
-      this.ensurePublishEligibility();
-    }
     // 编辑已有订单时，岗位详情接口是唯一数据源，避免旧草稿覆盖接口回显。
     if (!this.orderId && !this.templateId && !this.sourceOrderId) {
       const saved = uni.getStorageSync("taskContent");
@@ -1050,54 +1040,6 @@ export default {
       } catch (error) {
         uni.showToast({ title: error?.message || "模板加载失败", icon: "none" });
       }
-    },
-    async ensurePublishEligibility() {
-      if (this._eligibilityPromise) return this._eligibilityPromise;
-      if (!uni.getStorageSync("token")) {
-        if (!this._eligibilityRedirected) {
-          this._eligibilityRedirected = true;
-          handleTokenInvalid({ role: "boss", toastTitle: "请先登录", clear: false });
-        }
-        return { canPublish: false, realnameStatus: "UNVERIFIED", enterpriseStatus: "UNVERIFIED", missing: ["REALNAME", "ENTERPRISE"] };
-      }
-      this.eligibilityChecking = true;
-      uni.showLoading({ title: "检查认证状态", mask: true });
-      this._eligibilityPromise = checkBossPublishEligibility({ redirect: false })
-        .then((result) => {
-          if (result.requestFailed || result.unauthorized) return result;
-          if (result.canPublish) {
-            this.eligibilityReady = true;
-            return result;
-          }
-          this.eligibilityReady = false;
-          const pending = [result.realnameStatus, result.enterpriseStatus].includes("PENDING");
-          if (pending) {
-            if (!this._eligibilityRedirected) {
-              this._eligibilityRedirected = true;
-              uni.showToast({ title: "认证审核中", icon: "none" });
-              setTimeout(() => uni.navigateBack(), 300);
-            }
-          } else if (result.realnameStatus !== "APPROVED") {
-            if (!this._eligibilityRedirected) {
-              this._eligibilityRedirected = true;
-              if (result.realnameStatus === "REJECTED") uni.showToast({ title: "个人认证未通过，请重新提交认证", icon: "none" });
-              uni.navigateTo({ url: "/pages/boss/realname" });
-            }
-          } else if (result.enterpriseStatus !== "APPROVED") {
-            if (!this._eligibilityRedirected) {
-              this._eligibilityRedirected = true;
-              if (result.enterpriseStatus === "REJECTED") uni.showToast({ title: "企业认证未通过，请重新提交认证", icon: "none" });
-              uni.navigateTo({ url: "/pages/boss/enterprise-cert" });
-            }
-          }
-          return result;
-        })
-        .finally(() => {
-          this.eligibilityChecking = false;
-          uni.hideLoading();
-          this._eligibilityPromise = null;
-        });
-      return this._eligibilityPromise;
     },
     async loadOrder(id) {
       try {

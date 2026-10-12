@@ -18,7 +18,7 @@
         <div class="stat-card-value">{{ card.value }}</div>
         <div :class="['stat-card-change', card.up ? 'up' : 'down']">
           <i :class="['fas', card.up ? 'fa-arrow-up' : 'fa-arrow-down']"></i>
-          <span>较上月 {{ card.change }}</span>
+          <span>{{ card.compare }} {{ card.change }}</span>
         </div>
       </div>
     </div>
@@ -157,12 +157,10 @@ import { listOrders } from '@/api/order'
 // statCards：后端接口填充 value，其余字段保留原展示元数据
 // 后端 Dashboard 字段：workerTotal, bossTotal, orderTotal, settledTotal, pendingAudit
 const statCards = reactive([
-  { title: '零工总数', value: '-', change: '+12.5%', up: true, icon: 'fa-user-friends', iconClass: '' },
-  { title: '雇主总数', value: '-', change: '+8.3%', up: true, icon: 'fa-building', iconClass: 'blue' },
-  { title: '今日订单', value: '-', change: '+23.1%', up: true, icon: 'fa-clipboard-check', iconClass: 'green' },
-  // 注意：后端 settledTotal 是「已结算订单数」，不是营收金额；暂无营收接口
-  { title: '已结算', value: '-', change: '+5.2%', up: true, icon: 'fa-coins', iconClass: 'yellow' },
-  { title: '待审核', value: '-', change: '需及时处理', up: true, icon: 'fa-clock', iconClass: 'yellow' }
+  { title: '零工总数', value: '-', compare: '较上月', change: '+12.5%', up: true, icon: 'fa-user-friends', iconClass: '' },
+  { title: '雇主总数', value: '-', compare: '较上月', change: '+8.3%', up: true, icon: 'fa-building', iconClass: 'blue' },
+  { title: '今日订单', value: '-', compare: '较昨日', change: '+23.1%', up: true, icon: 'fa-clipboard-check', iconClass: 'green' },
+  { title: '累计营收', value: '¥0', compare: '较上月', change: '+5.2%', up: true, icon: 'fa-coins', iconClass: 'yellow' }
 ])
 
 // ============ 员工管理统计（首页入口卡片） ============
@@ -217,11 +215,10 @@ const loadStats = async () => {
   try {
     const result = await getStats()
     const d = result.data || {}
-    statCards[0].value = formatNumber(d.workerTotal)   // 零工总数
-    statCards[1].value = formatNumber(d.bossTotal)     // 雇主总数
-    statCards[2].value = formatNumber(d.orderTotal)    // 今日订单
-    statCards[3].value = formatNumber(d.settledTotal)  // 已结算
-    statCards[4].value = formatNumber(d.pendingAudit)  // 待审核
+    statCards[0].value = formatNumber(d.workerTotal)      // 零工总数
+    statCards[1].value = formatNumber(d.bossTotal)        // 雇主总数
+    statCards[2].value = formatNumber(d.orderTotal)       // 今日订单
+    statCards[3].value = '¥' + formatNumber(d.totalRevenue ?? 0)  // 累计营收
   } catch (e) {
     console.warn('[Dashboard] 加载统计数据失败:', e)
   }

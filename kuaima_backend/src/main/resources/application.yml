@@ -1,3 +1,11 @@
+server:
+  servlet:
+    encoding:
+      charset: UTF-8
+      enabled: true
+      force: true
+      force-response: true
+
 spring:
   application:
     name: kuaima
@@ -14,6 +22,9 @@ spring:
 
 
 kuaima:
+  reward:
+    # 默认不以平台预存余额拦截奖励发放；仍保留支出流水和余额记账。
+    fund-control-enabled: ${KUAIMA_REWARD_FUND_CONTROL_ENABLED:false}
   media:
     ffmpeg-path: ${FFMPEG_PATH:ffmpeg}
     transcode-timeout-seconds: ${VIDEO_TRANSCODE_TIMEOUT_SECONDS:900}

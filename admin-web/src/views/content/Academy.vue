@@ -294,6 +294,7 @@ async function saveVideo() {
   if (!videoForm.file) return ElMessage.warning('请选择视频文件')
   saving.value = true
   try {
+    if (videoForm.file.size > 200 * 1024 * 1024) { ElMessage.error('视频大小不能超过200MB'); uploadProgress.value = 0; return }
     const upload = rows(await uploadAcademyVideo(videoForm.file, videoForm.title, videoMode.value === 'lesson' ? 'lesson' : 'simulate', {
       onUploadProgress: event => { if (event.total) uploadProgress.value = Math.min(99, Math.round(event.loaded * 100 / event.total)) }
     }))

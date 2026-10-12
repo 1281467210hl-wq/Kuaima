@@ -280,8 +280,10 @@ const formatDateTime = value => {
 const settlementNo = row => `JS${String(row?.id ?? 0).padStart(6, '0')}`
 const orderNo = row => `ORD${String(row?.orderId ?? 0).padStart(6, '0')}`
 const cycleText = row => {
-  const time = row?.time ? new Date(row.time) : null
-  return Number.isNaN(time?.getTime?.()) ? '-' : `${time.getFullYear()}年第${Math.ceil((time.getMonth() + 1) / 3)}季度`
+  if (!row?.time) return '-'
+  const time = new Date(row.time)
+  if (Number.isNaN(time.getTime())) return '-'
+  return `${time.getFullYear()}年第${Math.ceil((time.getMonth() + 1) / 3)}季度`
 }
 const avatarText = value => String(value || '快').slice(0, 1)
 const avatarBackground = (id, name) => {

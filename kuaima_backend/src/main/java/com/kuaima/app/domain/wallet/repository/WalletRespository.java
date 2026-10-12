@@ -24,6 +24,13 @@ public interface WalletRespository extends JpaRepository<Wallet, Long> {
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select w from Wallet w where w.userId=:userId")
     Optional<Wallet> findByUserIdForUpdate(@Param("userId") Long userId);
+    /**
+     * 历史数据可能在增加 user_id + role 唯一约束前产生重复钱包；加锁后按主键倒序取最新一条，
+     * 避免 Optional 单结果查询因重复历史数据直接抛出 NonUniqueResultException。
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select w from Wallet w where w.userId=:userId and w.role=:role order by w.id desc")
+    List<Wallet> findAllByUserIdAndRoleForUpdate(@Param("userId") Long userId, @Param("role") String role);
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select w from Wallet w where w.userId=:userId and w.role=:role")
     Optional<Wallet> findByUserIdAndRoleForUpdate(@Param("userId") Long userId, @Param("role") String role);

@@ -17,6 +17,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.beans.factory.annotation.Autowired;
 
 import com.kuaima.app.admin.dto.PointPurchaseDtos.CreateRequest;
 import com.kuaima.app.admin.dto.PointPurchaseDtos.OrderResponse;
@@ -29,6 +30,7 @@ import com.kuaima.app.domain.points.repository.PointsFlowRepository;
 import com.kuaima.app.domain.user.constant.UserRole;
 import com.kuaima.app.domain.user.entity.User;
 import com.kuaima.app.domain.user.repository.UserRepository;
+import com.kuaima.app.wechat.service.WechatPayService;
 
 import jakarta.persistence.EntityNotFoundException;
 
@@ -41,10 +43,17 @@ public class PointPurchaseService {
     private final UserRepository userRepo;
     private final PointsAccountRepository accountRepo;
     private final PointsFlowRepository flowRepo;
+    private final WechatPayService wechatPay;
 
     public PointPurchaseService(PointPurchaseOrderRepository orderRepo, UserRepository userRepo,
             PointsAccountRepository accountRepo, PointsFlowRepository flowRepo) {
-        this.orderRepo = orderRepo; this.userRepo = userRepo; this.accountRepo = accountRepo; this.flowRepo = flowRepo;
+        this(orderRepo, userRepo, accountRepo, flowRepo, null);
+    }
+
+    @Autowired
+    public PointPurchaseService(PointPurchaseOrderRepository orderRepo, UserRepository userRepo,
+            PointsAccountRepository accountRepo, PointsFlowRepository flowRepo, WechatPayService wechatPay) {
+        this.orderRepo = orderRepo; this.userRepo = userRepo; this.accountRepo = accountRepo; this.flowRepo = flowRepo; this.wechatPay = wechatPay;
     }
 
     @Transactional
@@ -87,12 +96,36 @@ public class PointPurchaseService {
     public OrderResponse confirmPayment(String orderNo, String payMethod, String transactionId, Long operatorId, String operatorName) {
         if (orderNo == null || orderNo.isBlank()) throw new IllegalArgumentException("订单号不能为空");
         PointPurchaseOrder o = orderRepo.findByOrderNoForUpdate(orderNo).orElseThrow(() -> new EntityNotFoundException("积分购买订单不存在: " + orderNo));
+        if ("微信支付".equals(o.getPayMethod()) && wechatPay != null) {
+            throw new IllegalStateException("微信支付订单必须等待微信支付回调确认");
+        }
         if ("支付成功".equals(o.getStatus())) return toDto(o);
         if (!"待支付".equals(o.getStatus())) throw new IllegalArgumentException("当前订单状态不能确认支付");
         if (payMethod != null && !payMethod.isBlank() && !payMethod.equals(o.getPayMethod())) throw new IllegalArgumentException("支付方式与订单不一致");
         o.setStatus("支付成功"); o.setPaidAt(LocalDateTime.now(ZONE)); o.setOperatorId(operatorId); o.setOperatorName(operatorName); o.setOperatorTime(LocalDateTime.now(ZONE));
         if (transactionId != null && !transactionId.isBlank()) o.setWechatTransactionId(transactionId.trim());
         grant(o); return toDto(o);
+    }
+
+    public OrderResponse getOrder(String orderNo) {
+        if (orderNo == null || orderNo.isBlank()) throw new IllegalArgumentException("订单号不能为空");
+        return orderRepo.findByOrderNo(orderNo).map(this::toDto)
+                .orElseThrow(() -> new EntityNotFoundException("积分购买订单不存在: " + orderNo));
+    }
+
+    public Map<String, Object> createWechatNativePayment(String orderNo) {
+        if (wechatPay == null) throw new IllegalStateException("微信支付服务未配置");
+        PointPurchaseOrder order = orderRepo.findByOrderNo(orderNo)
+                .orElseThrow(() -> new EntityNotFoundException("积分购买订单不存在: " + orderNo));
+        if (!"待支付".equals(order.getStatus())) throw new IllegalArgumentException("当前订单状态不能发起支付");
+        if (!"微信支付".equals(order.getPayMethod())) throw new IllegalArgumentException("当前订单不是微信支付订单");
+        String codeUrl = order.getWechatCodeUrl();
+        if (codeUrl == null || codeUrl.isBlank()) {
+            codeUrl = wechatPay.prepayNative("快马日结积分购买", order.getOrderNo(), order.getAmount());
+            order.setWechatCodeUrl(codeUrl);
+            orderRepo.save(order);
+        }
+        return Map.of("orderNo", order.getOrderNo(), "payMethod", order.getPayMethod(), "amount", order.getAmount(), "codeUrl", codeUrl);
     }
 
     public Page<OrderResponse> search(String keyword, String payMethod, String status, LocalDate date, Pageable pageable) {
@@ -109,6 +142,15 @@ public class PointPurchaseService {
     private double pct(Number a, Number b){ double x=a==null?0:a.doubleValue(), y=b==null?0:b.doubleValue(); return y==0?(x==0?0:100):Math.round((x-y)*1000.0/y)/10.0; }
     private LocalDateTime[] range(LocalDate d){ return d==null?new LocalDateTime[]{null,null}:new LocalDateTime[]{d.atStartOfDay(),d.plusDays(1).atStartOfDay()}; }
     private String blank(String s){ return s==null||s.isBlank()?null:s.trim(); }
-    public OrderResponse toDto(PointPurchaseOrder o){ return new OrderResponse(o.getId(),o.getOrderNo(),o.getBossId(),o.getBossName(),o.getCompanyName(),o.getPoints(),o.getAmount(),o.getUnitPrice(),o.getPayMethod(),o.getStatus(),o.getPurchaseTime(),o.getRemark(),o.getOperatorId(),o.getOperatorName()); }
+    public OrderResponse toDto(PointPurchaseOrder o){
+        String employerId = userRepo.findById(o.getBossId())
+                .map(user -> user.getCompanyCode() != null && !user.getCompanyCode().isBlank()
+                        ? user.getCompanyCode() : user.getBossCode())
+                .orElse(null);
+        if (employerId == null || employerId.isBlank()) {
+            employerId = "B" + String.format("%07d", o.getBossId());
+        }
+        return new OrderResponse(o.getId(),o.getOrderNo(),o.getBossId(),employerId,o.getBossName(),o.getCompanyName(),o.getPoints(),o.getAmount(),o.getUnitPrice(),o.getPayMethod(),o.getStatus(),o.getPurchaseTime(),o.getRemark(),o.getOperatorId(),o.getOperatorName());
+    }
     private String hash(String s){ try { return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(s.getBytes(StandardCharsets.UTF_8))); } catch(Exception e){ throw new IllegalStateException(e); } }
 }

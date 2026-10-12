@@ -27,6 +27,9 @@ public interface PointPurchaseOrderRepository extends JpaRepository<PointPurchas
         select o from PointPurchaseOrder o where
         (:keyword is null or lower(o.orderNo) like lower(concat('%', :keyword, '%'))
           or cast(o.bossId as string) like concat('%', :keyword, '%')
+          or exists (select u.id from User u where u.id = o.bossId and
+            (lower(coalesce(u.companyCode,'')) like lower(concat('%', :keyword, '%'))
+             or lower(coalesce(u.bossCode,'')) like lower(concat('%', :keyword, '%'))))
           or lower(coalesce(o.companyName,'')) like lower(concat('%', :keyword, '%'))
           or lower(coalesce(o.bossName,'')) like lower(concat('%', :keyword, '%')))
         and (:payMethod is null or o.payMethod = :payMethod)
@@ -42,7 +45,7 @@ public interface PointPurchaseOrderRepository extends JpaRepository<PointPurchas
                                     @Param("toTime") LocalDateTime toTime,
                                     Pageable pageable);
 
-    @Query("select o from PointPurchaseOrder o where (:keyword is null or lower(o.orderNo) like lower(concat('%', :keyword, '%')) or cast(o.bossId as string) like concat('%', :keyword, '%') or lower(coalesce(o.companyName,'')) like lower(concat('%', :keyword, '%')) or lower(coalesce(o.bossName,'')) like lower(concat('%', :keyword, '%'))) and (:payMethod is null or o.payMethod = :payMethod) and (:status is null or o.status = :status) and (:fromTime is null or o.purchaseTime >= :fromTime) and (:toTime is null or o.purchaseTime < :toTime) order by o.purchaseTime desc, o.id desc")
+    @Query("select o from PointPurchaseOrder o where (:keyword is null or lower(o.orderNo) like lower(concat('%', :keyword, '%')) or cast(o.bossId as string) like concat('%', :keyword, '%') or exists (select u.id from User u where u.id = o.bossId and (lower(coalesce(u.companyCode,'')) like lower(concat('%', :keyword, '%')) or lower(coalesce(u.bossCode,'')) like lower(concat('%', :keyword, '%')))) or lower(coalesce(o.companyName,'')) like lower(concat('%', :keyword, '%')) or lower(coalesce(o.bossName,'')) like lower(concat('%', :keyword, '%'))) and (:payMethod is null or o.payMethod = :payMethod) and (:status is null or o.status = :status) and (:fromTime is null or o.purchaseTime >= :fromTime) and (:toTime is null or o.purchaseTime < :toTime) order by o.purchaseTime desc, o.id desc")
     List<PointPurchaseOrder> searchAll(@Param("keyword") String keyword,
                                        @Param("payMethod") String payMethod,
                                        @Param("status") String status,

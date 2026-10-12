@@ -119,9 +119,11 @@
 </template>
 
 <script setup>
-import { reactive, computed } from 'vue'
+import { reactive, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
+import { getJob } from '@/api/job'
+import { getUser } from '@/api/user'
 
 const router = useRouter()
 const route = useRoute()
@@ -145,6 +147,82 @@ const form = reactive({
   phone: ''
 })
 
+const firstValue = (...values) => values.find(value => value !== undefined && value !== null && value !== '')
+
+const normalizeList = (value) => {
+  if (Array.isArray(value)) return value.filter(Boolean).map(String)
+  if (value === undefined || value === null || value === '') return []
+  try {
+    const parsed = JSON.parse(value)
+    if (Array.isArray(parsed)) return parsed.filter(Boolean).map(String)
+  } catch (_) {
+    // 普通逗号分隔字符串继续按文本处理
+  }
+  return String(value).split(/[,，、;；\n]/).map(item => item.trim()).filter(Boolean)
+}
+
+const normalizeDate = (value) => {
+  if (!value) return null
+  if (value instanceof Date) return value
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? null : date
+}
+
+const normalizeGender = (value) => ({
+  male: '男', M: '男', MAN: '男', 男: '男',
+  female: '女', F: '女', WOMAN: '女', 女: '女',
+  all: '不限', ALL: '不限', none: '不限', unlimited: '不限', 不限: '不限'
+}[value] || value || '不限')
+
+const normalizeExperience = (value) => ({
+  none: '无经验', NO_REQUIREMENT: '不限', all: '不限', ALL: '不限', unlimited: '不限',
+  有经验: '有经验', 无经验: '无经验', 不限: '不限'
+}[value] || value || '不限')
+
+const normalizePriceUnit = (job) => {
+  const explicit = firstValue(job.priceUnit, job.salaryUnit)
+  if (explicit) return ({ day: '天', DAILY: '天', hour: '小时', HOURLY: '小时', piece: '件', PIECE: '件' }[explicit] || explicit)
+  if (job.type === 'month' || job.type === 'MONTH') return '天'
+  return '天'
+}
+
+const loadJob = async () => {
+  if (!route.params.id) return
+  try {
+    const result = await getJob(route.params.id)
+    const job = result?.data || {}
+    Object.assign(form, {
+      name: firstValue(job.postion, job.position, job.orderTitle, ''),
+      category: firstValue(job.industryName, job.jobCategoryName, job.category, ''),
+      price: firstValue(job.price, job.salary, ''),
+      priceUnit: normalizePriceUnit(job),
+      count: firstValue(job.orderNum, job.count, ''),
+      location: firstValue(job.address, job.location, ''),
+      timeRange: [normalizeDate(job.startTime), normalizeDate(job.endTime)].filter(Boolean),
+      gender: normalizeGender(job.gender),
+      experience: normalizeExperience(job.experience),
+      skills: normalizeList(firstValue(job.skills, job.tags)),
+      benefits: normalizeList(job.benefits),
+      description: firstValue(job.orderContent, job.description, ''),
+      contact: firstValue(job.contact, job.contactName, ''),
+      phone: firstValue(job.contactPhone, job.phone, '')
+    })
+
+    if (job.createBy && (!form.contact || !form.phone)) {
+      try {
+        const employer = (await getUser(job.createBy))?.data || {}
+        form.contact = firstValue(form.contact, employer.contact, employer.realName, employer.nickname, employer.username, '')
+        form.phone = firstValue(form.phone, employer.contactPhone, employer.phone, '')
+      } catch (_) {
+        // 岗位详情已成功时，雇主资料失败不影响其它字段回显
+      }
+    }
+  } catch (error) {
+    console.warn('[JobEdit] 加载岗位详情失败:', error)
+    ElMessage.error('加载岗位信息失败')
+  }
+}
+
 const handleSubmit = () => {
   ElMessage.success('已提交审核')
   router.push('/admin/job-audit')
@@ -152,4 +230,6 @@ const handleSubmit = () => {
 
 const handleSaveDraft = () => ElMessage.success('已保存草稿')
 const handleCancel = () => router.back()
+
+onMounted(loadJob)
 </script>

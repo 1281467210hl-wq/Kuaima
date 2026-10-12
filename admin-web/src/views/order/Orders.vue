@@ -23,9 +23,16 @@
           <el-option label="全部" value="" />
           <el-option v-for="status in orderStatuses" :key="status.value" :label="status.label" :value="status.value" />
         </el-select></div>
-        <div class="filter-item"><span>企业类型</span><el-select v-model="typeFilter" placeholder="全部" clearable style="width: 150px;">
-          <el-option v-for="type in jobTypes" :key="type.id" :label="type.name" :value="type.id" />
-        </el-select></div>
+        <div class="filter-item"><span>企业类型</span>
+          <el-cascader
+            v-model="typeFilter"
+            :options="industryTypeOptions"
+            :props="{ value: 'id', label: 'name', children: 'enterpriseTypes', emitPath: false }"
+            placeholder="行业 / 企业类型"
+            clearable
+            filterable
+            style="width: 220px"
+          /></div>
         <div class="filter-item"><span>日期范围</span><el-date-picker v-model="dateRange" type="daterange" range-separator="至" start-placeholder="开始日期" end-placeholder="结束日期" value-format="YYYY-MM-DD" style="width: 250px;" /></div>
         <button class="btn btn-primary btn-sm" @click="handleSearch"><i class="fas fa-search"></i> 查询</button>
         <button class="btn btn-outline btn-sm" @click="handleReset"><i class="fas fa-rotate-left"></i> 重置</button>
@@ -107,7 +114,7 @@
 <script setup>
 import { computed, ref, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { cancelOrder, getOrderStats, listOrders } from '@/api/order'
+import { cancelOrder, getJobCategoryTree, getOrderStats, listOrders } from '@/api/order'
 
 const searchKeyword = ref('')
 const statusFilter = ref('')
@@ -128,7 +135,7 @@ const orderStatuses = [
   { label: '已完工', value: '待结算' }, { label: '已结算', value: '已结算' }, { label: '已完成', value: '已完成' },
   { label: '纠纷', value: '纠纷' }, { label: '已取消', value: '取消招工' },
 ]
-const jobTypes = ref([])
+const industryTypeOptions = ref([])
 const quickFilters = [
   { label: '全部订单', value: '' }, { label: '已报名', value: '已报名' }, { label: '已录用', value: '已录用' },
   { label: '已到岗', value: '已到岗' }, { label: '已完工', value: '待结算' }, { label: '已结算', value: '已结算' }, { label: '已完成', value: '已完成' },
@@ -338,14 +345,17 @@ const handleExport = () => {
 const loadJobTypes = async () => {
   try {
     const result = await getJobCategoryTree()
-    const values = []
-    ;(Array.isArray(result.data) ? result.data : []).forEach(industry => (industry.enterpriseTypes || []).forEach(item => {
-      if (!values.some(existing => existing.id === item.id)) values.push({ id: item.id, name: item.name })
-    }))
-    jobTypes.value = values
+    // 与小程序 all-jobs 保持一致：行业 → 企业类型 两级结构，过滤无企业类型的行业。
+    industryTypeOptions.value = (Array.isArray(result.data) ? result.data : [])
+      .filter(industry => Array.isArray(industry.enterpriseTypes) && industry.enterpriseTypes.length > 0)
+      .map(industry => ({
+        id: `industry-${industry.id}`,
+        name: industry.name,
+        enterpriseTypes: industry.enterpriseTypes.map(item => ({ id: item.id, name: item.name })),
+      }))
   } catch (error) {
     console.warn('[Orders] 企业类型加载失败:', error.message)
-    jobTypes.value = []
+    industryTypeOptions.value = []
   }
 }
 

@@ -55,6 +55,8 @@ public class PointPurchaseOrder {
     private Boolean pointsGranted = false;
     @Column(name = "wechat_transaction_id", length = 64)
     private String wechatTransactionId;
+    @Column(name = "wechat_code_url", length = 512)
+    private String wechatCodeUrl;
     @Column(name = "paid_at")
     private LocalDateTime paidAt;
 }

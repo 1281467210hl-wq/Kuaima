@@ -2,12 +2,15 @@ package com.kuaima.app.domain.reward.repository;
 
 import com.kuaima.app.domain.reward.entity.RewardFlow;
 import java.util.Optional;
+import java.util.List;
 import org.springframework.data.domain.*;
 import org.springframework.data.jpa.repository.*;
 import org.springframework.data.repository.query.Param;
 
 public interface RewardFlowRepository extends JpaRepository<RewardFlow, Long> {
     Optional<RewardFlow> findBySourceKey(String sourceKey);
+    /** 兼容唯一索引建立前的重复历史流水，幂等检查不再因重复记录抛异常。 */
+    List<RewardFlow> findAllBySourceKeyOrderByIdDesc(String sourceKey);
     Page<RewardFlow> findByUserIdOrderByCreatedAtDescIdDesc(Long userId, Pageable pageable);
     Page<RewardFlow> findByUserIdAndRoleOrderByCreatedAtDescIdDesc(Long userId, String role, Pageable pageable);
     Page<RewardFlow> findByUserIdAndTypeOrderByCreatedAtDescIdDesc(Long userId, String type, Pageable pageable);

@@ -93,8 +93,31 @@ class BossRealnameControllerTests {
         var data = controller(users, mock(FaceCompareService.class)).status(login()).getData();
 
         assertEquals("APPROVED", data.get("realnameStatus"));
-        assertEquals("http://oss/id.jpg", data.get("idCardImageUrl"));
-        assertEquals("http://oss/face.jpg", data.get("faceImageUrl"));
+        assertEquals("http://oss/id.jpg?signed", data.get("idCardImageUrl"));
+        assertEquals("http://oss/face.jpg?signed", data.get("faceImageUrl"));
+        assertEquals("http://oss/id.jpg", data.get("idCardImageKey"));
+        assertEquals("http://oss/face.jpg", data.get("faceImageKey"));
+    }
+
+    @Test
+    void verifyShouldAcceptRelativeObjectKeysFromMiniProgram() {
+        UserRepository users = mock(UserRepository.class);
+        FaceCompareService faceCompare = mock(FaceCompareService.class);
+        User user = new User();
+        user.setId(5L);
+        when(users.findById(5L)).thenReturn(Optional.of(user));
+        when(users.save(user)).thenReturn(user);
+        when(faceCompare.compare("id-signed", "face-signed")).thenReturn(93d);
+
+        var data = controllerWithOss(users, faceCompare,
+                "insurance/realname/id.png", "insurance/realname/face.png")
+                .verify(java.util.Map.of(
+                        "idCardImageUrl", "insurance/realname/id.png",
+                        "faceImageUrl", "insurance/realname/face.png"), login()).getData();
+
+        assertEquals(Boolean.TRUE, data.get("passed"));
+        assertEquals("insurance/realname/id.png", user.getRealnameIdCardImageUrl());
+        assertEquals("insurance/realname/face.png", user.getRealnameFaceImageUrl());
     }
 
     private BossRealnameController controller(UserRepository users, FaceCompareService faceCompare) {
@@ -110,5 +133,13 @@ class BossRealnameControllerTests {
                 new UsernamePasswordAuthenticationToken(new LoginUser(5L, "boss", "BOSS"), null);
         SecurityContextHolder.getContext().setAuthentication(authentication);
         return authentication;
+    }
+    private BossRealnameController controllerWithOss(UserRepository users, FaceCompareService faceCompare,
+                                                      String idKey, String faceKey) {
+        com.kuaima.app.common.service.OssStorageService oss =
+                mock(com.kuaima.app.common.service.OssStorageService.class);
+        when(oss.playableUrl(idKey)).thenReturn("id-signed");
+        when(oss.playableUrl(faceKey)).thenReturn("face-signed");
+        return new BossRealnameController(users, faceCompare, oss);
     }
 }

@@ -17,6 +17,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -56,6 +57,21 @@ public class AdminPointPurchaseController {
         requireAdmin(false); if(page<0||size<1||size>200) throw new IllegalArgumentException("page 或 size 参数无效");
         Page<OrderResponse> result=service.search(keyword,payMethod,status,parseDate(date),PageRequest.of(page,size,Sort.by(Sort.Direction.DESC,"purchaseTime")));
         return Result.success(result.getContent(),page,result.getTotalElements());
+    }
+
+    @GetMapping("/orders/{orderNo}")
+    @Operation(summary="查询积分购买订单")
+    public Result<OrderResponse> order(@PathVariable String orderNo) {
+        requireAdmin(false); return Result.success(service.getOrder(orderNo));
+    }
+
+    @GetMapping("/orders/{orderNo}/pay-url")
+    @Operation(summary="创建微信 Native 扫码支付")
+    public Result<java.util.Map<String,Object>> payUrl(@PathVariable String orderNo,
+            @RequestParam(defaultValue="微信支付") String payMethod) {
+        requireAdmin(true);
+        if (!"微信支付".equals(payMethod)) throw new IllegalArgumentException("当前仅支持微信扫码支付");
+        return Result.success(service.createWechatNativePayment(orderNo));
     }
 
     @PostMapping("/orders")

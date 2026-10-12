@@ -112,7 +112,7 @@ public class AdminJobController {
         List<Long> orderIds = orders.stream().map(BossOrder::getId).toList();
         Map<Long, Long> applyCounts = new HashMap<>();
         if (!orderIds.isEmpty()) {
-            List<String> validStatuses = List.of("待确认", "已录用", "工作中", "已完成");
+            List<String> validStatuses = List.of("已报名", "已录用", "已到岗", "待结算", "已完成");
             orderItemRepository.countByOrderIdsAndStatuses(orderIds, validStatuses)
                     .forEach(row -> applyCounts.put((Long) row[0], (Long) row[1]));
         }

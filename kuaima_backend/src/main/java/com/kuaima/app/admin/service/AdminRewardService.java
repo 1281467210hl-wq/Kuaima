@@ -19,6 +19,7 @@ import java.util.concurrent.ThreadLocalRandom;
 import org.springframework.data.domain.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.beans.factory.annotation.Value;
 
 @Service
 public class AdminRewardService {
@@ -31,6 +32,12 @@ public class AdminRewardService {
     private final WalletRespository wallets;
     private final WalletFlowRespository walletFlows;
     private final RewardLedgerService rewardLedger;
+    /**
+     * 奖励发放默认不受平台预存预算拦截。余额仍会按实际支出记账，便于审计；
+     * 需要财务预存控制时可通过配置显式开启。
+     */
+    @Value("${kuaima.reward.fund-control-enabled:false}")
+    private boolean fundControlEnabled;
 
     public AdminRewardService(RewardCampaignRepository campaigns, RewardGrantRepository grants,
                               RewardFundAccountRepository funds, RewardFundFlowRepository fundFlows,
@@ -129,16 +136,18 @@ public class AdminRewardService {
         BigDecimal required = amounts.values().stream().reduce(BigDecimal.ZERO, BigDecimal::add);
         RewardFundAccount fund = funds.findForUpdate(1L)
                 .orElseThrow(() -> new IllegalStateException("平台奖励预算账户未配置"));
-        if (value(fund.getBalance()).compareTo(required) < 0) throw new IllegalStateException("平台奖励预算不足");
+        if (fundControlEnabled && value(fund.getBalance()).compareTo(required) < 0)
+            throw new IllegalStateException("平台奖励预算不足");
         int success = 0; BigDecimal sum = BigDecimal.ZERO;
         for (Map.Entry<Long, BigDecimal> entry : amounts.entrySet()) {
             Long userId = entry.getKey(); BigDecimal value = entry.getValue();
             User user = users.findById(userId).orElseThrow(() -> new EntityNotFoundException("发放用户不存在: " + userId));
-            walletCredit(userId, value, id, c.getRemark());
+            String walletRole = UserRole.isBossIdentity(user) ? UserRole.BOSS : UserRole.USER;
+            walletCredit(userId, value, id, c.getRemark(), walletRole);
             RewardGrant grant = new RewardGrant(); grant.setCampaignId(id); grant.setUserId(userId); grant.setAmount(value);
             grant.setUserRole(UserRole.isBossIdentity(user) ? UserRole.BOSS : UserRole.USER); grant.setStatus("SUCCESS");
             grant.setGrantedAt(LocalDateTime.now(ZONE)); grants.save(grant);
-            if (rewardLedger != null) rewardLedger.credit(userId, value, "ADMIN_REWARD", id,
+            if (rewardLedger != null) rewardLedger.credit(userId, walletRole, value, "ADMIN_REWARD", id,
                     "平台奖励金", c.getRemark(), "ADMIN_REWARD:" + id + ":" + userId);
             success++; sum = sum.add(value);
         }
@@ -163,10 +172,13 @@ public class AdminRewardService {
         });
     }
 
-    private void walletCredit(Long userId, BigDecimal amount, Long campaignId, String remark) {
-        Wallet wallet = wallets.findByUserIdForUpdate(userId).orElseGet(() -> {
-            Wallet created = new Wallet(); created.setUserId(userId); created.setBalance(BigDecimal.ZERO); return wallets.save(created);
-        });
+    private void walletCredit(Long userId, BigDecimal amount, Long campaignId, String remark, String role) {
+        List<Wallet> matches = wallets.findAllByUserIdAndRoleForUpdate(userId, role);
+        Wallet wallet = matches.isEmpty() ? null : matches.get(0);
+        if (wallet == null) {
+            Wallet created = new Wallet(); created.setUserId(userId); created.setRole(role); created.setBalance(BigDecimal.ZERO);
+            wallet = wallets.save(created);
+        }
         wallet.setBalance(value(wallet.getBalance()).add(amount)); wallets.save(wallet);
         WalletFlow flow = new WalletFlow(); flow.setUserId(userId); flow.setDirection("income"); flow.setBizType("REWARD");
         flow.setAmount(amount); flow.setBalanceAfter(wallet.getBalance()); flow.setBizId(campaignId); flow.setRemark(remark);
@@ -205,6 +217,8 @@ public class AdminRewardService {
         result.put("canceledCount", canceled); result.put("totalCount", total); result.put("coverage", coverage);
         result.put("bossCoverage", boss); result.put("workerCoverage", worker); result.put("totalRate", totalRate);
         result.put("monthCoverage", monthCoverage);
+        result.put("fundControlEnabled", fundControlEnabled);
+        funds.findById(1L).ifPresent(fund -> result.put("fundBalance", value(fund.getBalance())));
         return result;
     }
     private String text(Map<String, Object> body, String key) { return body.get(key) == null ? null : String.valueOf(body.get(key)); }

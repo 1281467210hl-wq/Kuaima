@@ -35,6 +35,7 @@ import com.kuaima.app.wechat.config.WechatPayProperties;
 @Service
 public class WechatPayService {
     private static final String JSAPI_URL = "https://api.mch.weixin.qq.com/v3/pay/transactions/jsapi";
+    private static final String NATIVE_URL = "https://api.mch.weixin.qq.com/v3/pay/transactions/native";
     private final WechatPayProperties properties;
     private final WechatProperties wechat;
     private final HttpClient http = HttpClient.newHttpClient();
@@ -61,6 +62,28 @@ public class WechatPayService {
             String prepayId = JSON.parseObject(response.body()).getString("prepay_id");
             if (!StringUtils.hasText(prepayId)) throw new IllegalStateException("微信支付未返回 prepay_id");
             return jsapiParams(prepayId);
+        } catch (InterruptedException e) { Thread.currentThread().interrupt(); throw new IllegalStateException("微信支付下单请求被中断", e);
+        } catch (IOException e) { throw new IllegalStateException("微信支付下单请求失败", e); }
+    }
+
+    /** 创建微信 Native 扫码支付订单，返回微信生成的 code_url。 */
+    public String prepayNative(String description, String outTradeNo, BigDecimal amount) {
+        requireEnabled();
+        if (amount == null || amount.compareTo(BigDecimal.ZERO) < 0) throw new IllegalArgumentException("支付金额无效");
+        int fen = amount.movePointRight(2).intValueExact();
+        if (fen < 1) throw new IllegalArgumentException("微信支付金额不能低于0.01元");
+        JSONObject body = new JSONObject(); body.put("appid", wechat.getAppid()); body.put("mchid", properties.getMchid());
+        body.put("description", description); body.put("out_trade_no", outTradeNo); body.put("notify_url", properties.getNotifyUrl());
+        body.put("amount", Map.of("total", fen, "currency", "CNY"));
+        String payload = body.toJSONString();
+        try {
+            HttpRequest request = HttpRequest.newBuilder(URI.create(NATIVE_URL)).header("Content-Type", "application/json").header("Accept", "application/json")
+                    .header("Authorization", authorization("POST", "/v3/pay/transactions/native", payload)).POST(HttpRequest.BodyPublishers.ofString(payload)).build();
+            HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() / 100 != 2) throw new IllegalStateException("微信支付下单失败: " + response.body());
+            String codeUrl = JSON.parseObject(response.body()).getString("code_url");
+            if (!StringUtils.hasText(codeUrl)) throw new IllegalStateException("微信支付未返回 code_url");
+            return codeUrl;
         } catch (InterruptedException e) { Thread.currentThread().interrupt(); throw new IllegalStateException("微信支付下单请求被中断", e);
         } catch (IOException e) { throw new IllegalStateException("微信支付下单请求失败", e); }
     }

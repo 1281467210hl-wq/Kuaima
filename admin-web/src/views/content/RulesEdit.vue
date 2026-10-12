@@ -28,7 +28,7 @@
     <div class="edit-header">
       <div class="edit-header-left">
         <div class="edit-header-info">
-          <h2>{{ isEdit ? '编辑规则' : '新增规则' }}</h2>
+          <h2>{{ isEdit ? (isCredit ? '编辑信用分规则' : currentType === 'platform' ? '编辑平台规则' : '编辑规则') : (isCredit ? '新建信用分规则' : currentType === 'platform' ? '新增平台规则' : '新增规则') }}</h2>
           <div v-if="currentType !== 'platform'" class="edit-header-meta">
             <span class="edit-id-badge">{{ isEdit ? ('ID: ' + (form.code || form.id || '--')) : '新规则' }}</span>
             <span>{{ form.category || typeCategoryMap[currentType] }}</span>
@@ -38,14 +38,14 @@
       </div>
       <div class="edit-header-actions">
         <button class="btn btn-outline" @click="goBack">
-          <i class="fas fa-arrow-left"></i> 返回列表
+          <i class="fas fa-arrow-left"></i> 返回
         </button>
         <button v-if="currentType !== 'platform'" class="btn btn-outline" @click="previewRule">
           <i class="fas fa-eye"></i> 预览
         </button>
         <button v-else class="btn btn-outline" @click="saveDraft"><i class="fas fa-save"></i> 保存草稿</button>
         <button class="btn btn-primary" @click="saveAndPublish">
-          <i class="fas fa-check"></i> 保存发布
+          <i class="fas fa-paper-plane"></i> {{ currentType === 'platform' ? '保存并发布' : '保存发布' }}
         </button>
       </div>
     </div>
@@ -67,7 +67,7 @@
               </div>
               <div>
                 <label class="form-label">版本号</label>
-                <el-input v-model="form.version" placeholder="如：v1.0" style="width: 160px;" />
+                <el-input v-model="form.version" placeholder="如：v1.0" />
               </div>
             </div>
 
@@ -89,7 +89,7 @@
                 <el-radio-group v-model="form.status" @change="onStatusChange">
                   <el-radio value="draft">草稿</el-radio>
                   <el-radio value="published">立即发布</el-radio>
-                  <el-radio value="archived">归档</el-radio>
+                  <el-radio v-if="currentType !== 'platform'" value="archived">归档</el-radio>
                 </el-radio-group>
               </div>
             </div>

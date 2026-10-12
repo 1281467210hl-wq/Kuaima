@@ -250,10 +250,6 @@ import {
   inviteTalent,
   updateOrder,
 } from "@/api/backend";
-import {
-  checkBossPublishEligibility,
-  redirectByPublishEligibility,
-} from "@/api/publish-eligibility";
 import { handleTokenInvalid } from "@/api/auth";
 import { normalizeBossAddressSelection, validateBossWorkLocation } from "@/utils/boss-address";
 
@@ -371,8 +367,6 @@ export default {
       },
       workTimeVersion: 0,
       contactPhone: "暂无手机号",
-      eligibilityReady: false,
-      eligibilityChecking: false,
     };
   },
   computed: {
@@ -427,11 +421,8 @@ export default {
     if (this.templateId) await this.loadTemplateDraft(this.templateId);
     if (this.orderId) await this.loadOrder(this.orderId);
     if (this.sourceOrderId) await this.loadOrder(this.sourceOrderId);
-    this.ensurePublishEligibility();
   },
   onShow() {
-    if (uni.getStorageSync("token")) this._eligibilityRedirected = false;
-    this.ensurePublishEligibility();
     this.loadRecruitSettings();
     this.loadContactPhone();
     this.loadInviteSelection();
@@ -508,52 +499,6 @@ export default {
       } catch (error) {
         uni.showToast({ title: error?.message || "模板数据加载失败", icon: "none" });
       }
-    },
-    async ensurePublishEligibility() {
-      if (this._eligibilityPromise) return this._eligibilityPromise;
-      if (!uni.getStorageSync("token")) {
-        if (!this._eligibilityRedirected) {
-          this._eligibilityRedirected = true;
-          handleTokenInvalid({ role: "boss", toastTitle: "请先登录", clear: false });
-        }
-        return { canPublish: false, realnameStatus: "UNVERIFIED", enterpriseStatus: "UNVERIFIED", missing: ["REALNAME", "ENTERPRISE"] };
-      }
-      this.eligibilityChecking = true;
-      uni.showLoading({ title: "检查认证状态", mask: true });
-      this._eligibilityPromise = checkBossPublishEligibility({ redirect: false })
-        .then((result) => {
-          if (result.requestFailed || result.unauthorized) return result;
-          this.eligibilityReady = result.canPublish;
-          if (!result.canPublish) {
-            const pending = [result.realnameStatus, result.enterpriseStatus].includes("PENDING");
-            if (pending) {
-              if (!this._eligibilityRedirected) {
-                this._eligibilityRedirected = true;
-                uni.showToast({ title: "认证审核中", icon: "none" });
-                setTimeout(() => uni.navigateBack(), 300);
-              }
-            } else if (result.realnameStatus !== "APPROVED") {
-              if (!this._eligibilityRedirected) {
-                this._eligibilityRedirected = true;
-                if (result.realnameStatus === "REJECTED") uni.showToast({ title: "个人认证未通过，请重新提交认证", icon: "none" });
-                uni.navigateTo({ url: "/pages/boss/realname" });
-              }
-            } else if (result.enterpriseStatus !== "APPROVED") {
-              if (!this._eligibilityRedirected) {
-                this._eligibilityRedirected = true;
-                if (result.enterpriseStatus === "REJECTED") uni.showToast({ title: "企业认证未通过，请重新提交认证", icon: "none" });
-                uni.navigateTo({ url: "/pages/boss/enterprise-cert" });
-              }
-            }
-          }
-          return result;
-        })
-        .finally(() => {
-          this.eligibilityChecking = false;
-          uni.hideLoading();
-          this._eligibilityPromise = null;
-        });
-      return this._eligibilityPromise;
     },
     async loadContactPhone() {
       const cachedUser = uni.getStorageSync("userInfo") || {};
@@ -763,8 +708,6 @@ export default {
     },
     async publishJob() {
       if (this.publishing) return;
-      const eligibility = await this.ensurePublishEligibility();
-      if (!eligibility?.canPublish) return;
       if (this.payType === "hourly" && !this.hasSalary) {
         uni.showToast({ title: "请设置工价", icon: "none" });
         return;
@@ -788,6 +731,7 @@ export default {
           return;
         }
         const taskContent = uni.getStorageSync("taskContent") || {};
+        const jobCategory = uni.getStorageSync("jobCategorySelection") || {};
         const genderAge = uni.getStorageSync("genderAgeSelection") || {};
         const durationMatch = String(workTime.duration || "").match(/[\d.]+/);
         const workHours = Math.max(1, Number(durationMatch?.[0] || 8));
@@ -808,6 +752,13 @@ export default {
           orderTitle: this.jobName,
           type: this.settlementType,
           postion: this.jobName,
+          industryId: jobCategory.industryId || undefined,
+          enterpriseTypeIds: Array.isArray(jobCategory.enterpriseTypeIds) && jobCategory.enterpriseTypeIds.length
+            ? jobCategory.enterpriseTypeIds.join(",")
+            : undefined,
+          jobIds: Array.isArray(jobCategory.jobIds) && jobCategory.jobIds.length
+            ? jobCategory.jobIds.join(",")
+            : undefined,
           orderNum: Number(this.count),
           duration,
           addressId: location.addressId || undefined,
@@ -863,11 +814,9 @@ export default {
       } catch (error) {
         if (error?.statusCode === 403) {
           uni.showToast({
-            title: error.message || "请先完成个人实名认证和企业认证",
+            title: error.message || "发布受限，请联系平台处理",
             icon: "none",
           });
-          const eligibility = await checkBossPublishEligibility({ redirect: false });
-          if (!eligibility.canPublish) redirectByPublishEligibility(eligibility);
         } else {
           uni.showToast({ title: error.message || "发布失败", icon: "none" });
         }

@@ -262,14 +262,17 @@ public class OssStorageService {
     private String objectKey(String value) {
         try {
             URI uri = URI.create(value);
+            // 相对对象键（如 insurance/realname/a.png）：没有 scheme/host，本身就是 key，
+            // 不能走 URL 的 path.substring(1)，否则会截掉首字符。
+            if (uri.getScheme() == null && uri.getHost() == null) return value;
             String host = uri.getHost();
             String expectedHost = bucketName + "." + endpoint;
-            if (host != null && !expectedHost.equalsIgnoreCase(host)) return null;
+            if (host == null || !expectedHost.equalsIgnoreCase(host)) return null;
             String path = uri.getPath();
             if (path == null || path.length() <= 1) return null;
             return URLDecoder.decode(path.substring(1), StandardCharsets.UTF_8);
         } catch (IllegalArgumentException e) {
-            return value.startsWith("academy/") ? value : null;
+            return null;
         }
     }
 }

@@ -24,16 +24,6 @@
         >
           <i :class="['fas', item.icon]"></i>
           <span v-show="!appStore.sidebarCollapsed">{{ item.name }}</span>
-          <el-badge
-            v-if="item.badgeKey && badges[item.badgeKey] > 0 && !appStore.sidebarCollapsed"
-            :value="badges[item.badgeKey]"
-            :max="99"
-            class="menu-badge"
-          />
-          <span
-            v-else-if="item.badgeKey && badges[item.badgeKey] > 0 && appStore.sidebarCollapsed"
-            class="collapsed-dot"
-          />
         </router-link>
       </template>
     </nav>
@@ -41,23 +31,13 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { computed } from 'vue'
 import { useAppStore } from '@/stores/app'
 import { useUserStore } from '@/stores/user'
 import { hasPerm } from '@/utils/permission'
-import { listJobs } from '@/api/job'
-import { listCertifications } from '@/api/content'
 
 const appStore = useAppStore()
 const userStore = useUserStore()
-const route = useRoute()
-
-// 红点数量（0 时不显示）
-const badges = ref({
-  jobAudit: 0,
-  certAudit: 0
-})
 
 const menuGroups = [
   {
@@ -83,7 +63,7 @@ const menuGroups = [
     name: '招工管理',
     items: [
       { path: '/admin/jobs', name: '招工管理', icon: 'fa-briefcase', permKey: 'permJob.jobs' },
-      { path: '/admin/job-audit', name: '招工审核', icon: 'fa-check-circle', badgeKey: 'jobAudit', permKey: 'permJob.audit' }
+      { path: '/admin/job-audit', name: '招工审核', icon: 'fa-check-circle', permKey: 'permJob.audit' }
     ]
   },
   {
@@ -92,7 +72,8 @@ const menuGroups = [
     items: [
       { path: '/admin/point-purchase', name: '积分管理', icon: 'fa-coins', permKey: 'permMarketing.points' },
       { path: '/admin/coupon-manage', name: '优惠券管理', icon: 'fa-ticket-alt', permKey: 'permMarketing.coupons' },
-      { path: '/admin/reward-manage', name: '奖励金管理', icon: 'fa-gift', permKey: 'permMarketing.rewards' }
+      { path: '/admin/reward-manage', name: '奖励金管理', icon: 'fa-gift', permKey: 'permMarketing.rewards' },
+      { path: '/admin/academy', name: '学堂管理', icon: 'fa-graduation-cap', permKey: 'permMarketing.academy' }
     ]
   },
   {
@@ -116,7 +97,6 @@ const menuGroups = [
     name: '内容管理',
     items: [
       { path: '/admin/notices', name: '公告管理', icon: 'fa-bullhorn', permKey: 'permContent.notices' },
-      { path: '/admin/academy', name: '学堂管理', icon: 'fa-graduation-cap', permKey: 'permMarketing.academy' },
       { path: '/admin/rules', name: '规则管理', icon: 'fa-book', permKey: 'permContent.rules' },
       // { path: '/admin/banners', name: 'Banner管理', icon: 'fa-image', permKey: 'permContent.c2' }
     ]
@@ -150,25 +130,6 @@ const filteredMenuGroups = computed(() => {
     .filter((group) => group.items.length > 0)
 })
 
-const loadBadges = async () => {
-  // 招工审核：待审核数量
-  try {
-    const res = await listJobs({ status: '待审核', page: 0, size: 1 })
-    badges.value.jobAudit = res.total || 0
-  } catch { badges.value.jobAudit = 0 }
-
-  // 认证审核：待审核数量（接口返回全量列表，客户端过滤）
-  try {
-    const res = await listCertifications()
-    const list = Array.isArray(res.data) ? res.data : (res.data?.content || [])
-    badges.value.certAudit = list.filter(c => c.status === '待审核').length
-  } catch { badges.value.certAudit = 0 }
-}
-
-onMounted(loadBadges)
-
-// 路由变化时刷新红点
-watch(() => route.path, () => loadBadges())
 </script>
 
 <style scoped>
@@ -278,18 +239,4 @@ watch(() => route.path, () => loadBadges())
   }
 }
 
-.menu-badge {
-  margin-left: auto;
-}
-
-.collapsed-dot {
-  width: 8px;
-  height: 8px;
-  background: var(--primary);
-  border-radius: 50%;
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  box-shadow: 0 0 0 2px var(--sidebar-bg);
-}
 </style>

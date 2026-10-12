@@ -137,6 +137,14 @@ public class User extends BaseEntity {
     @Column(length = 500)
     private String licenseImageUrl;
 
+    /** 成立日期（企业认证） */
+    @Column(name = "founding_date")
+    private java.time.LocalDate foundingDate;
+
+    /** 经营范围（企业认证） */
+    @Column(name = "business_scope", length = 1000)
+    private String businessScope;
+
     /** 实名认证身份证人像面图片地址 */
     @Column(length = 500)
     private String realnameIdCardImageUrl;

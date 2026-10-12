@@ -49,7 +49,7 @@ public class AdminDashboardController {
     }
 
     /** 基础统计 */
-    @Operation(summary = "Dashboard 基础统计", description = "返回 workerTotal(零工总数)、bossTotal(雇主总数)、orderTotal(今日订单数)、settledTotal(结算单条数)、pendingAudit(待审核订单数)")
+    @Operation(summary = "Dashboard 基础统计", description = "返回 workerTotal、bossTotal、orderTotal、settledTotal、pendingAudit、totalRevenue(累计营收/元)")
     @GetMapping("/stats")
     public Result<Map<String, Object>> stats() {
         Map<String, Object> data = new HashMap<>();
@@ -64,6 +64,7 @@ public class AdminDashboardController {
         data.put("bossTotal", bossCount);
         data.put("orderTotal", orderTotal);
         data.put("settledTotal", settledTotal);
+        data.put("totalRevenue", settlementRepository.sumPaidTotalAmount());
 
         // 待审核订单数
         long pendingAudit = allOrders.stream()

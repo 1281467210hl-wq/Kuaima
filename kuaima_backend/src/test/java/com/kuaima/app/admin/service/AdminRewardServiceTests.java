@@ -16,6 +16,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
+import com.kuaima.app.domain.wallet.entity.Wallet;
+import com.kuaima.app.domain.wallet.entity.WalletFlow;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -60,7 +62,7 @@ class AdminRewardServiceTests {
     }
 
     @Test
-    void insufficientBudgetDoesNotCreditWallet() {
+    void zeroBudgetDoesNotBlockRewardInUnlimitedMode() {
         RewardCampaign campaign = new RewardCampaign();
         campaign.setId(2L); campaign.setStatus("待发放"); campaign.setUsers("[7]");
         campaign.setAmountMode("fixed"); campaign.setAmount(1000L);
@@ -68,10 +70,21 @@ class AdminRewardServiceTests {
         when(campaigns.findById(2L)).thenReturn(Optional.of(campaign));
         when(grants.existsByCampaignIdAndUserId(2L, 7L)).thenReturn(false);
         when(funds.findForUpdate(1L)).thenReturn(Optional.of(account));
+        User user = new User(); user.setId(7L); user.setRole("USER");
+        when(users.findById(7L)).thenReturn(Optional.of(user));
+        Wallet wallet = new Wallet(); wallet.setUserId(7L); wallet.setBalance(BigDecimal.ZERO);
+        when(wallets.findAllByUserIdAndRoleForUpdate(7L, "USER")).thenReturn(List.of(wallet));
+        when(wallets.save(any(Wallet.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(walletFlows.save(any(WalletFlow.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(grants.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(fundFlows.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(campaigns.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
-        assertThrows(IllegalStateException.class, () -> service.execute(2L));
-        verifyNoInteractions(wallets, walletFlows, fundFlows);
-        verify(campaigns, never()).save(any());
+        service.execute(2L);
+        assertEquals(new BigDecimal("-0.01"), account.getBalance());
+        verify(wallets).save(any(Wallet.class));
+        verify(walletFlows).save(any(WalletFlow.class));
+        verify(fundFlows).save(any());
     }
 
     @Test

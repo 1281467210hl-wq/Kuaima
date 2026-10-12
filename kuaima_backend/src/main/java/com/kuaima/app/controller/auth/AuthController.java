@@ -233,6 +233,8 @@ public class AuthController {
             newUser.setNickname(StringUtils.hasText(rawNickname) ? rawNickname : nextDefaultNickname());
             newUser.setAvatar(info.avatar() != null ? info.avatar() : dto.getAvatar());
             newUser.setPhone(phone);
+            // 新用户状态默认「正常」；User 实体无默认值，漏设会导致后台按状态筛选时查不到该用户。
+            newUser.setStatus("正常");
             user = userRepository.save(newUser);
         } else if (registrationContinuation) {
             // 注册流程的第二步必须真实校验手机号授权 code，不能只凭注册凭证登录已有账号。

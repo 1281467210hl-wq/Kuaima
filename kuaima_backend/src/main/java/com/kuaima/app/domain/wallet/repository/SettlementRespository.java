@@ -38,6 +38,10 @@ public interface SettlementRespository extends JpaRepository<Settlement, Long> {
     @Query("select coalesce(sum(s.wage),0) from Settlement s where s.status = :status")
     Long sumWageByStatus(@Param("status") String status);
 
+    /** 累计营收：已支付结算单的老板实付总额（元）。 */
+    @Query("select coalesce(sum(s.totalAmount),0) from Settlement s where s.status = '已支付'")
+    java.math.BigDecimal sumPaidTotalAmount();
+
     @Query("select coalesce(sum(s.wage),0) from Settlement s where s.status = :status and s.payTime >= :startTime and s.payTime < :endTime")
     Long sumWageByStatusAndPayTimeBetween(@Param("status") String status,
                                           @Param("startTime") java.time.LocalDateTime startTime,

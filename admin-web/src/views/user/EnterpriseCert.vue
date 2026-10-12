@@ -43,7 +43,6 @@
             </div>
           </template>
         </el-table-column>
-        <el-table-column prop="industry" label="行业类型" show-overflow-tooltip />
         <el-table-column label="提交时间" width="170" show-overflow-tooltip>
           <template #default="{ row }">{{ formatTime(row.certificationApplyTime || row.applyTime) }}</template>
         </el-table-column>
@@ -105,10 +104,6 @@
             <span class="detail-info-value mono">{{ currentRow.licenseNo || '-' }}</span>
           </div>
           <div class="detail-info-item">
-            <span class="detail-info-label">企业类型</span>
-            <span class="detail-info-value">{{ currentRow.entType || '-' }}</span>
-          </div>
-          <div class="detail-info-item">
             <span class="detail-info-label">法定代表人</span>
             <span class="detail-info-value">{{ currentRow.legalRep || '-' }}</span>
           </div>
@@ -117,20 +112,16 @@
             <span class="detail-info-value">{{ currentRow.contactPhone || currentRow.phone || '-' }}</span>
           </div>
           <div class="detail-info-item">
+            <span class="detail-info-label">成立日期</span>
+            <span class="detail-info-value">{{ formatDateOnly(currentRow.foundingDate) }}</span>
+          </div>
+          <div class="detail-info-item full">
+            <span class="detail-info-label">经营范围</span>
+            <span class="detail-info-value">{{ currentRow.businessScope || '-' }}</span>
+          </div>
+          <div class="detail-info-item">
             <span class="detail-info-label">法定联系人</span>
             <span class="detail-info-value">{{ currentRow.contact || currentRow.legalRep || '-' }}</span>
-          </div>
-          <div class="detail-info-item">
-            <span class="detail-info-label">注册资本</span>
-            <span class="detail-info-value">{{ currentRow.regCapital || '-' }}</span>
-          </div>
-          <div class="detail-info-item">
-            <span class="detail-info-label">成立日期</span>
-            <span class="detail-info-value">{{ currentRow.establishDate || '-' }}</span>
-          </div>
-          <div class="detail-info-item full"><span class="detail-info-label">营业期限</span><span class="detail-info-value">{{ currentRow.businessTerm || '-' }}</span></div>
-          <div class="detail-info-item full"><span class="detail-info-label">注册/经营地址</span><span class="detail-info-value">{{ currentRow.address || '-' }}</span></div>
-          <div class="detail-info-item full"><span class="detail-info-label">经营范围</span><span class="detail-info-value">{{ currentRow.scope || '-' }}</span>
           </div>
         </div>
 
@@ -171,6 +162,7 @@ const tableData = ref([])
 const detailVisible = ref(false)
 const currentRow = ref(null)
 
+const formatDateOnly = value => (value ? String(value).slice(0, 10) : '-')
 const formatTime = (t) => {
   if (!t) return '-'
   const s = String(t).replace('T', ' ')

@@ -421,29 +421,39 @@ export function uploadExpenseFile(filePath) {
   return uploadFile({ url: "/files/upload", filePath, name: "file" });
 }
 
-/** 上传实名认证图片（身份证人像面 / 人脸照片）。 */
-export function uploadRealnameImage(filePath) {
-  return uploadFile({ url: "/files/upload", filePath, name: "file" });
+/** 上传实名认证图片（身份证人像面 / 人脸照片），按端走 /{role}/realname/upload。 */
+export function uploadRealnameImage(filePath, role = "worker") {
+  return uploadFile({ url: `/${role}/realname/upload`, filePath, name: "file" });
 }
 
-/** 查询当前用户实名认证状态与照片。 */
+/** 按端查询实名认证状态与照片：role = boss / worker。 */
+export function getRealnameStatus(role = "boss") {
+  return request({ url: `/${role}/realname/status` });
+}
+
+/** 按端提交人脸比对实名认证：role = boss / worker。 */
+export function verifyRealname(role = "boss", data) {
+  return request({ url: `/${role}/realname/verify`, method: "POST", data });
+}
+
+/** 老板端：查询实名认证状态与照片。 */
 export function getBossRealnameStatus() {
-  return request({ url: "/boss/realname/status" });
+  return getRealnameStatus("boss");
 }
 
-/** 提交人脸比对实名认证。 */
+/** 老板端：提交人脸比对实名认证。 */
 export function verifyBossRealname(data) {
-  return request({ url: "/boss/realname/verify", method: "POST", data });
+  return verifyRealname("boss", data);
 }
 
 /** 零工端：查询实名认证状态与照片。 */
 export function getWorkerRealnameStatus() {
-  return request({ url: "/worker/realname/status" });
+  return getRealnameStatus("worker");
 }
 
 /** 零工端：提交人脸比对实名认证。 */
 export function verifyWorkerRealname(data) {
-  return request({ url: "/worker/realname/verify", method: "POST", data });
+  return verifyRealname("worker", data);
 }
 
 /** 上传企业认证营业执照，后端保存到 OSS enterprise/license 目录。 */

@@ -2,12 +2,10 @@
   <view class="page">
     <AppNavBar :title="title" :show-back="true" />
     <scroll-view scroll-y class="content">
-      <text class="meta">更新日期：2026年7月21日\n生效时间：2026年7月21日</text>
-      <text class="welcome">欢迎您使用快马日结平台服务。</text>
-      <view class="tip"
-        ><text>特别提示：</text
-        >请认真阅读并充分理解各项条款，涉及责任限制、争议解决及个人信息处理的内容请重点关注。</view
-      >
+      <text v-if="meta" class="meta">{{ meta }}</text>
+      <text v-if="welcome" class="welcome">{{ welcome }}</text>
+      <view v-if="tip" class="tip"><text>特别提示：</text>{{ tip }}</view>
+      <text v-for="paragraph in intro" :key="paragraph" class="section-content intro">{{ paragraph }}</text>
       <view
         v-for="(section, index) in sections"
         :key="section.title"
@@ -27,6 +25,10 @@ import AppNavBar from "@/components/AppNavBar.vue";
 defineProps({
   title: { type: String, required: true },
   sections: { type: Array, required: true },
+  meta: { type: String, default: "更新日期：2026年7月21日\n生效时间：2026年7月21日" },
+  welcome: { type: String, default: "欢迎您使用快马日结平台服务。" },
+  tip: { type: String, default: "请认真阅读并充分理解各项条款，涉及责任限制、争议解决及个人信息处理的内容请重点关注。" },
+  intro: { type: Array, default: () => [] },
 });
 const numberText = ["一", "二", "三", "四", "五", "六"];
 </script>
@@ -51,6 +53,7 @@ const numberText = ["一", "二", "三", "四", "五", "六"];
 }
 .welcome {
   display: block;
+  white-space: pre-line;
   margin-top: 22rpx;
   color: #333;
   font-size: 25rpx;
@@ -81,8 +84,10 @@ const numberText = ["一", "二", "三", "四", "五", "六"];
 }
 .section-content {
   display: block;
+  white-space: pre-line;
   color: #666;
   font-size: 24rpx;
   line-height: 1.9;
 }
+.intro { margin-bottom: 22rpx; }
 </style>

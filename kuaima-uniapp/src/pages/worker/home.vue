@@ -479,23 +479,23 @@ function openDetail(job) {
 }
 
 async function applyJob(job) {
-  let certStatus = uni.getStorageSync("workerCertStatus") || "未认证";
-  try {
-    const result = await getCertificationStatus();
-    certStatus = result?.certStatus || result?.status || certStatus;
-    uni.setStorageSync("workerCertStatus", certStatus);
-    if (["已通过", "通过", "已认证"].includes(certStatus)) {
-      uni.setStorageSync("workerRealname", true);
-    }
-  } catch (_) {
-    // 接口不可用时沿用本地状态，避免无后端环境无法预览。
-  }
-  if (
-    !["已通过", "通过", "已认证"].includes(certStatus) &&
-    uni.getStorageSync("workerRealname") !== true
-  ) {
-    return uni.navigateTo({ url: "/pages/worker/realname" });
-  }
+  // TODO: 临时去掉实名认证限制，后续需要恢复。
+  // 恢复方式：还原下方注释掉的认证状态检查即可。
+  // let certStatus = uni.getStorageSync("workerCertStatus") || "未认证";
+  // try {
+  //   const result = await getCertificationStatus();
+  //   certStatus = result?.certStatus || result?.status || certStatus;
+  //   uni.setStorageSync("workerCertStatus", certStatus);
+  //   if (["已通过", "通过", "已认证"].includes(certStatus)) {
+  //     uni.setStorageSync("workerRealname", true);
+  //   }
+  // } catch (_) {}
+  // if (
+  //   !["已通过", "通过", "已认证"].includes(certStatus) &&
+  //   uni.getStorageSync("workerRealname") !== true
+  // ) {
+  //   return uni.navigateTo({ url: "/pages/worker/realname" });
+  // }
 
   try {
     await applyPublicJob(job.id, { trial: job.salaryType === "MONTHLY" });

@@ -37,16 +37,20 @@ public class CertificationController {
     private final CertificationRepository repo;
     private final CertificationService certificationService;
     private final UserRepository userRepository;
+    private final com.kuaima.app.common.service.OssStorageService ossStorageService;
 
     public CertificationController(CertificationRepository repo, CertificationService certificationService) {
-        this(repo, certificationService, null);
+        this(repo, certificationService, null, null);
     }
 
     @org.springframework.beans.factory.annotation.Autowired
-    public CertificationController(CertificationRepository repo, CertificationService certificationService, UserRepository userRepository) {
+    public CertificationController(CertificationRepository repo, CertificationService certificationService,
+                                    UserRepository userRepository,
+                                    com.kuaima.app.common.service.OssStorageService ossStorageService) {
         this.repo = repo;
         this.certificationService = certificationService;
         this.userRepository = userRepository;
+        this.ossStorageService = ossStorageService;
     }
 
     /** 列表（分页，按 type/status 过滤，按 id 倒序） */
@@ -102,7 +106,9 @@ public class CertificationController {
             row.put("contactPhone", user.getContactPhone()); row.put("phone", user.getPhone());
             row.put("username", user.getUsername()); row.put("enterpriseStatus", normalizeStatus(record.getStatus()));
             row.put("status", record.getStatus()); row.put("certificationApplyTime", record.getApplyTime());
-            row.put("applyTime", record.getApplyTime()); row.put("licenseImageUrl", record.getLicenseImageUrl() != null ? record.getLicenseImageUrl() : user.getLicenseImageUrl());
+            row.put("applyTime", record.getApplyTime()); String licenseImage = record.getLicenseImageUrl() != null ? record.getLicenseImageUrl() : user.getLicenseImageUrl();
+            row.put("licenseImageUrl", ossStorageService == null ? licenseImage : ossStorageService.playableUrl(licenseImage));
+            row.put("foundingDate", user.getFoundingDate()); row.put("businessScope", user.getBusinessScope());
             all.add(row);
         }
         int safeSize = Math.max(1, Math.min(size, 100));

@@ -16,8 +16,8 @@
     <div class="card">
       <div class="filter-bar">
         <div class="filter-item"><span>关键词</span><el-input v-model="filters.keyword" placeholder="企业名称/老板ID/订单号" clearable style="width: 220px" prefix-icon="Search" @keyup.enter="search" /></div>
-        <div class="filter-item"><span>支付方式</span><el-select v-model="filters.payMethod" placeholder="全部" clearable style="width: 130px"><el-option v-for="v in payMethods" :key="v" :label="v" :value="v" /></el-select></div>
-        <div class="filter-item"><span>订单状态</span><el-select v-model="filters.status" placeholder="全部" clearable style="width: 130px"><el-option v-for="v in statuses" :key="v" :label="v" :value="v" /></el-select></div>
+        <div class="filter-item"><span>支付方式</span><el-select v-model="filters.payMethod" placeholder="全部" clearable style="width: 130px"><el-option label="全部" value="" /><el-option v-for="v in payMethods" :key="v" :label="v" :value="v" /></el-select></div>
+        <div class="filter-item"><span>订单状态</span><el-select v-model="filters.status" placeholder="全部" clearable style="width: 130px"><el-option label="全部" value="" /><el-option v-for="v in statuses" :key="v" :label="v" :value="v" /></el-select></div>
         <div class="filter-item"><span>购买日期</span><el-date-picker v-model="filters.date" type="date" value-format="YYYY-MM-DD" placeholder="购买日期" style="width: 150px" /></div>
         <button class="btn btn-primary btn-sm" @click="search"><i class="fas fa-search"></i> 查询</button>
         <button class="btn btn-outline btn-sm" @click="reset"><i class="fas fa-rotate-left"></i> 重置</button>
@@ -29,7 +29,7 @@
 
       <el-table :data="orders" stripe :header-cell-style="{ background: '#F9FAFB', color: '#6B7280', fontWeight: 500 }">
         <el-table-column prop="orderNo" label="订单号" min-width="150"><template #default="{ row }"><span class="order-no">{{ row.orderNo }}</span></template></el-table-column>
-        <el-table-column label="购买老板" min-width="160"><template #default="{ row }"><div class="boss-cell"><span class="mini-avatar" :style="{ background: row.color }">{{ (row.bossName || '?').slice(0, 1) }}</span><div><div>{{ row.bossName || '-' }}</div><small>ID: {{ row.bossId || '-' }}</small></div></div></template></el-table-column>
+        <el-table-column label="购买老板" min-width="160"><template #default="{ row }"><div class="boss-cell"><span class="mini-avatar" :style="{ background: row.color }">{{ (row.bossName || '?').slice(0, 1) }}</span><div><div>{{ row.bossName || '-' }}</div><small>ID: {{ row.employerId || '-' }}</small></div></div></template></el-table-column>
         <el-table-column prop="companyName" label="企业名称" min-width="170" show-overflow-tooltip />
         <el-table-column prop="points" label="购买积分" width="110"><template #default="{ row }"><span class="points-val">{{ number(row.points) }}</span></template></el-table-column>
         <el-table-column prop="amount" label="实付金额" width="110"><template #default="{ row }"><span class="money-val">¥{{ money(row.amount) }}</span></template></el-table-column>
@@ -54,7 +54,7 @@
               <div class="d-section-title">订单信息</div>
               <div class="d-grid d-section-grid"><div class="d-item"><span>订单号</span><b class="order-no">{{ current.orderNo }}</b></div><div class="d-item"><span>订单状态</span><b><span :class="['status-badge', statusClass(current.status)]">{{ current.status }}</span></b></div><div class="d-item"><span>购买时间</span><b>{{ formatTime(current.purchaseTime) }}</b></div><div class="d-item"><span>支付方式</span><b>{{ current.payMethod }}</b></div></div>
               <div class="d-section-title">购买信息</div>
-              <div class="d-grid d-section-grid"><div class="d-item"><span>购买老板</span><b>{{ current.bossName }}（{{ current.bossId }}）</b></div><div class="d-item"><span>企业名称</span><b>{{ current.companyName }}</b></div><div class="d-item"><span>购买积分</span><b class="points-val">{{ number(current.points) }} 积分</b></div><div class="d-item"><span>兑换单价</span><b>0.01 元/积分（1元=100积分）</b></div></div>
+              <div class="d-grid d-section-grid"><div class="d-item"><span>购买老板</span><b>{{ current.bossName }}（{{ current.employerId || '-' }}）</b></div><div class="d-item"><span>企业名称</span><b>{{ current.companyName }}</b></div><div class="d-item"><span>购买积分</span><b class="points-val">{{ number(current.points) }} 积分</b></div><div class="d-item"><span>兑换单价</span><b>0.01 元/积分（1元=100积分）</b></div></div>
               <div class="d-section-title">金额信息</div>
               <div class="d-grid"><div class="d-item"><span>实付金额</span><b class="money-val">¥{{ currency(current.amount) }}</b></div><div class="d-item"><span>积分到账</span><b class="arrival">{{ current.status === '支付成功' ? '已实时到账' : '待支付' }}</b></div></div>
             </div>
@@ -76,7 +76,7 @@
                 <div class="pay-kv"><span>订单号</span><b class="order-no">{{ paymentCurrent.orderNo }}</b></div>
                 <div class="pay-kv"><span>订单状态</span><b><span class="status-badge warning">待支付</span></b></div>
                 <div class="pay-kv"><span>购买老板</span><b>{{ paymentCurrent.bossName || '-' }}</b></div>
-                <div class="pay-kv"><span>老板ID</span><b class="order-no">{{ paymentCurrent.bossId || '-' }}</b></div>
+                <div class="pay-kv"><span>老板ID</span><b class="order-no">{{ paymentCurrent.employerId || '-' }}</b></div>
                 <div class="pay-kv"><span>企业名称</span><b>{{ paymentCurrent.companyName || '-' }}</b></div>
                 <div class="pay-kv"><span>购买积分</span><b class="points-val">{{ number(paymentCurrent.points) }} 积分</b></div>
               </div>
@@ -93,13 +93,17 @@
               </div>
               <div class="pay-qr-wrap">
                 <div :class="['pay-qr-box', paymentMethod === '微信支付' ? 'wechat' : 'alipay']">
-                  <div class="qr-img"><img :src="paymentQrUrl" :alt="paymentMethod + '二维码'"><div class="qr-icon"><i :class="payIcon(paymentMethod)"></i></div></div>
-                  <div class="qr-tip">请使用{{ paymentMethod }}扫描二维码完成支付</div>
+                  <div class="qr-img">
+                    <span v-if="paymentQrLoading" class="qr-loading">正在生成二维码...</span>
+                    <span v-else-if="!paymentQrUrl" class="qr-error">二维码暂不可用</span>
+                    <template v-else><img :src="paymentQrUrl" :alt="paymentMethod + '二维码'"><div class="qr-icon"><i :class="payIcon(paymentMethod)"></i></div></template>
+                  </div>
+                  <div class="qr-tip">{{ paymentQrLoading ? '正在连接微信支付' : paymentQrUrl ? `请使用${paymentMethod}扫描二维码完成支付` : paymentQrError }}</div>
                 </div>
               </div>
               <div class="pay-countdown">二维码将在 <span class="num">{{ countdownText }}</span> 后过期</div>
             </div>
-            <div class="modal-footer payment-footer"><button class="btn btn-outline" type="button" @click="refreshPaymentQr"><i class="fas fa-arrows-rotate"></i>刷新二维码</button><button class="btn btn-primary" type="button" @click="confirmPayment"><i class="fas fa-circle-check"></i>我已完成支付</button></div>
+            <div class="modal-footer payment-footer"><button v-if="paymentMethod === '微信支付'" class="btn btn-outline" type="button" @click="refreshPaymentQr"><i class="fas fa-arrows-rotate"></i>刷新二维码</button><button v-if="paymentMethod === '微信支付'" class="btn btn-primary" type="button" @click="checkPaymentStatus"><i class="fas fa-circle-check"></i>查询支付状态</button><button v-else class="btn btn-primary" type="button" @click="confirmManualPayment"><i class="fas fa-circle-check"></i>确认已收款</button></div>
           </div>
         </div>
       </Transition>
@@ -113,7 +117,7 @@
             <el-select v-model="form.bossId" placeholder="请选择购买老板" filterable popper-class="boss-select-popper" style="width:100%">
               <el-option v-for="b in bosses" :key="b.id" :label="bossOptionLabel(b)" :value="b.id">
                 <div class="boss-option">
-                  <span class="boss-option-name">{{ b.name }}（{{ b.id }}）</span>
+                  <span class="boss-option-name">{{ b.name }}（{{ employerId(b) }}）</span>
                   <span class="boss-option-company">{{ b.companyName || '未填写企业名称' }} · 企业编号：{{ b.companyCode || '-' }}</span>
                 </div>
               </el-option>
@@ -270,6 +274,8 @@ import { listBosses } from '@/api/user'
 import {
   createPointPurchaseOrder,
   confirmPointPurchasePayment,
+  createPointPurchasePayUrl,
+  getPointPurchaseOrder,
   exportPointPurchaseOrders,
   getPointPurchaseStats,
   listPointPurchaseOrders,
@@ -290,7 +296,7 @@ const packages = [10000, 50000, 100000, 500000, 1000000, 5000000]
 const filters = reactive({ keyword: '', payMethod: '', status: '', date: '' })
 const orders = ref([]); const bosses = ref([]); const total = ref(0); const page = ref(1); const size = ref(10); const stats = reactive({ todayCount: 0, todayPoints: 0, monthPoints: 0, monthAmount: 0, changes: {} })
 const drawerVisible = ref(false); const detailVisible = ref(false); const current = ref(null); const customPoints = ref(''); const submitting = ref(false)
-const paymentVisible = ref(false); const paymentCurrent = ref(null); const paymentMethod = ref('微信支付'); const paymentSeconds = ref(15 * 60); let paymentTimer = null
+const paymentVisible = ref(false); const paymentCurrent = ref(null); const paymentMethod = ref('微信支付'); const paymentSeconds = ref(15 * 60); const paymentQrLoading = ref(false); const paymentQrError = ref('微信支付二维码生成失败，请稍后重试'); let paymentTimer = null; let paymentPollTimer = null
 const form = reactive({ bossId: '', points: 0, payMethod: '微信支付', deal: 'paid', remark: '' })
 const statCards = computed(() => [{ label: '今日购买笔数', value: number(stats.todayCount), icon: 'fa-file-invoice-dollar', color: '' , change: stats.changes.todayCount || 0, compareLabel: '较昨日' }, { label: '今日售出积分', value: number(stats.todayPoints), icon: 'fa-coins', color: 'purple', change: stats.changes.todayPoints || 0, compareLabel: '较昨日' }, { label: '本月售出积分', value: number(stats.monthPoints), icon: 'fa-chart-line', color: 'purple', change: stats.changes.monthPoints || 0, compareLabel: '较上月' }, { label: '本月收入金额', value: `¥${money(stats.monthAmount)}`, icon: 'fa-sack-dollar', color: 'green', change: stats.changes.monthAmount || 0, compareLabel: '较上月' }])
 const number = v => Number(v || 0).toLocaleString('zh-CN')
@@ -301,34 +307,59 @@ const statusClass = s => ({ '支付成功': 'success', '待支付': 'warning', '
 const payClass = v => ({ '微信支付': 'pay-wechat', '支付宝': 'pay-alipay', '对公转账': 'pay-bank' }[v] || '')
 const payIcon = v => ({ '微信支付': 'fab fa-weixin', '支付宝': 'fab fa-alipay', '对公转账': 'fas fa-building-columns' }[v] || 'fas fa-wallet')
 const countdownText = computed(() => paymentSeconds.value <= 0 ? '已过期' : String(Math.floor(paymentSeconds.value / 60)).padStart(2, '0') + ':' + String(paymentSeconds.value % 60).padStart(2, '0'))
-const paymentQrUrl = computed(() => {
-  const target = paymentMethod.value === '微信支付' ? 'https://pay.weixin.qq.com/mch/pay' : 'https://qr.alipay.com/pay'
-  return 'https://api.qrserver.com/v1/create-qr-code/?size=130x130&data=' + encodeURIComponent(target)
-})
+const paymentCodeUrl = ref('')
+const paymentQrUrl = computed(() => paymentCodeUrl.value ? 'https://api.qrserver.com/v1/create-qr-code/?size=130x130&data=' + encodeURIComponent(paymentCodeUrl.value) : '')
 const packageCount = v => v / 10000
 const packageTag = v => ({ 500000: '常用', 5000000: '企业推荐' }[v] || '')
-const bossOptionLabel = b => `${b.name}（${b.id}） · ${b.companyName || '未填写企业名称'} · 企业编号：${b.companyCode || '-'}`
-const normalize = o => ({ ...o, orderNo: o.orderNo || o.no, bossId: o.bossId || o.bid, bossName: o.bossName || o.boss, companyName: o.companyName || o.company, points: o.points || 0, amount: o.amount ?? o.money ?? 0, payMethod: o.payMethod || o.pay, purchaseTime: o.purchaseTime || o.time, color: o.color || '#7C3AED' })
+const employerId = b => b.companyCode || b.bossCode || `B${String(b.id ?? 0).padStart(7, '0')}`
+const bossOptionLabel = b => `${b.name}（${employerId(b)}） · ${b.companyName || '未填写企业名称'}`
+const normalize = o => ({ ...o, orderNo: o.orderNo || o.no, bossId: o.bossId || o.bid, employerId: o.employerId || o.companyCode || o.bossCode || (o.bossId != null ? `B${String(o.bossId).padStart(7, '0')}` : ''), bossName: o.bossName || o.boss, companyName: o.companyName || o.company, points: o.points || 0, amount: o.amount ?? o.money ?? 0, payMethod: o.payMethod || o.pay, purchaseTime: o.purchaseTime || o.time, color: o.color || '#7C3AED' })
 async function load () { try { const [listRes, statRes] = await Promise.all([listPointPurchaseOrders({ ...filters, page: page.value - 1, size: size.value }), getPointPurchaseStats(filters.date ? { date: filters.date } : {})]); const d = listRes.data; const list = Array.isArray(d) ? d : (d?.content || d?.list || []); orders.value = list.map(normalize); total.value = listRes.total ?? d?.totalElements ?? d?.total ?? list.length; Object.assign(stats, statRes.data || {}) } catch (e) { orders.value = []; total.value = 0; ElMessage.error('加载积分订单失败') } }
 async function loadBosses () { try { const r = await listBosses({ page: 0, size: 100 }); const d = r.data; bosses.value = (Array.isArray(d) ? d : (d?.content || d?.list || [])).map(b => ({ ...b, name: b.name || b.nickname || b.username || '-', companyName: b.companyName || b.company || b.enterpriseName || '', companyCode: b.companyCode || b.enterpriseCode || '' })) } catch { bosses.value = [] } }
 function search () { page.value = 1; load() }; function reset () { Object.assign(filters, { keyword: '', payMethod: '', status: '', date: '' }); search() }
 function showDetail (row) { current.value = row; detailVisible.value = true }
 function stopPaymentTimer () { if (paymentTimer) { clearInterval(paymentTimer); paymentTimer = null } }
+function stopPaymentPolling () { if (paymentPollTimer) { clearInterval(paymentPollTimer); paymentPollTimer = null } }
 function startPaymentTimer () { stopPaymentTimer(); paymentTimer = setInterval(() => { if (paymentSeconds.value <= 0) return stopPaymentTimer(); paymentSeconds.value -= 1 }, 1000) }
-function openPayment (row) { paymentCurrent.value = row; paymentMethod.value = row.payMethod === '支付宝' ? '支付宝' : '微信支付'; paymentSeconds.value = 15 * 60; paymentVisible.value = true; startPaymentTimer() }
-function closePayment () { paymentVisible.value = false; paymentCurrent.value = null; stopPaymentTimer() }
-function switchPaymentMethod (method) { paymentMethod.value = method; paymentSeconds.value = 15 * 60; startPaymentTimer() }
-function refreshPaymentQr () { paymentSeconds.value = 15 * 60; startPaymentTimer(); ElMessage.success('二维码已刷新，倒计时重置为 15 分钟') }
-async function confirmPayment () {
+async function loadPaymentQr () {
+  if (!paymentCurrent.value) return
+  paymentQrLoading.value = true; paymentQrError.value = '微信支付二维码生成失败，请稍后重试'; paymentCodeUrl.value = ''
+  try {
+    const res = await createPointPurchasePayUrl(paymentCurrent.value.orderNo, paymentMethod.value)
+    paymentCodeUrl.value = res.data?.codeUrl || ''
+    if (!paymentCodeUrl.value) throw new Error('未返回微信支付二维码')
+  } catch (_) {
+    paymentQrError.value = '微信支付二维码生成失败，请检查支付配置'
+  } finally { paymentQrLoading.value = false }
+}
+async function pollPaymentStatus () {
+  if (!paymentCurrent.value) return
+  try {
+    const res = await getPointPurchaseOrder(paymentCurrent.value.orderNo)
+    const order = normalize(res.data || {})
+    paymentCurrent.value = { ...paymentCurrent.value, ...order }
+    if (order.status === '支付成功') {
+      ElMessage.success('订单 ' + order.orderNo + ' 已支付，积分已发放')
+      closePayment(); await load()
+    }
+  } catch (_) { /* 轮询失败时保留弹窗，下一次继续查询 */ }
+}
+function startPaymentPolling () { stopPaymentPolling(); paymentPollTimer = setInterval(pollPaymentStatus, 3000) }
+function openPayment (row) {
+  paymentCurrent.value = row; paymentMethod.value = row.payMethod || '微信支付'; paymentSeconds.value = 15 * 60; paymentVisible.value = true; startPaymentTimer()
+  if (paymentMethod.value === '微信支付') { startPaymentPolling(); loadPaymentQr() } else { paymentQrError.value = '对公转账请核对平台收款后确认'; paymentCodeUrl.value = ''; }
+}
+function closePayment () { paymentVisible.value = false; paymentCurrent.value = null; paymentCodeUrl.value = ''; paymentQrLoading.value = false; stopPaymentTimer(); stopPaymentPolling() }
+function switchPaymentMethod (method) { if (method !== '微信支付') return ElMessage.info('支付宝扫码支付尚未接入'); paymentMethod.value = method; refreshPaymentQr() }
+function refreshPaymentQr () { paymentSeconds.value = 15 * 60; startPaymentTimer(); loadPaymentQr(); ElMessage.success('正在刷新微信支付二维码') }
+async function checkPaymentStatus () { await pollPaymentStatus(); if (paymentCurrent.value?.status === '待支付') ElMessage.info('暂未收到支付结果，请完成扫码后重试') }
+async function confirmManualPayment () {
   if (!paymentCurrent.value) return
   try {
     await confirmPointPurchasePayment(paymentCurrent.value.orderNo, { payMethod: paymentMethod.value })
-    ElMessage.success('订单 ' + paymentCurrent.value.orderNo + ' 已确认支付，积分已发放')
-    closePayment()
-    await load()
-  } catch (_) {
-    ElMessage.error('支付确认失败，请稍后重试')
-  }
+    ElMessage.success('订单 ' + paymentCurrent.value.orderNo + ' 已确认收款，积分已发放')
+    closePayment(); await load()
+  } catch (_) { ElMessage.error('确认收款失败，请稍后重试') }
 }
 function selectPackage (points) { form.points = points; customPoints.value = number(points) }
 function onCustomPoints (v) { const raw = String(v).replace(/\D/g, ''); form.points = raw ? Number(raw) : 0; customPoints.value = raw ? number(form.points) : '' }
@@ -359,7 +390,7 @@ async function loadPackages () { const r = await listPointPackages(); packagesLi
 async function loadExchangeRules () { const r = await listPointExchangeRules(); exchangeList.value = responseList(r.data) }
 async function loadEarnRules () { const r = await listPointEarnRules(); earnList.value = responseList(r.data) }
 onMounted(() => { load(); loadBosses() })
-onUnmounted(stopPaymentTimer)
+onUnmounted(() => { stopPaymentTimer(); stopPaymentPolling() })
 </script>
 
 <style scoped>
@@ -421,4 +452,5 @@ onUnmounted(stopPaymentTimer)
 .point-package-switch-row { display:flex; align-items:center; gap:10px; margin-top:2px; color:var(--text-primary); font-size:13px; font-weight:500; }
 :deep(.point-package-switch-row .el-switch.is-checked .el-switch__core) { border-color:var(--primary); background:var(--primary); }
 @media (max-width:640px) { .modal-overlay { padding:14px; }.purchase-modal { width:100%; }.d-grid { grid-template-columns:1fr; }.pick-cards { flex-direction:column; }.pts-pkg-grid { grid-template-columns:1fr; }.pts-stat-row { flex-direction:column; }.settings-drawer-panel { width:94vw; } }
+.qr-loading, .qr-error { color:var(--text-muted); font-size:12px; text-align:center; }
 </style>

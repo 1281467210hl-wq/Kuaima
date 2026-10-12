@@ -44,7 +44,7 @@
         </view>
         <view class="employer-cta-wrap" @click="navigateTo('select-job')">
           <view class="employer-cta-btn">
-            {{ publishChecking ? "资格校验中" : "去发布招工" }}
+            去发布招工
           </view>
         </view>
       </view>
@@ -92,7 +92,6 @@ import {
   listBossOrderTemplates,
 } from "@/api/backend";
 import { handleTokenInvalid } from "@/api/auth";
-import { checkBossPublishEligibility } from "@/api/publish-eligibility";
 import { hasEnterprisePermission } from "@/api/enterprise-context";
 import squarePlusIcon from "/static/icons/boss-home/square-plus-orange.svg";
 import fileLinesIcon from "/static/icons/boss-home/file-lines.svg";
@@ -147,7 +146,6 @@ export default {
       attendanceLoading: false,
       lastAttendanceLoadAt: 0,
       overviewLoading: false,
-      publishChecking: false,
       templateChecking: false,
     };
   },
@@ -373,14 +371,7 @@ export default {
       }
 
       if (pageName === "select-job") {
-        if (this.publishChecking) return;
-        this.publishChecking = true;
-        try {
-          const eligibility = await checkBossPublishEligibility();
-          if (!eligibility.canPublish) return;
-        } finally {
-          this.publishChecking = false;
-        }
+        // 发布入口暂不校验认证，直接进入发布流程。
       }
       const bossPages = [
         "boss-employer",

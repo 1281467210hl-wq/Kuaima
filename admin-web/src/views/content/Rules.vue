@@ -17,7 +17,68 @@
           <i :class="['fas', tab.icon]"></i>
         </span>
         {{ tab.label }}
-        <span class="count-badge">{{ tab.count }}</span>
+        <span v-if="tab.key === 'season'" class="count-badge season">已配置 {{ seasonCities.length }} 城</span>
+        <span v-else class="count-badge">{{ tab.count }}</span>
+      </div>
+    </div>
+
+    <!-- 淡旺季系数 Tab 内容 -->
+    <div v-if="currentTab === 'season'" class="card season-card">
+      <div class="season-tip">
+        <i class="fas fa-circle-info"></i>
+        <div>淡旺季系数用于动态调整城市用工推荐、价格指数、信用分加减基数等。系数范围 <b>0.5 ~ 4.0</b>，<b>1.0</b> 为基准值。</div>
+      </div>
+      <div class="season-grid">
+        <div class="season-city-panel">
+          <div class="season-city-header">
+            <span>用工城市</span>
+            <div class="season-city-actions">
+              <button class="season-mini-btn primary" @click="openNewCity"><i class="fas fa-plus"></i> 新建</button>
+              <button class="season-mini-btn" @click="importSeason"><i class="fas fa-file-import"></i> 导入</button>
+            </div>
+          </div>
+          <div class="season-city-list">
+            <div
+              v-for="city in seasonCities"
+              :key="city.name"
+              :class="['season-city-item', { active: city.name === selectedSeasonCity }]"
+              @click="selectedSeasonCity = city.name"
+            >
+              <span>{{ city.name }}</span>
+              <span class="season-city-region">{{ city.region }}</span>
+            </div>
+          </div>
+        </div>
+        <div class="season-factor-panel">
+          <div class="season-factor-header">
+            <span>{{ selectedSeasonCity }} · {{ selectedCityData?.region }}</span>
+            <span class="season-factor-hint">点击单元格可直接修改系数</span>
+          </div>
+          <table class="season-factor-table">
+            <thead>
+              <tr><th v-for="m in 12" :key="m">{{ m }}月</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td
+                  v-for="(val, idx) in selectedCityFactors"
+                  :key="idx"
+                  :class="factorClass(val)"
+                  @click="openEditFactor(idx, val)"
+                >{{ val.toFixed(2) }}</td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="season-legend">
+            <span><i class="peak"></i>旺季 &gt; 1.2</span>
+            <span><i class="normal"></i>平稳 1.2 ~ 3.0</span>
+            <span><i class="low"></i>淡季 ≥ 3.0</span>
+          </div>
+        </div>
+      </div>
+      <div class="season-actions">
+        <button class="btn btn-outline btn-sm" @click="resetSeasonFactors"><i class="fas fa-rotate-left"></i> 恢复默认</button>
+        <button class="btn btn-primary btn-sm" @click="saveSeasonFactors"><i class="fas fa-check"></i> 保存系数</button>
       </div>
     </div>
 
@@ -171,7 +232,7 @@ const viewVisible = ref(false)
 const currentViewRule = ref(null)
 
 const tabs = computed(() => {
-  const map = { platform: '平台规则', credit: '信用分规则' }
+  const map = { platform: '平台规则', credit: '信用分规则', season: '淡旺季系数' }
   return Object.keys(map).map(key => ({
     key,
     label: map[key],
@@ -184,6 +245,7 @@ const tabs = computed(() => {
 const tabMeta = {
   platform: { icon: 'fa-cube', gradient: 'linear-gradient(135deg,#3B82F6,#2563EB)' },
   credit: { icon: 'fa-star', gradient: 'linear-gradient(135deg,#10B981,#059669)' },
+  season: { icon: 'fa-chart-line', gradient: 'linear-gradient(135deg,#F59E0B,#D97706)' },
 }
 
 const currentTabMeta = computed(() => tabMeta[currentTab.value] || tabMeta.platform)
@@ -208,6 +270,25 @@ const onPageChange = (page) => {
 const switchTab = (key) => {
   currentTab.value = key
 }
+
+// ====== 淡旺季系数 ======
+const seasonCities = ref([
+  { name: '上海', region: '华东', factors: [1.0, 1.15, 1.25, 1.1, 1.05, 1.0, 0.95, 0.9, 1.0, 1.1, 1.2, 1.3] },
+  { name: '深圳', region: '华南', factors: [1.05, 1.0, 1.1, 1.15, 1.1, 1.0, 0.95, 0.95, 1.05, 1.1, 1.15, 1.1] },
+  { name: '北京', region: '华北', factors: [0.9, 0.95, 1.1, 1.15, 1.1, 1.0, 1.05, 1.0, 1.1, 1.1, 1.0, 0.9] },
+  { name: '成都', region: '西南', factors: [1.0, 1.05, 1.1, 1.0, 1.0, 0.95, 1.0, 1.0, 1.05, 1.1, 1.05, 1.0] },
+  { name: '杭州', region: '华东', factors: [1.0, 1.0, 1.15, 1.1, 1.05, 1.0, 0.95, 0.95, 1.05, 1.15, 1.2, 1.25] },
+  { name: '武汉', region: '华中', factors: [0.95, 1.0, 1.05, 1.0, 1.0, 0.95, 1.0, 1.0, 1.05, 1.1, 1.05, 1.0] },
+])
+const selectedSeasonCity = ref('上海')
+const selectedCityData = computed(() => seasonCities.value.find(c => c.name === selectedSeasonCity.value))
+const selectedCityFactors = computed(() => selectedCityData.value?.factors || [])
+const factorClass = val => val > 1.2 ? 'peak' : val >= 3.0 ? 'low' : 'normal'
+const openNewCity = () => ElMessage.info('新建城市功能开发中')
+const importSeason = () => ElMessage.info('导入城市系数功能开发中')
+const openEditFactor = (idx, val) => ElMessage.info(`${selectedSeasonCity.value} ${idx + 1}月当前系数 ${val}，编辑功能开发中`)
+const resetSeasonFactors = () => { seasonCities.value.forEach(c => c.factors = c.factors.map(() => 1.0)); ElMessage.success('已恢复默认系数') }
+const saveSeasonFactors = () => ElMessage.success('系数已保存')
 
 const resetFilters = () => {
   statusFilter.value = ''
@@ -304,6 +385,40 @@ onMounted(loadData)
 </script>
 
 <style scoped>
+.season-card { padding: 14px; }
+.season-tip { display: flex; gap: 8px; align-items: flex-start; background: #FFF8E6; border: 1px solid #FFE58F; color: #AD6800; padding: 10px 14px; border-radius: 6px; font-size: 12px; margin-bottom: 14px; }
+.season-tip i { margin-top: 2px; }
+.season-grid { display: grid; grid-template-columns: 200px 1fr; gap: 16px; align-items: start; }
+.season-city-panel { border: 1px solid #F3F4F6; border-radius: 8px; overflow: hidden; }
+.season-city-header { padding: 8px 10px; background: #FAFAFA; border-bottom: 1px solid #F3F4F6; display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.season-city-header > span { font-size: 12px; font-weight: 600; color: #6B7280; }
+.season-city-actions { display: flex; gap: 4px; }
+.season-mini-btn { padding: 4px 8px; font-size: 11px; border-radius: 5px; border: 1px solid #E5E7EB; background: #fff; color: #6B7280; cursor: pointer; }
+.season-mini-btn.primary { color: #FF6B35; font-weight: 600; }
+.season-city-list { max-height: 340px; overflow-y: auto; }
+.season-city-item { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; border-bottom: 1px solid #F9FAFB; cursor: pointer; font-size: 13px; color: #374151; }
+.season-city-item:hover { background: #FFF7F0; }
+.season-city-item.active { background: #FFF7F0; color: #FF6B35; font-weight: 600; }
+.season-city-region { font-size: 11px; color: #9CA3AF; }
+.season-city-item.active .season-city-region { color: #FF6B35; }
+.season-factor-panel { border: 1px solid #F3F4F6; border-radius: 8px; overflow: hidden; }
+.season-factor-header { padding: 10px 14px; background: #FAFAFA; font-size: 12px; font-weight: 600; color: #6B7280; border-bottom: 1px solid #F3F4F6; display: flex; align-items: center; justify-content: space-between; }
+.season-factor-hint { font-size: 11px; color: #9CA3AF; font-weight: 400; }
+.season-factor-table { width: 100%; border-collapse: collapse; }
+.season-factor-table th { padding: 10px 0; font-size: 12px; font-weight: 500; color: #6B7280; text-align: center; background: #FAFAFA; border-bottom: 1px solid #F3F4F6; }
+.season-factor-table td { padding: 14px 0; font-size: 14px; font-weight: 600; text-align: center; cursor: pointer; }
+.season-factor-table td:hover { outline: 2px solid #FF6B35; outline-offset: -2px; }
+.season-factor-table td.peak { background: rgba(220,38,38,0.08); color: #DC2626; }
+.season-factor-table td.normal { background: rgba(107,114,128,0.06); color: #4B5563; }
+.season-factor-table td.low { background: rgba(5,150,105,0.08); color: #059669; }
+.season-legend { padding: 10px 14px; border-top: 1px solid #F3F4F6; display: flex; gap: 18px; font-size: 11px; color: #6B7280; }
+.season-legend span { display: flex; align-items: center; gap: 5px; }
+.season-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; }
+.season-legend .peak { background: rgba(220,38,38,0.2); }
+.season-legend .normal { background: rgba(107,114,128,0.15); }
+.season-legend .low { background: rgba(5,150,105,0.2); }
+.season-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+.count-badge.season { background: #FEF3C7 !important; color: #92400E !important; font-size: 11px !important; }
 .rule-tabs {
   display: flex;
   gap: 4px;

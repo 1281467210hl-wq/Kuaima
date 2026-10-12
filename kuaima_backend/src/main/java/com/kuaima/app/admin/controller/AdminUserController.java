@@ -87,6 +87,7 @@ public class AdminUserController {
     private final CouponRepository couponRepository;
     private final WalletFlowRespository walletFlowRepository;
     private final WebSocketSessionManager webSocketSessionManager;
+    private final com.kuaima.app.admin.repository.CertificationRepository certificationRepository;
 
     public AdminUserController(UserRepository userRepository,
                                BaseOrderItemRespository orderItemRepository,
@@ -99,7 +100,7 @@ public class AdminUserController {
                                UserCouponRepository userCouponRepository,
                                CouponRepository couponRepository) {
         this(userRepository, orderItemRepository, bossOrderRepository, walletRepository, pointsAccountRepository,
-                rewardAccountRepository, pointsFlowRepository, rewardFlowRepository, userCouponRepository, couponRepository, null, null, null, null);
+                rewardAccountRepository, pointsFlowRepository, rewardFlowRepository, userCouponRepository, couponRepository, null, null, null, null, null);
     }
 
     public AdminUserController(UserRepository userRepository,
@@ -116,7 +117,7 @@ public class AdminUserController {
                                WebSocketSessionManager webSocketSessionManager) {
         this(userRepository, orderItemRepository, bossOrderRepository, walletRepository, pointsAccountRepository,
                 rewardAccountRepository, pointsFlowRepository, rewardFlowRepository, userCouponRepository, couponRepository,
-                walletFlowRepository, webSocketSessionManager, null, null);
+                walletFlowRepository, webSocketSessionManager, null, null, null);
     }
 
     @org.springframework.beans.factory.annotation.Autowired
@@ -133,7 +134,8 @@ public class AdminUserController {
                                WalletFlowRespository walletFlowRepository,
                                WebSocketSessionManager webSocketSessionManager,
                                JobCategoryRepository jobCategoryRepository,
-                               JobIndustryRepository jobIndustryRepository) {
+                               JobIndustryRepository jobIndustryRepository,
+                               com.kuaima.app.admin.repository.CertificationRepository certificationRepository) {
         this.userRepository = userRepository;
         this.orderItemRepository = orderItemRepository;
         this.bossOrderRepository = bossOrderRepository;
@@ -148,6 +150,7 @@ public class AdminUserController {
         this.webSocketSessionManager = webSocketSessionManager;
         this.jobCategoryRepository = jobCategoryRepository;
         this.jobIndustryRepository = jobIndustryRepository;
+        this.certificationRepository = certificationRepository;
     }
 
     /** 零工列表（附加 completedOrders 已完成订单数） */
@@ -784,7 +787,20 @@ public class AdminUserController {
         u.setCertType("ENTERPRISE");
         com.kuaima.app.domain.user.constant.UserBusinessCode.ensureBoss(u);
         EnterpriseCode.ensure(u);
-        return Result.success(userRepository.save(u));
+        userRepository.save(u);
+        syncEnterpriseRecord(u.getId(), "已通过", null);
+        return Result.success(u);
+    }
+
+    /** 用户维度审核后，同步最新企业认证记录，保证认证列表状态一致。 */
+    private void syncEnterpriseRecord(Long userId, String status, String reason) {
+        certificationRepository.findTopByUserIdAndTypeOrderByIdDesc(userId, "ENTERPRISE")
+                .ifPresent(record -> {
+                    record.setStatus(status);
+                    record.setRejectReason(reason);
+                    record.setAuditTime(java.time.LocalDateTime.now());
+                    certificationRepository.save(record);
+                });
     }
 
     /** 企业认证审核拒绝 */
@@ -796,6 +812,8 @@ public class AdminUserController {
         u.setEnterpriseStatus(CertificationStatus.REJECTED);
         u.setCertStatus("已拒绝");
         u.setCertType("ENTERPRISE");
-        return Result.success(userRepository.save(u));
+        userRepository.save(u);
+        syncEnterpriseRecord(u.getId(), "已拒绝", "管理员审核拒绝");
+        return Result.success(u);
     }
 }

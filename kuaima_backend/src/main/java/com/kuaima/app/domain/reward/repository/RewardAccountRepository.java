@@ -21,4 +21,8 @@ public interface RewardAccountRepository extends JpaRepository<RewardAccount, Lo
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select a from RewardAccount a where a.userId=:userId and a.role=:role")
     Optional<RewardAccount> findByUserIdAndRoleForUpdate(@Param("userId") Long userId, @Param("role") String role);
+    /** 兼容历史重复账户：加锁后按主键倒序返回，业务层选最新一条。 */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select a from RewardAccount a where a.userId=:userId and a.role=:role order by a.id desc")
+    List<RewardAccount> findAllByUserIdAndRoleForUpdate(@Param("userId") Long userId, @Param("role") String role);
 }

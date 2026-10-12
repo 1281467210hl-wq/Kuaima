@@ -74,6 +74,13 @@ public class CertificationService {
     @Transactional
     public User submitEnterprise(Long userId, String companyName, String industry,
                                  String licenseNo, String legalRep, String licenseImageUrl) {
+        return submitEnterprise(userId, companyName, industry, licenseNo, legalRep, licenseImageUrl, null, null);
+    }
+
+    @Transactional
+    public User submitEnterprise(Long userId, String companyName, String industry,
+                                 String licenseNo, String legalRep, String licenseImageUrl,
+                                 java.time.LocalDate foundingDate, String businessScope) {
         User user = getUser(userId);
         if (!StringUtils.hasText(companyName)) throw new IllegalArgumentException("企业名称不能为空");
         if (!StringUtils.hasText(licenseNo)) throw new IllegalArgumentException("营业执照号不能为空");
@@ -81,6 +88,8 @@ public class CertificationService {
         user.setIndustry(StringUtils.hasText(industry) ? industry.trim() : user.getIndustry());
         user.setLicenseNo(licenseNo.trim());
         if (StringUtils.hasText(licenseImageUrl)) user.setLicenseImageUrl(licenseImageUrl.trim());
+        user.setFoundingDate(foundingDate);
+        if (StringUtils.hasText(businessScope)) user.setBusinessScope(businessScope.trim());
         user.setLegalRep(StringUtils.hasText(legalRep) ? legalRep.trim() : user.getLegalRep());
         user.setEnterpriseStatus(CertificationStatus.PENDING);
         user.setCertType(ENTERPRISE);

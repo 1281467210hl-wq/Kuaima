@@ -96,27 +96,30 @@
       width="600px"
       :close-on-click-modal="false"
     >
-      <el-form :model="form" label-width="90px">
-        <el-form-item label="公告标题" required>
+      <el-form :model="form" label-position="top" class="notice-form">
+        <div class="form-section-title">公告标题</div>
+        <el-form-item required>
           <el-input v-model="form.title" placeholder="请输入公告标题" maxlength="100" show-word-limit />
         </el-form-item>
-        <el-form-item label="公告类型">
+        <div class="form-section-title">公告类型</div>
+        <el-form-item>
           <el-select v-model="form.type" style="width: 100%;">
             <el-option label="系统" value="系统" />
             <el-option label="活动" value="活动" />
             <el-option label="政策" value="政策" />
           </el-select>
         </el-form-item>
-        <el-form-item label="发布范围">
+        <div class="form-section-title">发布范围</div>
+        <el-form-item>
           <el-select v-model="form.scope" style="width: 100%;">
             <el-option label="全部用户" value="全部" />
             <el-option label="仅零工" value="零工" />
             <el-option label="仅老板" value="雇主" />
             <el-option label="已实名用户" value="已实名" />
-            <el-option label="web账号" value="web账号" />
           </el-select>
         </el-form-item>
-        <el-form-item label="公告内容">
+        <div class="form-section-title">公告内容</div>
+        <el-form-item>
           <el-input
             v-model="form.content"
             type="textarea"
@@ -351,4 +354,15 @@ onMounted(loadData)
 .table-action-warning:hover { color: #d97706; }
 .table-action-danger { color: #ef4444; }
 .table-action-danger:hover { color: #dc2626; }
+.notice-form :deep(.el-form-item) { margin-bottom: 18px; }
+.notice-form :deep(.el-form-item__label) { padding-bottom: 4px; }
+.form-section-title {
+  margin: 0 0 6px;
+  padding-left: 8px;
+  border-left: 3px solid var(--primary);
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 18px;
+}
 </style>

@@ -16,6 +16,14 @@ export function confirmPointPurchasePayment(orderNo, data = {}) {
   return request.post(`/admin/point-purchase/orders/${encodeURIComponent(orderNo)}/pay`, data)
 }
 
+export function getPointPurchaseOrder(orderNo) {
+  return request.get(`/admin/point-purchase/orders/${encodeURIComponent(orderNo)}`)
+}
+
+export function createPointPurchasePayUrl(orderNo, payMethod = '微信支付') {
+  return request.get(`/admin/point-purchase/orders/${encodeURIComponent(orderNo)}/pay-url`, { params: { payMethod } })
+}
+
 export function exportPointPurchaseOrders(params = {}) {
   return request.get('/admin/point-purchase/orders/export', { params, responseType: 'blob' })
 }
