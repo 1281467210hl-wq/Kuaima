@@ -67,6 +67,9 @@ public interface BaseOrderItemRespository extends JpaRepository<BaseOrderItem, L
     /** 查询某用户报名过的订单记录 */
     List<BaseOrderItem> findByUserId(Long userId);
 
+    /** 客服会话右侧关联订单：按报名记录倒序取最近订单。 */
+    Page<BaseOrderItem> findByUserId(Long userId, Pageable pageable);
+
     /** 批量查询多个零工的报名记录，供后台列表统计使用，避免逐用户 N+1 查询。 */
     List<BaseOrderItem> findByUserIdIn(Collection<Long> userIds);
 

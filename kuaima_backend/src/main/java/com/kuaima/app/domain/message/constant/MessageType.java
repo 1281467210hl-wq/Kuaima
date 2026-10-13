@@ -8,6 +8,9 @@ import java.util.List;
  */
 public final class MessageType {
 
+    /** 后台模板测试/系统通知 -> 指定用户 */
+    public static final String SYSTEM_NOTICE = "SYSTEM_NOTICE";
+
     /** 岗位发布(招聘广播) -> 全部员工 USER */
     public static final String ORDER_PUBLISH = "ORDER_PUBLISH";
 

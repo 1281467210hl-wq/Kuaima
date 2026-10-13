@@ -62,9 +62,8 @@ import AppNavBar from "@/components/AppNavBar.vue";
 import SafeBottomAction from "@/components/safe-bottom-action.vue";
 import {
   cancelWorkerItem,
-  getPublicJob,
+  getWorkerOrder,
   listSettlements,
-  listWorkerApplications,
   workerCheckIn,
   workerEarlyLeave,
 } from "@/api/backend";
@@ -90,26 +89,14 @@ onLoad(async (options = {}) => {
   }
   loading.value = true;
   try {
-    let item = {
-      id: options.id,
-      orderId: options.orderId,
-      status: options.status,
-    };
-    let orderId = options.orderId;
-    const userId = uni.getStorageSync("userId");
-    if (userId) {
-      const items = await listWorkerApplications(userId);
-      const matched = (Array.isArray(items) ? items : []).find(
-        (row) => String(row.id) === String(options.id),
-      );
-      if (matched) item = matched;
-      orderId = matched?.orderId || orderId;
-    }
-    if (!orderId) throw new Error("订单关联岗位不存在");
-    const detail = await getPublicJob(orderId);
+    const item = await getWorkerOrder(options.id);
+    if (!item?.id) throw new Error("订单不存在");
     order.value = normalizeOrderDetail(
-      item || { id: options.id, orderId },
-      detail || {},
+      item,
+      {
+        ...item,
+        id: item.orderId,
+      },
     );
   } catch (error) {
     loadError.value = true;
@@ -248,7 +235,11 @@ function normalizeOrderDetail(item, detail) {
     已报名: "applied",
     已录用: "hired",
     已到岗: "arrived",
+    工作中: "arrived",
+    待结算: "done",
     已完成: "done",
+    已拒绝: "cancelled",
+    已取消: "cancelled",
     取消报名: "cancelled",
     取消招工: "cancelled",
   };

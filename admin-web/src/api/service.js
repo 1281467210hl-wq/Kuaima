@@ -12,6 +12,8 @@ export function getServiceSession(id) { return request.get(`/admin/service/sessi
 export function getSessionMessages(id, params) { return request.get(`/admin/service/sessions/${id}/messages`, { params }) }
 export function sendAgentMessage(id, data) { return request.post(`/admin/service/sessions/${id}/messages`, data) }
 export function closeServiceSession(id) { return request.put(`/admin/service/sessions/${id}/close`) }
+export function claimServiceSession(id) { return request.put(`/admin/service/sessions/${id}/claim`) }
+export function updateServiceSessionType(id, type) { return request.put(`/admin/service/sessions/${id}/type`, { type }) }
 
 // 快捷回复
 export function getQuickReplies() { return request.get('/admin/service/quick-replies') }

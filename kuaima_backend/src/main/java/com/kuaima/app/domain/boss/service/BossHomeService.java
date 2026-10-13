@@ -137,14 +137,26 @@ public class BossHomeService {
         if (accountId != null) {
             // 旧招聘账号仍以 targetUserId 记录实际操作账号，必须同时满足企业归属。
             BossRecruitAccount account = accountRepository.findById(accountId)
-                    .filter(a -> enterpriseMembers == null || (a.getTargetUserId() != null
-                            && enterpriseMembers.existsByEnterpriseIdAndUserIdAndStatus(enterpriseId,
-                                    a.getTargetUserId(), "ACTIVE")))
+                    .filter(a -> belongsToEnterpriseScope(a, enterpriseId, operatorId))
                     .orElseThrow(() -> new com.kuaima.app.common.ForbiddenBusinessException("招聘账号不属于当前企业"));
             Long target = account.getTargetUserId();
             orders = orders.stream().filter(o -> target == null || target.equals(o.getCreateBy())).toList();
         }
         return aggregateSchedule(date, orders);
+    }
+
+    /**
+     * 企业排班的招聘账号授权口径：
+     * 目标用户是企业 ACTIVE 成员，或账号绑定在当前操作者的账号组内。
+     * 第二种是历史账号组数据：老板先关联子账号、后完成企业认证时，
+     * 子账号目标用户不会自动写入 enterprise_member，但仍属于老板本人授权的账号组。
+     */
+    private boolean belongsToEnterpriseScope(BossRecruitAccount account, Long enterpriseId, Long operatorId) {
+        if (enterpriseMembers != null && account.getTargetUserId() != null
+                && enterpriseMembers.existsByEnterpriseIdAndUserIdAndStatus(enterpriseId, account.getTargetUserId(), "ACTIVE")) {
+            return true;
+        }
+        return operatorId != null && operatorId.equals(account.getOwnerUserId());
     }
 
     private Schedule aggregateSchedule(LocalDate date, List<BossOrder> orders) {

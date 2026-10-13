@@ -29,7 +29,7 @@ description: 快马项目高频踩坑清单。涉及 OSS 上传、私有文件�
 0. **状态/枚举字面量必须以常量类为准**：统计或筛选业务状态时，先读对应常量类（如 `BossStatus`）再写状态列表，禁止凭印象写字面量。已知坑：报名有效状态是 `已报名/已录用/已到岗/待结算/已完成`，写错会导致统计恒为 0 且无报错。
 10. **移除拦截/校验必须全局搜索整条链路**：小程序业务多为多页流程（如发布招工 = home → select-job → publish-info → recruit-demand），同一校验可能散落多个页面。删除时必须 `rg` 全局搜索校验函数名和跳转目标（如 `checkBossPublishEligibility`、`boss/realname`）确认零残留，而不是只改用户报错的那个页面；验证输出列出所有曾匹配文件。
 11. **列表/详情字段先判空**：日期类函数第一行 `if (!value) return '-'`，严禁对可能为 null 的时间直接 `getFullYear()`；金额/文本展示统一 `xx ?? '-'` 兜底。
-12. **改完必须重启对应进程再让用户验证**：后端改动重启 jar（报 `No static resource` 优先怀疑旧进程）；uniapp 改静态资源或移动文件后重启 dev 并按需清 `node_modules/.vite`。
+12. **改完必须重启对应进程再让用户验证**：后端改动重启 jar（报 `No static resource` 优先怀疑旧进程）；uniapp 改静态资源、移动文件或让组件新增依赖模块后重启 dev 并按需清 `node_modules/.vite`。微信端报 `module 'xxx.js' is not defined` 但源码/产物文件存在时，优先怀疑旧增量包未注册新模块，重启 dev 重新生成 `dist/dev/mp-weixin` 并在微信开发者工具清缓存编译。
 13. **"本地正常、用户不行"优先怀疑版本未更新**：小程序改动需重新 build → 开发者工具上传 → 后台设为体验版/提审，用户端删小程序重进；确认版本链路后再查代码。
 14. **权限按钮**：页面操作按钮接 `v-permission="'模块.页面.按钮'"`，key 必须与 AdminUserForm 三层权限树一致；路由/侧边栏用页面级 key，新旧 key 映射在 `admin-web/src/utils/permission.js` 维护。
 

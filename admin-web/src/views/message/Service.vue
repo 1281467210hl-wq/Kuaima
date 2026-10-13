@@ -2,127 +2,130 @@
   <div>
     <div class="page-header">
       <h1 class="page-title">客服管理</h1>
-      <p class="page-desc">在线客服会话管理、快捷回复、FAQ设置</p>
+      <p class="page-desc">在线客服、会话记录、常见问题</p>
     </div>
 
-    <div class="stat-cards">
-      <div class="stat-card">
-        <div class="stat-card-header">
-          <span class="stat-card-title">进行中会话</span>
-          <div class="stat-card-icon green"><i class="fas fa-comments"></i></div>
-        </div>
-        <div class="stat-card-value">{{ stats.openSessions || 0 }}</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-card-header">
-          <span class="stat-card-title">已结束会话</span>
-          <div class="stat-card-icon"><i class="fas fa-check-double"></i></div>
-        </div>
-        <div class="stat-card-value">{{ stats.closedSessions || 0 }}</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-card-header">
-          <span class="stat-card-title">快捷回复</span>
-          <div class="stat-card-icon blue"><i class="fas fa-reply"></i></div>
-        </div>
-        <div class="stat-card-value">{{ stats.totalQuickReplies || 0 }}</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-card-header">
-          <span class="stat-card-title">FAQ 数量</span>
-          <div class="stat-card-icon yellow"><i class="fas fa-circle-question"></i></div>
-        </div>
-        <div class="stat-card-value">{{ stats.totalFaqs || 0 }}</div>
-      </div>
-    </div>
-
-    <div class="content-grid">
-      <div class="card" style="grid-column: 1 / -1;">
-        <div class="card-header">
-          <span class="card-title">会话列表</span>
-          <el-select v-model="filterStatus" size="small" style="width:120px;" @change="loadSessions">
-            <el-option label="全部" value="" />
-            <el-option label="进行中" value="OPEN" />
-            <el-option label="已结束" value="CLOSED" />
-          </el-select>
+    <div class="service-grid">
+      <!-- 左列：当前活跃会话 -->
+      <div class="card">
+        <div class="section-title">
+          <span><i class="fas fa-headset section-icon"></i>当前活跃会话</span>
+          <button class="btn btn-outline btn-sm" @click="filterVisible = !filterVisible"><i class="fas fa-filter"></i> 筛选</button>
         </div>
 
-        <div class="service-list">
-          <div v-for="item in sessions" :key="item.id" class="service-item" @click="goChat(item.id)">
-            <div class="service-item-left">
-              <div class="mini-avatar">{{ String(item.userId || 'U').charAt(0) }}</div>
-              <div>
-                <div style="font-weight: 500;">用户 {{ item.userId }}</div>
-                <el-tag size="small" effect="light" :type="item.status === 'OPEN' ? 'success' : 'info'">
-                  {{ item.status === 'OPEN' ? '进行中' : '已结束' }}
-                </el-tag>
+        <div v-if="filterVisible" class="filter-panel">
+          <div class="filter-row"><span class="filter-label">用户：</span><el-input v-model="filterUser" placeholder="输入用户名或手机号" clearable style="width: 160px" /></div>
+          <div class="filter-row"><span class="filter-label">类型：</span>
+            <el-select v-model="filterType" placeholder="全部类型" clearable style="width: 120px">
+              <el-option label="咨询" value="consult" /><el-option label="投诉" value="complaint" /><el-option label="其他" value="other" />
+            </el-select>
+          </div>
+          <div class="filter-row"><span class="filter-label">状态：</span>
+            <el-select v-model="filterStatus" placeholder="全部状态" clearable style="width: 120px" @change="loadSessions">
+              <el-option label="等待中" value="OPEN" /><el-option label="处理中" value="PROCESSING" /><el-option label="已解决" value="CLOSED" />
+            </el-select>
+          </div>
+          <div class="filter-actions">
+            <button class="btn btn-outline btn-sm" @click="resetFilter">重置</button>
+            <button class="btn btn-primary btn-sm" @click="loadSessions"><i class="fas fa-search"></i> 应用筛选</button>
+          </div>
+        </div>
+
+        <el-table :data="filteredSessions" stripe :header-cell-style="{ background: '#F9FAFB', color: '#6B7280', fontWeight: 500 }">
+          <el-table-column label="会话ID" width="110">
+            <template #default="{ row }"><span class="session-id">{{ row.id }}</span></template>
+          </el-table-column>
+          <el-table-column label="用户" min-width="140">
+            <template #default="{ row }">
+              <div class="user-cell"><span class="user-avatar" :style="{ background: avatarColor(row.userId) }">{{ String(row.userName || row.userId || 'U').charAt(0) }}</span><span class="user-name">{{ row.userName || `用户${row.userId}` }}</span></div>
+            </template>
+          </el-table-column>
+          <el-table-column label="类型" width="90">
+            <template #default="{ row }"><span :class="['type-tag', typeClass(row.type)]">{{ typeText(row.type) }}</span></template>
+          </el-table-column>
+          <el-table-column label="等待时间" width="100">
+            <template #default="{ row }"><span :class="waitClass(row)">{{ waitText(row) }}</span></template>
+          </el-table-column>
+          <el-table-column label="状态" width="90">
+            <template #default="{ row }"><span :class="['status-badge', statusBadge(row.status)]">{{ statusText(row.status) }}</span></template>
+          </el-table-column>
+          <el-table-column label="操作" width="130" fixed="right">
+            <template #default="{ row }">
+              <div class="row-actions">
+                <template v-if="row.status === 'CLOSED'">
+                  <el-button link type="primary" size="small" @click="viewSession(row)">查看</el-button>
+                </template>
+                <template v-else>
+                  <el-button link type="primary" size="small" @click="handleClaim(row)">处理</el-button>
+                  <el-button link type="danger" size="small" @click="handleClose(row)">关闭</el-button>
+                </template>
+              </div>
+            </template>
+          </el-table-column>
+        </el-table>
+      </div>
+
+      <!-- 右列：快捷回复 + 常见问题 -->
+      <div class="right-col">
+        <div class="card">
+          <div class="section-title">
+            <span><i class="fas fa-bolt section-icon"></i>快捷回复</span>
+            <a class="add-btn" @click="showReplyDialog()"><i class="fas fa-plus"></i> 新增</a>
+          </div>
+          <div class="quick-reply-list">
+            <div v-for="reply in quickReplies" :key="reply.id" class="quick-reply-item">
+              <div class="quick-reply-content">
+                <span class="quick-reply-tag">{{ reply.category || '通用' }}</span>
+                <span class="quick-reply-text">{{ reply.content }}</span>
+              </div>
+              <div class="quick-reply-actions">
+                <button class="btn btn-outline btn-sm" type="button" title="复制" aria-label="复制" @click="copyReply(reply)">
+                  <i class="fas fa-copy"></i>
+                </button>
+                <button class="btn btn-secondary btn-sm" type="button" title="编辑" aria-label="编辑" @click="showReplyDialog(reply)">
+                  <i class="fas fa-edit"></i>
+                </button>
+                <button class="btn btn-danger btn-sm" type="button" title="删除" aria-label="删除" @click="handleDeleteReply(reply.id)">
+                  <i class="fas fa-trash"></i>
+                </button>
               </div>
             </div>
-            <div class="service-item-right">
-              <span class="service-time">{{ formatTime(item.timestamp) }}</span>
-              <el-button type="primary" link size="small">处理</el-button>
-            </div>
-          </div>
-          <div v-if="sessions.length === 0" style="text-align:center;padding:40px;color:#999;">
-            暂无会话
+            <div v-if="!quickReplies.length" class="empty-text">暂无快捷回复</div>
           </div>
         </div>
-      </div>
 
-      <div class="card">
-        <div class="card-header">
-          <span class="card-title">快捷回复</span>
-          <el-button link type="primary" size="small" @click="showReplyDialog()">新增</el-button>
-        </div>
-        <div class="quick-replies">
-          <div v-for="reply in quickReplies" :key="reply.id" class="reply-card">
-            <div class="reply-card-text">{{ reply.content }}</div>
-            <div class="reply-card-actions">
-              <el-button link size="small" @click.stop="showReplyDialog(reply)">编辑</el-button>
-              <el-button link size="small" type="danger" @click.stop="handleDeleteReply(reply.id)">删除</el-button>
+        <div class="card">
+          <div class="section-title">
+            <span><i class="fas fa-question-circle section-icon"></i>常见问题</span>
+            <a class="add-btn" @click="showFaqDialog()"><i class="fas fa-plus"></i> 新增</a>
+          </div>
+          <div class="faq-list">
+            <div v-for="faq in faqs" :key="faq.id" :class="['faq-item', { open: openFaq === faq.id }]">
+              <div class="faq-question" @click="openFaq = openFaq === faq.id ? null : faq.id">
+                <span class="faq-question-text">
+                  <span v-if="faq.category" class="faq-category-tag">{{ faq.category }}</span>
+                  {{ faq.question }}
+                </span>
+                <i :class="['fas', 'fa-chevron-down', 'faq-chevron']"></i>
+              </div>
+              <div v-show="openFaq === faq.id" class="faq-answer">{{ faq.answer }}</div>
             </div>
-          </div>
-          <div v-if="quickReplies.length === 0" style="text-align:center;padding:20px;color:#999;font-size:13px;">
-            暂无快捷回复
-          </div>
-        </div>
-      </div>
-
-      <div class="card">
-        <div class="card-header">
-          <span class="card-title">FAQ 管理</span>
-          <el-button link type="primary" size="small" @click="showFaqDialog()">新增</el-button>
-        </div>
-        <div class="quick-replies">
-          <div v-for="faq in faqs" :key="faq.id" class="reply-card">
-            <div class="reply-card-text"><b>{{ faq.question }}</b></div>
-            <div class="reply-card-answer">{{ faq.answer }}</div>
-            <div class="reply-card-actions">
-              <el-button link size="small" @click.stop="showFaqDialog(faq)">编辑</el-button>
-              <el-button link size="small" type="danger" @click.stop="handleDeleteFaq(faq.id)">删除</el-button>
-            </div>
-          </div>
-          <div v-if="faqs.length === 0" style="text-align:center;padding:20px;color:#999;font-size:13px;">
-            暂无 FAQ
+            <div v-if="!faqs.length" class="empty-text">暂无常见问题</div>
           </div>
         </div>
       </div>
     </div>
 
     <!-- 快捷回复编辑弹窗 -->
-    <el-dialog v-model="replyDialogVisible" :title="replyForm.id ? '编辑快捷回复' : '新增快捷回复'" width="500px">
-      <el-form :model="replyForm" label-width="80px">
-        <el-form-item label="回复内容">
-          <el-input v-model="replyForm.content" type="textarea" :rows="3" placeholder="输入快捷回复内容" />
+    <el-dialog v-model="replyDialogVisible" :title="replyForm.id ? '编辑快捷回复' : '新增快捷回复'" width="500px" class="prototype-dialog">
+      <el-form :model="replyForm" label-position="top" class="dialog-form">
+        <el-form-item label="回复内容" required>
+          <el-input v-model="replyForm.content" type="textarea" :autosize="{ minRows: 4 }" placeholder="请输入快捷回复内容..." />
         </el-form-item>
-        <el-form-item label="分类">
-          <el-input v-model="replyForm.category" placeholder="如：物流、退款" />
-        </el-form-item>
-        <el-form-item label="排序">
-          <el-input-number v-model="replyForm.sortOrder" :min="0" />
-        </el-form-item>
-        <el-form-item label="启用">
-          <el-switch v-model="replyForm.enabled" />
+        <el-form-item label="分类标签">
+          <el-select v-model="replyForm.category" placeholder="请选择分类标签" style="width: 100%">
+            <el-option v-for="tag in replyTags" :key="tag" :label="tag" :value="tag" />
+          </el-select>
         </el-form-item>
       </el-form>
       <template #footer>
@@ -132,22 +135,18 @@
     </el-dialog>
 
     <!-- FAQ 编辑弹窗 -->
-    <el-dialog v-model="faqDialogVisible" :title="faqForm.id ? '编辑FAQ' : '新增FAQ'" width="600px">
-      <el-form :model="faqForm" label-width="80px">
-        <el-form-item label="问题">
-          <el-input v-model="faqForm.question" placeholder="输入常见问题" />
+    <el-dialog v-model="faqDialogVisible" :title="faqForm.id ? '编辑常见问题' : '新增常见问题'" width="560px" class="prototype-dialog">
+      <el-form :model="faqForm" label-position="top" class="dialog-form">
+        <el-form-item label="问题分类">
+          <el-select v-model="faqForm.category" placeholder="请选择问题分类" style="width: 100%">
+            <el-option v-for="cat in faqCategories" :key="cat" :label="cat" :value="cat" />
+          </el-select>
         </el-form-item>
-        <el-form-item label="答案">
-          <el-input v-model="faqForm.answer" type="textarea" :rows="4" placeholder="输入问题答案" />
+        <el-form-item label="问题标题" required>
+          <el-input v-model="faqForm.question" placeholder="请输入问题标题" />
         </el-form-item>
-        <el-form-item label="分类">
-          <el-input v-model="faqForm.category" placeholder="如：账户、订单" />
-        </el-form-item>
-        <el-form-item label="排序">
-          <el-input-number v-model="faqForm.sortOrder" :min="0" />
-        </el-form-item>
-        <el-form-item label="启用">
-          <el-switch v-model="faqForm.enabled" />
+        <el-form-item label="解答内容" required>
+          <el-input v-model="faqForm.answer" type="textarea" :autosize="{ minRows: 6 }" placeholder="请输入详细解答内容..." />
         </el-form-item>
       </el-form>
       <template #footer>
@@ -163,7 +162,7 @@ import { ref, reactive, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
-  getServiceStats, getServiceSessions,
+  getServiceStats, getServiceSessions, claimServiceSession, closeServiceSession,
   getQuickReplies, createQuickReply, updateQuickReply, deleteQuickReply,
   getFaqs, createFaq, updateFaq, deleteFaq
 } from '@/api/service'
@@ -172,6 +171,12 @@ const router = useRouter()
 const stats = ref({})
 const sessions = ref([])
 const filterStatus = ref('')
+const filterUser = ref('')
+const filterType = ref('')
+const replyTags = ['通用', '订单咨询', '投诉处理', '结算问题', '系统使用']
+const faqCategories = ['账号问题', '订单问题', '结算问题', '功能使用', '投诉建议']
+const filterVisible = ref(false)
+const openFaq = ref(null)
 const quickReplies = ref([])
 const faqs = ref([])
 
@@ -192,6 +197,7 @@ const loadSessions = async () => {
   try {
     const res = await getServiceSessions({ status: filterStatus.value, page: 0, size: 50 })
     sessions.value = res.data || []
+    applySessionFilters()
   } catch (e) { console.error(e) }
 }
 
@@ -209,7 +215,60 @@ const loadFaqs = async () => {
   } catch (e) { console.error(e) }
 }
 
-const goChat = (id) => router.push({ name: 'ServiceChat', params: { id: String(id) } })
+const filteredSessions = ref([])
+const applySessionFilters = () => {
+  let list = sessions.value
+  if (filterType.value) { list = list.filter(item => (item.type || 'other') === filterType.value) }
+  if (filterUser.value) {
+    const kw = filterUser.value.trim().toLowerCase()
+    list = list.filter(item => String(item.userId || '').includes(kw) || String(item.userName || '').toLowerCase().includes(kw) || String(item.userPhone || '').includes(kw))
+  }
+  filteredSessions.value = list
+}
+const resetFilter = () => { filterUser.value = ''; filterType.value = ''; filterStatus.value = ''; loadSessions() }
+const avatarColor = (id) => {
+  const palette = ['#FF6B35', '#2563EB', '#10B981', '#8B5CF6', '#F59E0B', '#EC4899', '#06B6D4', '#64748B']
+  return `linear-gradient(135deg, ${palette[Number(id) % palette.length]}, ${palette[Number(id) % palette.length]}cc)`
+}
+const typeText = (type) => ({ consult: '咨询', complaint: '投诉', other: '其他' }[type] || '其他')
+const typeClass = (type) => ({ consult: 'type-consult', complaint: 'type-complaint', other: 'type-other' }[type] || 'type-other')
+const statusText = (status) => ({ OPEN: '等待中', PROCESSING: '处理中', CLOSED: '已解决' }[status] || status || '-')
+const statusBadge = (status) => ({ OPEN: 'warning', PROCESSING: 'info', CLOSED: 'success' }[status] || 'default')
+const waitText = (row) => {
+  if (row.status !== 'OPEN' && row.status !== 'PROCESSING') return '-'
+  if (!row.timestamp) return '刚刚'
+  const minutes = Math.floor((Date.now() - new Date(row.timestamp).getTime()) / 60000)
+  if (minutes < 1) return '刚刚'
+  return `${minutes}分钟`
+}
+const waitClass = (row) => {
+  if (row.status !== 'OPEN') return ''
+  const minutes = row.timestamp ? Math.floor((Date.now() - new Date(row.timestamp).getTime()) / 60000) : 0
+  return minutes > 5 ? 'waiting-danger' : minutes > 2 ? 'waiting-warn' : ''
+}
+
+const viewSession = row => router.push({ name: 'ServiceChat', params: { id: String(row.id) } })
+const handleClaim = async row => {
+  try {
+    await claimServiceSession(row.id)
+    await loadSessions()
+    router.push({ name: 'ServiceChat', params: { id: String(row.id) } })
+  } catch (e) {
+    if (e?.message) ElMessage.warning(e.message)
+  }
+}
+const handleClose = async row => {
+  try {
+    await ElMessageBox.confirm(`确定关闭会话 ${row.id} 吗？关闭后将标记为已解决。`, '关闭会话', { type: 'warning', confirmButtonText: '关闭', cancelButtonText: '取消' })
+  } catch { return }
+  try {
+    await closeServiceSession(row.id)
+    ElMessage.success('会话已关闭')
+    await loadSessions()
+  } catch (e) {
+    if (e?.message) ElMessage.warning(e.message)
+  }
+}
 
 // ====== 快捷回复 ======
 const replyDialogVisible = ref(false)
@@ -219,7 +278,7 @@ const showReplyDialog = (item) => {
   if (item) {
     Object.assign(replyForm, item)
   } else {
-    Object.assign(replyForm, { id: null, content: '', category: '', sortOrder: 0, enabled: true })
+    Object.assign(replyForm, { id: null, content: '', category: '通用', sortOrder: 0, enabled: true })
   }
   replyDialogVisible.value = true
 }
@@ -249,6 +308,31 @@ const handleDeleteReply = async (id) => {
   } catch (e) { if (e !== 'cancel') ElMessage.error('删除失败') }
 }
 
+const copyReply = async (reply) => {
+  const content = reply?.content?.trim()
+  if (!content) {
+    ElMessage.warning('快捷回复内容为空')
+    return
+  }
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(content)
+    } else {
+      const textarea = document.createElement('textarea')
+      textarea.value = content
+      textarea.style.position = 'fixed'
+      textarea.style.opacity = '0'
+      document.body.appendChild(textarea)
+      textarea.select()
+      document.execCommand('copy')
+      document.body.removeChild(textarea)
+    }
+    ElMessage.success('已复制到剪贴板')
+  } catch (e) {
+    ElMessage.error('复制失败，请手动复制')
+  }
+}
+
 // ====== FAQ ======
 const faqDialogVisible = ref(false)
 const faqForm = reactive({ id: null, question: '', answer: '', category: '', sortOrder: 0, enabled: true })
@@ -257,7 +341,7 @@ const showFaqDialog = (item) => {
   if (item) {
     Object.assign(faqForm, item)
   } else {
-    Object.assign(faqForm, { id: null, question: '', answer: '', category: '', sortOrder: 0, enabled: true })
+    Object.assign(faqForm, { id: null, question: '', answer: '', category: '账号问题', sortOrder: 0, enabled: true })
   }
   faqDialogVisible.value = true
 }
@@ -426,4 +510,44 @@ onMounted(() => {
   display: flex;
   gap: 8px;
 }
+.service-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; align-items: start; }
+.right-col { display: flex; flex-direction: column; gap: 16px; }
+.section-title { display: flex; align-items: center; justify-content: space-between; font-size: 16px; font-weight: 600; padding: 16px 20px; border-bottom: 1px solid var(--border); }
+.section-icon { color: var(--primary); margin-right: 8px; }
+.filter-panel { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin: 0 0 16px; padding: 14px 16px; background: #fff; border: 1px solid var(--border); border-top: none; box-shadow: 0 4px 12px rgba(0,0,0,.06); }
+.filter-row { display: flex; align-items: center; gap: 6px; }
+.filter-label { font-size: 13px; color: var(--text-secondary); white-space: nowrap; }
+.filter-actions { display: flex; gap: 8px; margin-left: auto; }
+.service-grid > .card > .el-table { width: 100%; }
+.session-id { font-family: monospace; color: var(--primary); font-size: 12px; }
+.user-cell { display: flex; align-items: center; gap: 8px; }
+.user-avatar { width: 28px; height: 28px; border-radius: 50%; color: #fff; font-size: 12px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.user-name { font-weight: 500; font-size: 13px; }
+.type-tag { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: 500; }
+.type-consult { background: #EFF6FF; color: #2563EB; }
+.waiting-warn { color: #D97706; font-weight: 500; }
+.waiting-danger { color: #DC2626; font-weight: 500; }
+.quick-reply-list { display: flex; flex-direction: column; gap: 8px; padding: 14px 16px 16px; }
+.quick-reply-item { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; background: #FAFAFA; border-left: 3px solid var(--primary); border-radius: 8px; }
+.quick-reply-item:hover { background: #FFF7F0; }
+.quick-reply-content { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; }
+.quick-reply-tag { flex-shrink: 0; padding: 3px 8px; border-radius: 4px; font-size: 10px; background: #FFF3ED; color: var(--primary); }
+.quick-reply-text { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; color: var(--text-primary); }
+.quick-reply-actions { display: flex; gap: 6px; flex-shrink: 0; }
+.quick-reply-actions .btn { padding: 3px 8px; font-size: 11px; }
+.faq-list { display: flex; flex-direction: column; gap: 8px; padding: 14px 16px 16px; }
+.faq-item { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.faq-question { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; cursor: pointer; background: #fff; }
+.faq-question:hover { background: #F9FAFB; }
+.faq-question-text { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 500; }
+.faq-category-tag { padding: 2px 8px; border-radius: 4px; font-size: 11px; background: #FFF3ED; color: var(--primary); }
+.faq-chevron { font-size: 12px; color: var(--text-muted); transition: transform .2s; }
+.faq-item.open .faq-chevron { transform: rotate(180deg); }
+.faq-answer { padding: 12px 14px; background: #FAFAFA; border-top: 1px solid var(--border); font-size: 13px; color: var(--text-secondary); line-height: 1.6; }
+.empty-text { text-align: center; color: var(--text-muted); font-size: 13px; padding: 24px 0; }
+@media (max-width: 768px) { .service-grid { grid-template-columns: 1fr; } }
+.prototype-dialog { border-radius: 16px; overflow: hidden; }
+.dialog-form :deep(.el-form-item__label) { padding-bottom: 6px; color: var(--text-secondary); font-size: 13px; font-weight: 500; }
+.dialog-form :deep(.el-textarea__inner) { line-height: 1.6; }
+.row-actions{display:flex;align-items:center;justify-content:center;gap:2px;white-space:nowrap}
 </style>

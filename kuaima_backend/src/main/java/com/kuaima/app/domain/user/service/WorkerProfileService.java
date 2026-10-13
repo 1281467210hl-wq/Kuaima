@@ -19,6 +19,7 @@ import com.kuaima.app.domain.boss.entity.BaseOrderItem;
 import com.kuaima.app.domain.boss.entity.BossOrder;
 import com.kuaima.app.domain.boss.repository.BaseOrderItemRespository;
 import com.kuaima.app.domain.boss.repository.BossOrderRespository;
+import com.kuaima.app.common.ForbiddenBusinessException;
 import com.kuaima.app.domain.user.entity.User;
 import com.kuaima.app.domain.user.model.WorkerProfileModels.UpdateWorkerProfileRequest;
 import com.kuaima.app.domain.user.model.WorkerProfileModels.WorkerProfile;
@@ -94,6 +95,21 @@ public class WorkerProfileService {
                         items.getContent().stream().map(BaseOrderItem::getId).toList())
                 .stream().collect(Collectors.toMap(BossReview::getItemId, Function.identity()));
         return items.map(item -> toWorkerOrder(item, orders.get(item.getOrderId()), bosses, reviews.get(item.getId())));
+    }
+
+    @Transactional(readOnly = true)
+    public WorkerOrder getOrder(Long userId, Long itemId) {
+        BaseOrderItem item = itemRepository.findById(itemId)
+                .orElseThrow(() -> new EntityNotFoundException("订单不存在: " + itemId));
+        if (!userId.equals(item.getUserId())) {
+            throw new ForbiddenBusinessException("只能查询当前登录零工的订单详情");
+        }
+        BossOrder order = orderRepository.findById(item.getOrderId())
+                .orElseThrow(() -> new EntityNotFoundException("订单关联的岗位不存在: " + item.getOrderId()));
+        User boss = order.getCreateBy() == null ? null
+                : userRepository.findById(order.getCreateBy()).orElse(null);
+        BossReview review = reviewRepository.findByItemId(item.getId()).orElse(null);
+        return toWorkerOrder(item, order, boss == null ? Map.of() : Map.of(order.getCreateBy(), boss), review);
     }
 
     /**

@@ -34,7 +34,7 @@
                 :http-request="handleLogoUpload"
                 accept="image/png,image/jpeg,image/svg+xml"
               >
-                <img v-if="platformForm.logo" :src="platformForm.logo" class="logo-preview" alt="logo" />
+                <img v-if="logoPreviewUrl" :src="logoPreviewUrl" class="logo-preview" alt="logo" />
                 <div v-else class="logo-upload-placeholder">
                   <i class="fas fa-cloud-upload-alt"></i>
                   <span>上传Logo</span>
@@ -692,6 +692,7 @@ const platformForm = reactive({
 })
 
 const logoUploading = ref(false)
+const logoPreviewUrl = ref("")
 
 const beforeLogoUpload = (file) => {
   const isImage = file.type.startsWith('image/')
@@ -711,9 +712,10 @@ const handleLogoUpload = async (options) => {
   logoUploading.value = true
   try {
     const res = await uploadFile(options.file)
-    const url = res.data?.url || res.url
-    if (url) {
-      platformForm.logo = url
+    const data = res?.data || res || {}
+    if (data.objectKey && data.url) {
+      platformForm.logo = data.objectKey
+      logoPreviewUrl.value = data.url
       ElMessage.success('Logo 上传成功，记得点击保存设置')
     } else {
       ElMessage.error('上传失败：未获取到图片地址')
@@ -817,12 +819,27 @@ const applyPlatformSettings = (list) => {
     map[item.settingKey] = item.settingValue
   })
   if (map['platform.name']) platformForm.name = map['platform.name']
-  if (map['platform.logo']) platformForm.logo = map['platform.logo']
+  const logoItem = (list || []).find(item => item.settingKey === 'platform.logo')
+  if (logoItem?.settingValue) {
+    platformForm.logo = ossObjectKey(logoItem.settingValue)
+    logoPreviewUrl.value = logoItem.displayValue || logoItem.settingValue
+  }
   if (map['platform.phone']) platformForm.phone = map['platform.phone']
   if (map['platform.workStart']) platformForm.workStart = map['platform.workStart']
   if (map['platform.workEnd']) platformForm.workEnd = map['platform.workEnd']
   if (map['platform.version']) platformForm.version = map['platform.version']
   if (map['platform.intro']) platformForm.intro = map['platform.intro']
+}
+
+function ossObjectKey(value) {
+  const text = String(value || '')
+  if (!text.startsWith('http')) return text
+  try {
+    const url = new URL(text)
+    return decodeURIComponent(url.pathname.replace(/^\//, ''))
+  } catch (_) {
+    return text
+  }
 }
 
 const applyRulesSettings = (list) => {

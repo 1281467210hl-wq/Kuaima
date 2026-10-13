@@ -4,7 +4,6 @@ import java.util.Map;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -12,6 +11,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
 import com.kuaima.app.common.Result;
+import com.kuaima.app.common.service.OssUploadResult;
 import com.kuaima.app.common.service.OssStorageService;
 
 /** 文件上传接口 */
@@ -20,11 +20,14 @@ import com.kuaima.app.common.service.OssStorageService;
 @Tag(name = "后台-文件上传", description = "图片文件上传")
 public class FileUploadController {
 
-    @Autowired
-    private OssStorageService ossStorageService;
+    private final OssStorageService ossStorageService;
+
+    public FileUploadController(OssStorageService ossStorageService) {
+        this.ossStorageService = ossStorageService;
+    }
 
     /** 上传图片：POST /admin/upload，form-data: file */
-    @Operation(summary = "上传图片", description = "form-data 字段 file；仅支持 image/* 类型，单文件不超过 2MB；按日期分目录存储，文件名随机生成；返回可访问 url 与 fileName")
+    @Operation(summary = "上传图片", description = "form-data 字段 file；仅支持 image/* 类型，单文件不超过 2MB；存储在 insurance/admin 目录，按日期分目录，文件名随机生成")
     @PostMapping
     public Result<Map<String, String>> upload(@RequestParam("file") MultipartFile file) {
         if (file.isEmpty()) {
@@ -47,6 +50,9 @@ public class FileUploadController {
         if (originalName != null && originalName.contains(".")) {
             ext = originalName.substring(originalName.lastIndexOf(".")).toLowerCase();
         }
-        return Result.success(ossStorageService.upload(file, "admin", ext));
+        OssUploadResult uploaded = ossStorageService.uploadResult(file, "insurance/admin", ext);
+        java.util.Map<String, String> result = uploaded.toMap();
+        result.put("url", ossStorageService.inlinePreviewUrl(uploaded.objectKey()));
+        return Result.success(result);
     }
 }

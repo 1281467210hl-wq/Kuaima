@@ -201,4 +201,48 @@ class WorkerProfileServiceTests {
         assertEquals(new java.math.BigDecimal("121.47"), list.get(0).longitude());
         assertEquals(new java.math.BigDecimal("31.23"), list.get(0).latitude());
     }
+
+    @Test
+    void getOrder_shouldReturnStoppedJobSnapshotForOwner() {
+        BaseOrderItem item = new BaseOrderItem();
+        item.setId(201L);
+        item.setOrderId(9100L);
+        item.setUserId(1L);
+        item.setStatus(BossStatus.ITEM_FINISHED);
+        item.setFinishDate(Date.valueOf(LocalDate.of(2026, 10, 12)));
+        BossOrder order = new BossOrder();
+        order.setId(9100L);
+        order.setOrderTitle("已停止招工的分拣岗");
+        order.setType("daily");
+        order.setSalary(320);
+        order.setAddress("上海市浦东新区");
+        order.setOrderStatus(BossStatus.ORDER_CANCELED);
+        order.setCreateBy(2L);
+        User boss = new User();
+        boss.setId(2L);
+        boss.setCompanyName("快马一公司");
+        when(itemRepository.findById(201L)).thenReturn(Optional.of(item));
+        when(orderRepository.findById(9100L)).thenReturn(Optional.of(order));
+        when(userRepository.findById(2L)).thenReturn(Optional.of(boss));
+        when(reviewRepository.findByItemId(201L)).thenReturn(Optional.empty());
+
+        WorkerOrder result = service.getOrder(1L, 201L);
+
+        assertEquals(201L, result.id());
+        assertEquals(9100L, result.orderId());
+        assertEquals("已停止招工的分拣岗", result.orderTitle());
+        assertEquals(BossStatus.ORDER_CANCELED, result.orderStatus());
+        assertEquals("快马一公司", result.companyName());
+    }
+
+    @Test
+    void getOrder_shouldRejectOtherWorkersItem() {
+        BaseOrderItem item = new BaseOrderItem();
+        item.setId(202L);
+        item.setUserId(1L);
+        when(itemRepository.findById(202L)).thenReturn(Optional.of(item));
+
+        assertThrows(com.kuaima.app.common.ForbiddenBusinessException.class,
+                () -> service.getOrder(2L, 202L));
+    }
 }

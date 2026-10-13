@@ -3,6 +3,7 @@ package com.kuaima.app.admin.controller;
 import java.util.HashMap;
 import java.util.Map;
 
+import com.alibaba.fastjson2.JSONObject;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 
@@ -55,21 +56,27 @@ public class AdminAuthController {
     @PostMapping("/login")
     public Result<Map<String, Object>> login(@RequestBody AdminLoginDto dto, HttpServletRequest request) {
         String ip = AdminLogInterceptor.clientIp(request);
-        if (!StringUtils.hasText(dto.getUsername()) || !StringUtils.hasText(dto.getPassword())) {
-            logService.record(dto.getUsername(), null, "登录", "后台登录", ip, "失败", "用户名或密码为空");
+        String username = dto == null ? null : dto.getUsername();
+        String password = dto == null ? null : dto.getPassword();
+        if (!StringUtils.hasText(username) || !StringUtils.hasText(password)) {
+            logService.record(username, null, "登录", "后台登录", ip, "失败",
+                    loginDetail(username, "用户名或密码为空"));
             return Result.error(400, "用户名和密码不能为空");
         }
-        AdminUser admin = adminUserRepository.findByUsername(dto.getUsername()).orElse(null);
-        if (admin == null || !passwordEncoder.matches(dto.getPassword(), admin.getPassword())) {
-            logService.record(dto.getUsername(), null, "登录", "后台登录", ip, "失败", "用户名或密码错误");
+        AdminUser admin = adminUserRepository.findByUsername(username).orElse(null);
+        if (admin == null || !passwordEncoder.matches(password, admin.getPassword())) {
+            logService.record(username, null, "登录", "后台登录", ip, "失败",
+                    loginDetail(username, "用户名或密码错误"));
             return Result.error(400, "用户名或密码错误");
         }
         if ("禁用".equals(admin.getStatus())) {
-            logService.record(dto.getUsername(), admin.getId(), "登录", "后台登录", ip, "失败", "账号已被禁用");
+            logService.record(username, admin.getId(), "登录", "后台登录", ip, "失败",
+                    loginDetail(username, "账号已被禁用"));
             return Result.error(403, "账号已被禁用");
         }
         if (!"SUPER_ADMIN".equals(admin.getRole()) && Boolean.FALSE.equals(admin.getAllowLogin())) {
-            logService.record(dto.getUsername(), admin.getId(), "登录", "后台登录", ip, "失败", "账号已被禁止登录");
+            logService.record(username, admin.getId(), "登录", "后台登录", ip, "失败",
+                    loginDetail(username, "账号已被禁止登录"));
             return Result.error(403, "该账号已被禁止登录");
         }
         admin.setLastLoginTime(LocalDateTime.now());
@@ -85,11 +92,19 @@ public class AdminAuthController {
         data.put("role", admin.getRole());
         data.put("permissions", admin.getPermissions());
 
-        logService.record(admin.getUsername(), admin.getId(), "登录", "后台登录", ip, "成功", "登录成功");
+        logService.record(admin.getUsername(), admin.getId(), "登录", "后台登录", ip, "成功",
+                loginDetail(username, "登录成功"));
         return Result.success(data);
     }
 
     @Operation(summary = "获取当前管理员", description = "返回当前登录管理员信息（含角色、权限树 permissions、创建者 createdBy 等），供前端路由守卫/菜单过滤/按钮鉴权使用")
+    private String loginDetail(String username, String result) {
+        JSONObject body = new JSONObject();
+        body.put("username", username);
+        body.put("password", "***");
+        return "POST /admin/auth/login | body=" + body.toJSONString() + " | ex=" + result;
+    }
+
     @GetMapping("/me")
     public Result<Map<String, Object>> me() {
         Object principal = SecurityContextHolder.getContext().getAuthentication() == null

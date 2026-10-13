@@ -284,6 +284,14 @@ export function listWorkerOrders(params = {}) {
   });
 }
 
+/** 零工订单详情：返回报名状态及关联岗位快照，岗位停止招工后仍可查看。 */
+export function getWorkerOrder(itemId) {
+  return request({
+    url: `/worker/orders/${normalizeId(itemId, "itemId")}`,
+    skipUserIdHeader: true,
+  });
+}
+
 /** 零工评价订单所属老板；同一报名条目重复提交时更新原评价。 */
 export function saveWorkerBossReview(itemId, data) {
   return request({
@@ -1609,6 +1617,11 @@ export function listFaq(category) {
 
 export function createChatSession(data) {
   return request({ url: "/chat/sessions", method: "POST", data });
+}
+
+/** 用户侧会话列表：轮询兜底时用来感知会话被客服关闭。 */
+export function listMyChatSessions(userId) {
+  return request({ url: `/chat/sessions?userId=${encodeURIComponent(userId)}` });
 }
 
 export function listChatMessages(id, params = {}) {

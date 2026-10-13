@@ -19,11 +19,13 @@
           <el-option label="重置密码" value="重置密码" />
         </el-select>
         <div class="date-picker-wrap" style="width: 240px;">
-          <el-date-picker v-model="dateRange" type="daterange" range-separator="至" start-placeholder="开始日期" end-placeholder="结束日期" style="width: 100%;" />
+          <el-date-picker v-model="dateRange" type="daterange" range-separator="至" start-placeholder="开始日期" end-placeholder="结束日期" value-format="YYYY-MM-DD" style="width: 100%;" />
         </div>
         <button class="btn btn-primary btn-sm" @click="loadData"><i class="fas fa-search"></i> 查询</button>
         <button class="btn btn-outline btn-sm" @click="resetFilters"><i class="fas fa-rotate-left"></i> 重置</button>
-        <button class="btn btn-outline btn-sm" style="margin-left: auto;"><i class="fas fa-download"></i> 导出</button>
+        <button class="btn btn-outline btn-sm export-button" style="margin-left: auto;" :disabled="exporting" @click="handleExport">
+          <i :class="['fas', exporting ? 'fa-spinner fa-spin' : 'fa-download']"></i> {{ exporting ? '导出中...' : '导出' }}
+        </button>
       </div>
 
       <el-table :data="logs" stripe :header-cell-style="{ background: '#F9FAFB', color: '#6B7280', fontWeight: 500 }">
@@ -94,7 +96,7 @@
         </div>
         <div class="log-detail-row">
           <span class="log-detail-label">详情描述：</span>
-          <span class="log-detail-value">{{ currentLog.detail || '-' }}</span>
+          <span class="log-detail-value">{{ detailDescription(currentLog) }}</span>
         </div>
         <div class="log-detail-row">
           <span class="log-detail-label">IP地址：</span>
@@ -110,6 +112,10 @@
             <span :class="['status-badge', currentLog.result === '成功' ? 'success' : 'default']">{{ currentLog.result || '-' }}</span>
           </span>
         </div>
+        <div class="log-request-block">
+          <div class="log-request-title">请求参数</div>
+          <pre class="log-detail-json">{{ requestParams(currentLog) }}</pre>
+        </div>
       </div>
     </el-dialog>
   </div>
@@ -117,6 +123,7 @@
 
 <script setup>
 import { ref, watch, onMounted } from 'vue'
+import { ElMessage } from 'element-plus'
 import { listLogs } from '@/api/system'
 
 const logs = ref([])
@@ -128,6 +135,7 @@ const currentPage = ref(1)
 const pageSize = ref(10)
 const detailVisible = ref(false)
 const currentLog = ref(null)
+const exporting = ref(false)
 
 const formatTime = (t) => {
   if (!t) return '-'
@@ -138,6 +146,29 @@ const formatTime = (t) => {
 const showDetail = (row) => {
   currentLog.value = row
   detailVisible.value = true
+}
+
+const requestParams = (log) => {
+  const detail = String(log?.detail || '')
+  const marker = ' | body='
+  const bodyIndex = detail.indexOf(marker)
+  if (bodyIndex < 0) return '{}'
+  let body = detail.slice(bodyIndex + marker.length)
+  const exceptionIndex = body.indexOf(' | ex=')
+  if (exceptionIndex >= 0) body = body.slice(0, exceptionIndex)
+  body = body.trim()
+  if (!body) return '{}'
+  try {
+    return JSON.stringify(JSON.parse(body), null, 2)
+  } catch (_) {
+    return body
+  }
+}
+
+const detailDescription = (log) => {
+  if (log?.type !== '登录') return log?.detail || '-'
+  const operator = log.operator || log.operatorAccount || '用户'
+  return `${operator}登录${log.result || '成功'}`
 }
 
 // 切换筛选条件时，自动回到第一页并重新加载
@@ -159,32 +190,61 @@ const onPageChange = (page) => {
 
 const loadData = async () => {
   try {
-    const res = await listLogs({
-      type: typeFilter.value || undefined,
-      page: currentPage.value - 1,
-      size: pageSize.value,
-    })
+    const res = await listLogs({ ...currentFilters(), page: currentPage.value - 1, size: pageSize.value })
     const d = res.data
     const list = Array.isArray(d) ? d : (d?.content || d?.list || [])
-    // 关键字 + 日期范围仍在前端过滤（后端未实现 LIKE 与日期范围查询）
-    const kw = searchKeyword.value.trim()
-    const [start, end] = dateRange.value || []
-    logs.value = list.filter(l => {
-      if (kw) {
-        const op = (l.operator || '').toLowerCase()
-        const tg = (l.target || '').toLowerCase()
-        if (!op.includes(kw.toLowerCase()) && !tg.includes(kw.toLowerCase())) return false
-      }
-      const t = l.createTime ? String(l.createTime).slice(0, 10) : (l.time ? String(l.time).slice(0, 10) : '')
-      if (start && t && t < start) return false
-      if (end && t && t > end) return false
-      return true
-    })
-    total.value = res.total ?? d?.total ?? list.length
+    logs.value = list
+    total.value = d?.totalElements ?? d?.total ?? res.total ?? list.length
   } catch (e) {
     console.warn('[Logs] 加载失败:', e)
     logs.value = []
     total.value = 0
+  }
+}
+
+const currentFilters = () => ({
+  type: typeFilter.value || undefined,
+  keyword: searchKeyword.value.trim() || undefined,
+  startDate: dateRange.value?.[0] || undefined,
+  endDate: dateRange.value?.[1] || undefined,
+})
+
+const handleExport = async () => {
+  if (exporting.value) return
+  exporting.value = true
+  try {
+    const pageSize = 1000
+    let page = 0
+    let total = Infinity
+    const rows = []
+    while (page * pageSize < total) {
+      const res = await listLogs({ ...currentFilters(), page, size: pageSize })
+      const data = res.data
+      const list = Array.isArray(data) ? data : (data?.content || data?.list || [])
+      total = Number(data?.totalElements ?? data?.total ?? res.total ?? list.length) || 0
+      rows.push(...list)
+      if (!list.length) break
+      page += 1
+    }
+    if (!rows.length) {
+      ElMessage.info('当前筛选条件下没有可导出的日志')
+      return
+    }
+    const headers = ['日志ID', '操作人', '登录账号', '操作类型', '操作对象', 'IP地址', '操作时间', '操作结果', '详情']
+    const lines = rows.map(row => [
+      row.id, row.operator, row.operatorAccount, row.type, row.target, row.ip,
+      formatTime(row.createTime), row.result, row.detail,
+    ].map(value => `"${String(value ?? '').replaceAll('"', '""')}"`).join(','))
+    const blob = new Blob([`\ufeff${headers.join(',')}\n${lines.join('\n')}`], { type: 'text/csv;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `操作日志-${new Date().toISOString().slice(0, 19).replaceAll(':', '')}.csv`
+    link.click()
+    URL.revokeObjectURL(url)
+    ElMessage.success(`已导出 ${rows.length} 条日志`)
+  } finally {
+    exporting.value = false
   }
 }
 
@@ -252,5 +312,29 @@ onMounted(loadData)
   font-size: 11px;
   font-weight: 600;
   margin-right: 4px;
+}
+
+.log-request-block {
+  margin-top: 14px;
+}
+.log-request-title {
+  margin-bottom: 8px;
+  color: var(--text-primary, #1F2937);
+  font-size: 13px;
+  font-weight: 600;
+}
+.log-detail-json {
+  max-height: 200px;
+  margin: 0;
+  padding: 12px;
+  overflow-y: auto;
+  border-radius: 6px;
+  background: #F5F6F8;
+  color: var(--text-primary, #1F2937);
+  font-family: 'Courier New', monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 </style>

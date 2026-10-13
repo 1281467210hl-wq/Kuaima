@@ -7,6 +7,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -45,6 +46,13 @@ public class WorkerOrderController {
                 PageRequest.of(Math.max(page, 0), Math.min(Math.max(size, 1), 100),
                         Sort.by(Sort.Direction.DESC, "id")));
         return Result.success(result.getContent(), result.getNumber(), result.getTotalElements());
+    }
+
+    @GetMapping("/{itemId}")
+    @Operation(summary = "零工订单详情", description = "按报名条目 ID 查询当前登录零工的订单及岗位快照信息；岗位停止招工后仍可查看")
+    public Result<WorkerOrder> getOrder(@PathVariable Long itemId, Authentication authentication) {
+        LoginUser worker = currentWorker(authentication);
+        return Result.success(workerProfileService.getOrder(worker.id(), itemId));
     }
 
     private LoginUser currentWorker(Authentication authentication) {

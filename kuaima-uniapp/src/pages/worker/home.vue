@@ -523,7 +523,7 @@ onMounted(() => {
       }
     }
   } catch (_) {}
-  requestCurrentLocation();
+  // 定位仅在用户选择距离筛选时按需获取；提前请求会触发微信隐私授权弹窗，阻塞首屏体验。
   loadJobs();
 });
 </script>

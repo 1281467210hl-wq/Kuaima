@@ -23,6 +23,10 @@ public class ChatSession extends BaseEntity {
     @Column(comment = "客服ID")
     private Long agentId;
 
-    @Column(length = 20, comment = "会话状态: OPEN/CLOSED")
+    @Column(length = 20, comment = "会话状态: OPEN/PROCESSING/CLOSED")
     private String status;
+
+    /** 对话类型：consult 咨询 / complaint 投诉 / other 其他，默认其他。 */
+    @Column(length = 20, comment = "对话类型: consult/complaint/other")
+    private String type = "other";
 }

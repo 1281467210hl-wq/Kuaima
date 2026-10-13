@@ -202,10 +202,8 @@ export default {
       this.overviewLoading = true;
       this.statsLoading = true;
       try {
-        // 定位仅用于优化附近人数展示，不能阻塞首页主体加载。
-        const location = await this.getCurrentLocation(1200);
+        // 首屏先不带定位立即加载主体数据；定位仅影响附近零工数，到货后后台静默补一次。
         const result = await getBossHomeOverview({
-          ...(location || {}),
           accountId: this.currentAccountId || undefined,
         });
         this.city = result?.city || "";
@@ -225,6 +223,7 @@ export default {
           // 排班属于次级信息，独立加载，避免首页等待第二个接口。
           this.loadSchedule(today);
         }
+        this.refreshNearbyInBackground();
       } catch (error) {
         this.handleRequestError(error, "首页数据加载失败");
       } finally {
@@ -232,6 +231,22 @@ export default {
         this.overviewLoading = false;
       }
     },
+    async refreshNearbyInBackground() {
+      const location = await this.getCurrentLocation(1000);
+      if (!location || this.overviewLoading) return;
+      try {
+        const result = await getBossHomeOverview({
+          ...location,
+          accountId: this.currentAccountId || undefined,
+        });
+        if (result?.city) this.city = result.city;
+        this.nearbyWorkers = Number(result?.nearbyWorkers || 0);
+        this.fastestMinutes = Number(result?.fastestMinutes || 0);
+      } catch (_) {
+        // 定位增强信息失败不影响首页主体数据。
+      }
+    },
+
     getCurrentLocation(timeout = 1200) {
       return new Promise((resolve) => {
         let settled = false;
@@ -346,7 +361,8 @@ export default {
     },
     handleRequestError(error, fallback) {
       const status = Number(error?.code || error?.statusCode);
-      if (status === 401 || status === 403) return handleTokenInvalid({ role: "boss" });
+      // 401 才是登录态失效；403 是业务权限/归属校验失败，应提示原因并保留当前登录。
+      if (status === 401) return handleTokenInvalid({ role: "boss" });
       uni.showToast({ title: error?.message || fallback, icon: "none" });
     },
     async navigateTo(pageName) {

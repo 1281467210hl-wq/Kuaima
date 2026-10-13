@@ -14,28 +14,36 @@
     <!-- 菜单 -->
     <nav class="sidebar-menu">
       <template v-for="group in filteredMenuGroups" :key="group.id">
-        <div class="menu-group-title" v-show="!appStore.sidebarCollapsed && group.items.length">{{ group.name }}</div>
-        <router-link
-          v-for="item in group.items"
-          :key="item.path"
-          :to="item.path"
-          class="menu-item"
-          active-class="active"
-        >
-          <i :class="['fas', item.icon]"></i>
-          <span v-show="!appStore.sidebarCollapsed">{{ item.name }}</span>
-        </router-link>
+        <div v-if="group.items.length" class="menu-parent" :class="{ open: openGroups.has(group.id) }" @click="toggleGroup(group.id)">
+          <i :class="['fas', group.icon]"></i>
+          <span v-show="!appStore.sidebarCollapsed">{{ group.name }}</span>
+          <i v-show="!appStore.sidebarCollapsed" class="fas fa-chevron-down menu-arrow"></i>
+        </div>
+        <template v-if="openGroups.has(group.id) || appStore.sidebarCollapsed">
+          <router-link
+            v-for="item in group.items"
+            :key="item.path"
+            :to="item.path"
+            class="menu-item"
+            active-class="active"
+          >
+            <i :class="['fas', item.icon]"></i>
+            <span v-show="!appStore.sidebarCollapsed">{{ item.name }}</span>
+          </router-link>
+        </template>
       </template>
     </nav>
   </div>
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { useAppStore } from '@/stores/app'
 import { useUserStore } from '@/stores/user'
 import { hasPerm } from '@/utils/permission'
 
+const route = useRoute()
 const appStore = useAppStore()
 const userStore = useUserStore()
 
@@ -129,6 +137,24 @@ const filteredMenuGroups = computed(() => {
     }))
     .filter((group) => group.items.length > 0)
 })
+
+const openGroups = ref(new Set())
+
+const toggleGroup = groupId => {
+  const next = new Set(openGroups.value)
+  if (next.has(groupId)) next.delete(groupId)
+  else next.add(groupId)
+  openGroups.value = next
+}
+
+const syncOpenGroupByRoute = () => {
+  const activeGroup = filteredMenuGroups.value.find(group =>
+    group.items.some(item => route.path === item.path || route.path.startsWith(item.path + '/'))
+  )
+  if (activeGroup) openGroups.value = new Set([activeGroup.id])
+}
+
+watch(() => route.path, syncOpenGroupByRoute, { immediate: true })
 
 </script>
 
@@ -239,4 +265,9 @@ const filteredMenuGroups = computed(() => {
   }
 }
 
+.menu-parent { display: flex; align-items: center; gap: 10px; padding: 11px 20px; color: rgba(255,255,255,.85); cursor: pointer; font-size: 14px; font-weight: 500; user-select: none; border-left: 3px solid transparent; }
+.menu-parent:hover { background: rgba(255,255,255,.08); color: #fff; }
+.menu-parent > i { width: 20px; text-align: center; font-size: 14px; }
+.menu-parent .menu-arrow { margin-left: auto; font-size: 10px; opacity: .55; transition: transform .25s; }
+.menu-parent.open .menu-arrow { transform: rotate(180deg); }
 </style>

@@ -16,6 +16,10 @@ import org.springframework.web.bind.annotation.RestController;
 import com.kuaima.app.admin.entity.AdminSetting;
 import com.kuaima.app.admin.repository.AdminSettingRepository;
 import com.kuaima.app.common.Result;
+import com.kuaima.app.common.service.OssStorageService;
+import com.kuaima.app.domain.message.constant.MessageType;
+import com.kuaima.app.domain.message.service.MessageService;
+import com.kuaima.app.domain.user.repository.UserRepository;
 import com.kuaima.app.service.SmsService;
 
 import java.time.LocalDateTime;
@@ -29,26 +33,54 @@ public class AdminSettingController {
 
     private final AdminSettingRepository repo;
     private final SmsService smsService;
+    private final MessageService messageService;
+    private final UserRepository userRepository;
+    private final OssStorageService ossStorageService;
 
-    public AdminSettingController(AdminSettingRepository repo, SmsService smsService) {
+    public AdminSettingController(AdminSettingRepository repo, SmsService smsService,
+                                   MessageService messageService, UserRepository userRepository,
+                                   OssStorageService ossStorageService) {
         this.repo = repo;
         this.smsService = smsService;
+        this.messageService = messageService;
+        this.userRepository = userRepository;
+        this.ossStorageService = ossStorageService;
     }
 
     @Operation(summary = "设置列表", description = "返回全部平台参数设置，无分页")
     @GetMapping
-    public Result<List<AdminSetting>> list() { return Result.success(repo.findAll()); }
+    public Result<List<AdminSetting>> list() {
+        return Result.success(withLogoPreview(repo.findAll()));
+    }
 
     @Operation(summary = "按分类查询设置", description = "按分类 category 返回该分类下全部设置项")
     @GetMapping("/category/{category}")
     public Result<List<AdminSetting>> byCategory(@PathVariable String category) {
-        return Result.success(repo.findByCategory(category));
+        return Result.success(withLogoPreview(repo.findByCategory(category)));
     }
 
     @Operation(summary = "设置详情", description = "按 settingKey 查询单条设置；不存在抛出异常")
     @GetMapping("/{key}")
     public Result<AdminSetting> get(@PathVariable String key) {
-        return Result.success(repo.findById(key).orElseThrow());
+        return Result.success(withLogoPreview(repo.findById(key).orElseThrow()));
+    }
+
+    private List<AdminSetting> withLogoPreview(List<AdminSetting> settings) {
+        settings.forEach(this::withLogoPreview);
+        return settings;
+    }
+
+    private AdminSetting withLogoPreview(AdminSetting setting) {
+        if (!"platform.logo".equals(setting.getSettingKey()) || !isOssObject(setting.getSettingValue())) {
+            return setting;
+        }
+        setting.setDisplayValue(ossStorageService.inlinePreviewUrl(setting.getSettingValue()));
+        return setting;
+    }
+
+    private boolean isOssObject(String value) {
+        return value != null && (value.startsWith("insurance/")
+                || value.contains(".aliyuncs.com/insurance/"));
     }
 
     /** 保存/更新 设置 */
@@ -153,10 +185,22 @@ public class AdminSettingController {
                     "sentAt", LocalDateTime.now().toString()
             ));
         }
+        if ("both".equals(type)) {
+            String err = smsService.sendCode(receiver);
+            if (err != null) {
+                return Result.error("短信发送失败: " + err);
+            }
+        }
 
-        // 站内信：记录日志并返回成功
-        System.out.println("[测试发送] type=" + type + ", receiver=" + receiver
-                + ", template=" + templateTitle + ", content=" + content);
+        // 站内信：按手机号定位用户并写入真实收件箱；both 渠道同时发送短信。
+        var targetUser = userRepository.findByPhone(receiver).stream().findFirst().orElse(null);
+        if (targetUser == null) {
+            return Result.error("该手机号未注册平台账号，无法发送站内信");
+        }
+        String title = templateTitle.isBlank() ? "测试消息" : templateTitle;
+        String body = content.isBlank() ? "这是一条来自后台的模板测试消息。" : content;
+        messageService.sendToUser(targetUser.getId(), MessageType.SYSTEM_NOTICE, title, body,
+                "TEMPLATE_TEST", null);
         String masked = receiver.substring(0, 3) + "****" + receiver.substring(7);
         return Result.success(Map.of(
                 "success", true,
