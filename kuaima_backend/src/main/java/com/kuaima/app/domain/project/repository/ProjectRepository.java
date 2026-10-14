@@ -1,6 +1,7 @@
 package com.kuaima.app.domain.project.repository;
 
 import java.util.List;
+import java.util.Optional;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -14,4 +15,6 @@ public interface ProjectRepository extends JpaRepository<Project, Long>, JpaSpec
     List<Project> findByStatus(String status);
 
     Page<Project> findByStatus(String status, Pageable pageable);
+
+    Optional<Project> findByIdempotencyKey(String idempotencyKey);
 }

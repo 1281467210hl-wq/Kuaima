@@ -2,103 +2,99 @@
   <view class="container">
     <BossPageHeader title="入职记录" />
     <scroll-view scroll-y class="body">
-      <!-- 统计 -->
-      <view class="stats">
-        <view class="stat">
-          <text class="stat-value">{{ stats.all || 0 }}</text>
-          <text class="stat-label">全部</text>
-        </view>
-        <view class="stat">
-          <text class="stat-value orange">{{ stats.pending || 0 }}</text>
-          <text class="stat-label">审核中</text>
-        </view>
-        <view class="stat">
-          <text class="stat-value">{{ stats.passed || 0 }}</text>
-          <text class="stat-label">已通过</text>
-        </view>
-        <view class="stat">
-          <text class="stat-value reject">{{ stats.rejected || 0 }}</text>
-          <text class="stat-label">已拒绝</text>
-        </view>
-      </view>
-
-      <!-- Tab -->
-      <view class="tab-bar">
-        <view
-          v-for="t in tabs"
-          :key="t.key"
-          class="tab-item"
-          :class="{ active: status === t.key }"
-          @click="switchStatus(t.key)"
-        >
-          {{ t.label }}
-          <text v-if="t.key === 'pending' && stats.pending" class="tab-badge">{{ stats.pending }}</text>
-        </view>
-      </view>
-
-      <!-- 列表 -->
-      <view v-for="a in list" :key="a.id" class="apply-card">
-        <view class="apply-head">
-          <view class="apply-avatar" :style="{ background: avatarColor(a.name) }">
-            {{ (a.name || "?").charAt(0) }}
+      <!-- 已入职成员列表 -->
+      <view v-if="list.length" class="apply-list">
+        <view v-for="a in list" :key="a.id" class="apply-card">
+          <view class="apply-head">
+            <view class="apply-name">{{ a.name || "—" }}</view>
+            <view class="apply-sub">{{ a.job || "岗位待定" }}</view>
           </view>
-          <view class="apply-info">
-            <view class="apply-name">
-              {{ a.name }}
-              <text class="apply-badge" :class="badgeClass(a.status)">{{ ONBOARD_STATUS_TEXT[a.status] || a.status }}</text>
-            </view>
-            <view class="apply-sub">{{ a.job || "岗位待定" }} · 申请加入本项目</view>
+          <view class="apply-meta">
+            <text>📋 入职日期：{{ a.joinDate || "—" }}</text>
+            <text>📞 {{ a.phone || "—" }}</text>
           </view>
         </view>
-        <view class="apply-meta">
-          <text>🕒 {{ formatTime(a.applyTime) || "—" }}</text>
-          <text>📞 {{ a.phone || "—" }}</text>
-        </view>
-        <view v-if="a.status === 'pending'" class="apply-actions">
-          <view class="apply-btn danger" @click="reject(a)">拒绝</view>
-          <view class="apply-btn primary" @click="pass(a)">通过入职</view>
-        </view>
-        <view v-else-if="a.status === 'passed'" class="apply-meta">
-          <text>✅ 已于 {{ formatCnDate(a.joinDate) || "—" }} 入职</text>
-        </view>
       </view>
-
-      <view v-if="!list.length" class="empty">
+      <view v-else class="empty">
         <text class="empty-ico">📝</text>
-        <text class="empty-text">{{ loading ? "加载中…" : "该状态下暂无入职申请" }}</text>
+        <text class="empty-text">{{ loading ? "加载中…" : "暂无已入职成员" }}</text>
       </view>
       <view class="bottom-space" />
     </scroll-view>
+
+    <!-- 底部操作 -->
+    <view class="footer">
+      <view class="primary-btn" @click="openAddModal">
+        <text class="btn-ico">＋</text>新增项目成员
+      </view>
+    </view>
+
+    <!-- 新增项目成员弹窗（候选人选择） -->
+    <view v-if="showAdd" class="ap-overlay" @click="closeAddModal">
+      <view class="ap-sheet" @click.stop>
+        <view class="ap-head">
+          <text class="ap-head-title">新增项目成员</text>
+          <text class="ap-head-close" @click="closeAddModal">✕</text>
+        </view>
+        <view class="ap-search">
+          <text class="ap-search-ico">🔍</text>
+          <input
+            class="ap-search-input"
+            v-model="keyword"
+            placeholder="搜索候选人姓名"
+            @input="onSearchInput"
+          />
+        </view>
+        <scroll-view scroll-y class="ap-list">
+          <view
+            v-for="c in candidates"
+            :key="c.id"
+            class="ap-item"
+            :class="{ selected: selectedId === c.id }"
+            @click="selectCandidate(c.id)"
+          >
+            <view class="ap-avatar" :style="{ background: avatarColor(c.name) }">
+              {{ (c.name || "?").charAt(0) }}
+            </view>
+            <view class="ap-info">
+              <view class="ap-name">{{ c.name }}</view>
+              <view class="ap-sub">{{ c.jobDesc }}</view>
+            </view>
+            <view class="ap-check">
+              <text v-if="selectedId === c.id">✓</text>
+            </view>
+          </view>
+          <view v-if="!candidates.length" class="ap-empty">
+            {{ searching ? "搜索中…" : "暂无匹配候选人" }}
+          </view>
+        </scroll-view>
+        <view class="ap-footer">
+          <view class="ap-btn ap-cancel" @click="closeAddModal">取消</view>
+          <view class="ap-btn ap-confirm" @click="confirmAdd">确认添加</view>
+        </view>
+      </view>
+    </view>
   </view>
 </template>
 
 <script>
 import BossPageHeader from "@/components/BossPageHeader.vue";
-import {
-  getOnboardStats,
-  listOnboard,
-  passOnboard,
-  rejectOnboard,
-  avatarColor,
-  ONBOARD_STATUS_TEXT,
-  formatCnDate,
-} from "@/api/project";
+import { listOnboard, listMembers, addMember, avatarColor } from "@/api/project";
+import { listBossTalents } from "@/api/backend";
 
 export default {
   components: { BossPageHeader },
   data() {
     return {
-      ONBOARD_STATUS_TEXT,
       projectId: "",
-      stats: {},
-      status: "pending",
-      tabs: [
-        { key: "pending", label: "审核中" },
-        { key: "passed", label: "已通过" },
-        { key: "rejected", label: "已拒绝" },
-      ],
       list: [],
       loading: false,
+      showAdd: false,
+      keyword: "",
+      candidates: [],
+      selectedId: null,
+      searching: false,
+      searchTimer: null,
     };
   },
   onLoad(query) {
@@ -107,16 +103,30 @@ export default {
   },
   methods: {
     avatarColor,
-    formatCnDate,
     async load() {
       this.loading = true;
       try {
-        const [stats, list] = await Promise.all([
-          getOnboardStats(this.projectId).catch(() => ({})),
-          listOnboard(this.projectId, this.status).catch(() => []),
+        // 1013 原型：入职记录页展示已入职成员列表
+        // 数据 = 已通过入职申请 + 在职项目成员（新增项目成员直接写入成员表，按名字去重合并）
+        const [onboards, members] = await Promise.all([
+          listOnboard(this.projectId, "passed").catch(() => []),
+          listMembers(this.projectId, "active").catch(() => []),
         ]);
-        this.stats = stats || {};
-        this.list = Array.isArray(list) ? list : [];
+        const rows = (Array.isArray(onboards) ? onboards : []).map((a) => ({
+          id: `o${a.id}`,
+          name: a.name,
+          job: a.job,
+          phone: a.phone,
+          joinDate: a.joinDate,
+        }));
+        const seen = new Set(rows.map((r) => r.name));
+        (Array.isArray(members) ? members : [])
+          .filter((m) => !seen.has(m.name))
+          .forEach((m) =>
+            rows.push({ id: `m${m.id}`, name: m.name, job: m.role, phone: m.phone, joinDate: m.joinDate }),
+          );
+        rows.sort((x, y) => String(y.joinDate || "").localeCompare(String(x.joinDate || "")));
+        this.list = rows;
       } catch (e) {
         console.warn("入职记录加载失败", e);
         this.list = [];
@@ -124,39 +134,65 @@ export default {
         this.loading = false;
       }
     },
-    switchStatus(key) {
-      if (this.status === key) return;
-      this.status = key;
-      this.load();
+    openAddModal() {
+      this.selectedId = null;
+      this.keyword = "";
+      this.showAdd = true;
+      this.searchCandidates();
     },
-    badgeClass(status) {
-      return {
-        pending: "pending",
-        passed: "passed",
-        rejected: "rejected",
-      }[status] || "pending";
+    closeAddModal() {
+      this.showAdd = false;
     },
-    formatTime(v) {
-      if (!v) return "";
-      const s = String(v).replace("T", " ");
-      return s.slice(0, 16);
+    onSearchInput() {
+      if (this.searchTimer) clearTimeout(this.searchTimer);
+      this.searchTimer = setTimeout(() => this.searchCandidates(), 300);
     },
-    async pass(a) {
+    async searchCandidates() {
+      this.searching = true;
       try {
-        await passOnboard(this.projectId, a.id);
-        uni.showToast({ title: "已通过入职", icon: "success" });
-        this.load();
+        // 候选人来源：老板人才库（GET /boss/talents，keyword 按姓名模糊匹配）
+        const res = await listBossTalents({ page: 0, size: 20, keyword: this.keyword.trim() });
+        const body = (res && res.data) || res || {};
+        const records = Array.isArray(body) ? body : body.records || body.content || [];
+        this.candidates = records.map((u) => ({
+          id: u.id,
+          name: u.nickname || u.name || "候选人",
+          job: (u.category || "").split(",")[0] || "零工",
+          exp: u.experience || "",
+          jobDesc: `${(u.category || "").split(",")[0] || "零工"} · ${u.experience || "经验不限"}`,
+        }));
       } catch (e) {
-        uni.showToast({ title: "操作失败", icon: "none" });
+        console.warn("候选人搜索失败", e);
+        this.candidates = [];
+      } finally {
+        this.searching = false;
       }
     },
-    async reject(a) {
+    selectCandidate(id) {
+      this.selectedId = id;
+    },
+    async confirmAdd() {
+      if (!this.selectedId) {
+        uni.showToast({ title: "请选择要新增的候选人", icon: "none" });
+        return;
+      }
+      const c = this.candidates.find((x) => x.id === this.selectedId);
+      if (!c) return;
+      const d = new Date();
+      const joinDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
       try {
-        await rejectOnboard(this.projectId, a.id);
-        uni.showToast({ title: "已拒绝", icon: "none" });
+        await addMember(this.projectId, {
+          userId: c.id,
+          name: c.name,
+          role: c.job,
+          status: "active",
+          joinDate,
+        });
+        uni.showToast({ title: `已将 ${c.name} 新增为项目成员`, icon: "none" });
+        this.showAdd = false;
         this.load();
       } catch (e) {
-        uni.showToast({ title: "操作失败", icon: "none" });
+        uni.showToast({ title: "添加失败，请重试", icon: "none" });
       }
     },
   },
@@ -180,46 +216,6 @@ export default {
   padding: 12px 16px 0;
   box-sizing: border-box;
 }
-.stats {
-  display: flex;
-  background: #fff;
-  border-radius: 12px;
-  padding: 14px 0;
-  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.04);
-  margin-bottom: 12px;
-  width: 100%;
-  box-sizing: border-box;
-}
-.stat { flex: 1; text-align: center; }
-.stat-value { font-size: 20px; font-weight: 700; color: #333; display: block; }
-.stat-value.orange { color: #ff6b35; }
-.stat-value.reject { color: #888; }
-.stat-label { font-size: 11px; color: #999; margin-top: 3px; display: block; }
-.tab-bar {
-  display: flex;
-  background: #fff;
-  padding: 4px;
-  border-radius: 12px;
-  margin-bottom: 12px;
-  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.04);
-  width: 100%;
-  box-sizing: border-box;
-}
-.tab-item {
-  flex: 1;
-  text-align: center;
-  padding: 8px 0;
-  font-size: 13px;
-  color: #888;
-  border-radius: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-}
-.tab-item.active { background: linear-gradient(135deg, #fff0e8, #ffe0d0); color: #ff6b35; font-weight: 600; }
-.tab-badge { background: #ffe0d0; color: #ff6b35; font-size: 10px; padding: 1px 6px; border-radius: 8px; }
-.tab-item.active .tab-badge { background: #fff; color: #ff6b35; }
 .apply-card {
   background: #fff;
   border-radius: 14px;
@@ -230,33 +226,129 @@ export default {
   box-sizing: border-box;
   overflow: hidden;
 }
-.apply-head { display: flex; gap: 12px; align-items: center; margin-bottom: 10px; }
-.apply-avatar {
-  width: 44px;
-  height: 44px;
-  border-radius: 50%;
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #fff;
-  font-size: 16px;
-  font-weight: 600;
-}
-.apply-info { flex: 1; min-width: 0; }
-.apply-name { font-size: 15px; font-weight: 600; color: #333; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.apply-head { margin-bottom: 10px; }
+.apply-name { font-size: 15px; font-weight: 600; color: #333; }
 .apply-sub { font-size: 12px; color: #999; margin-top: 3px; }
-.apply-meta { display: flex; gap: 12px; font-size: 11px; color: #999; padding-top: 10px; border-top: 0.5px solid #f5f5f5; width: 100%; box-sizing: border-box; }
-.apply-actions { display: flex; gap: 8px; margin-top: 10px; }
-.apply-btn { flex: 1; padding: 8px 0; border-radius: 18px; font-size: 12px; border: none; font-weight: 500; }
-.apply-btn.primary { background: linear-gradient(135deg, #ff6b35, #ff8c5a); color: #fff; }
-.apply-btn.danger { background: #fee2e2; color: #dc2626; }
-.apply-badge { font-size: 10px; padding: 2px 8px; border-radius: 10px; font-weight: 600; }
-.apply-badge.pending { background: #ebf3ff; color: #2563eb; }
-.apply-badge.passed { background: #e8f8ef; color: #10b981; }
-.apply-badge.rejected { background: #f3f4f6; color: #888; }
+.apply-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 11px;
+  color: #999;
+  padding-top: 10px;
+  border-top: 0.5px solid #f5f5f5;
+}
 .empty { text-align: center; padding: 40px 0; color: #bbb; }
 .empty-ico { font-size: 32px; display: block; margin-bottom: 10px; }
 .empty-text { font-size: 13px; }
 .bottom-space { height: 16px; }
+.footer {
+  flex-shrink: 0;
+  display: flex;
+  gap: 12px;
+  padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
+  background: #fff;
+  border-top: 0.5px solid #f0f0f0;
+}
+.primary-btn {
+  flex: 1;
+  background: linear-gradient(135deg, #ff6b35, #ff8c5a);
+  color: #fff;
+  border-radius: 24px;
+  text-align: center;
+  padding: 13px 0;
+  font-size: 15px;
+  font-weight: 600;
+  box-shadow: 0 4px 12px rgba(255, 107, 53, 0.3);
+}
+.btn-ico { margin-right: 6px; font-weight: 700; }
+
+/* 新增项目成员弹窗（候选人选择） */
+.ap-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 90;
+  display: flex;
+  align-items: flex-end;
+}
+.ap-sheet {
+  width: 100%;
+  background: #fff;
+  border-radius: 16px 16px 0 0;
+  max-height: 75vh;
+  display: flex;
+  flex-direction: column;
+}
+.ap-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 18px;
+  border-bottom: 1px solid #f0f0f0;
+}
+.ap-head-title { font-size: 16px; font-weight: 600; color: #333; }
+.ap-head-close { font-size: 15px; color: #999; padding: 2px 6px; }
+.ap-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 18px;
+  border-bottom: 1px solid #f5f5f5;
+}
+.ap-search-ico { color: #999; font-size: 14px; }
+.ap-search-input { flex: 1; border: none; outline: none; font-size: 14px; background: transparent; }
+.ap-list { max-height: 46vh; padding: 8px 0; }
+.ap-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 18px;
+}
+.ap-item.selected { background: #fff0e8; }
+.ap-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+.ap-info { flex: 1; min-width: 0; }
+.ap-name { font-size: 14px; font-weight: 600; color: #333; }
+.ap-sub { font-size: 12px; color: #999; margin-top: 2px; }
+.ap-check {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 2px solid #e5e5e5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 11px;
+  flex-shrink: 0;
+}
+.ap-item.selected .ap-check { background: #ff6b35; border-color: #ff6b35; }
+.ap-empty { text-align: center; padding: 30px 0; color: #bbb; font-size: 13px; }
+.ap-footer {
+  display: flex;
+  gap: 12px;
+  padding: 12px 18px calc(18px + env(safe-area-inset-bottom));
+  border-top: 1px solid #f0f0f0;
+}
+.ap-btn {
+  flex: 1;
+  text-align: center;
+  padding: 12px 0;
+  border-radius: 24px;
+  font-size: 15px;
+  font-weight: 600;
+}
+.ap-cancel { background: #f5f5f5; color: #666; }
+.ap-confirm { background: linear-gradient(135deg, #ff6b35, #ff8c5a); color: #fff; }
 </style>

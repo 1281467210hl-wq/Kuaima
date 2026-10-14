@@ -527,6 +527,12 @@
           }
         },
         {
+          "path": "applicants",
+          "style": {
+            "navigationStyle": "custom"
+          }
+        },
+        {
           "path": "backup-phone",
           "style": {
             "navigationStyle": "custom"
@@ -534,6 +540,18 @@
         },
         {
           "path": "blacklist",
+          "style": {
+            "navigationStyle": "custom"
+          }
+        },
+        {
+          "path": "candidates",
+          "style": {
+            "navigationStyle": "custom"
+          }
+        },
+        {
+          "path": "interview",
           "style": {
             "navigationStyle": "custom"
           }
@@ -972,6 +990,12 @@
         },
         {
           "path": "member-detail",
+          "style": {
+            "navigationStyle": "custom"
+          }
+        },
+        {
+          "path": "member-edit",
           "style": {
             "navigationStyle": "custom"
           }

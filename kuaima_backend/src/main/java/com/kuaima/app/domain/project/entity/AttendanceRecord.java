@@ -44,6 +44,12 @@ public class AttendanceRecord extends BaseEntity {
     @Column(name = "sign_out_time", comment = "签退时间")
     private Date signOutTime;
 
+    @Column(name = "sign_in_location", comment = "签到地点")
+    private String signInLocation;
+
+    @Column(name = "sign_out_location", comment = "签退地点")
+    private String signOutLocation;
+
     @Column(name = "`status`", comment = "状态:on出勤/late迟到/absent缺卡/leave请假")
     private String status = "on";
 

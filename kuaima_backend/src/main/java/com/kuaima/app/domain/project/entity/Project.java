@@ -21,11 +21,21 @@ import lombok.Setter;
 @Getter
 public class Project extends BaseEntity {
 
+    @Column(name = "idempotency_key", unique = true, length = 64,
+            comment = "创建幂等键（客户端每次创建意图生成一个 UUID），防重复提交；可空")
+    private String idempotencyKey;
+
+    @Column(comment = "项目编号，如 PRJ-2026-001，为空时接口按 PRJ-{id} 兜底")
+    private String code;
+
     @Column(comment = "项目名称")
     private String name;
 
     @Column(name = "company_name", comment = "用工企业")
     private String companyName;
+
+    @Column(name = "enterprise_id", comment = "所属企业")
+    private Long enterpriseId;
 
     @Column(comment = "负责人姓名")
     private String leaderName;
@@ -59,6 +69,12 @@ public class Project extends BaseEntity {
 
     @Column(name = "sign_code_expire", comment = "签到码有效期（分钟）")
     private Integer signCodeExpire = 60;
+
+    @Column(name = "checkin_time", comment = "规定签到时间，HH:mm，如 08:00")
+    private String checkinTime;
+
+    @Column(name = "checkout_time", comment = "规定签退时间，HH:mm，如 18:00")
+    private String checkoutTime;
 
     @Column(name = "late_auto", comment = "是否迟到自动判定")
     private Boolean lateAuto = true;

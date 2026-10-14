@@ -41,11 +41,13 @@ public class WebMvcConfig implements WebMvcConfigurer {
                 .maxAge(3600);
     }
 
-    /** 静态资源映射：/uploads/** → 本地上传目录 */
+    /** 静态资源映射：/uploads/** → 本地上传目录（绝对路径，避免依赖 JVM 工作目录） */
     @Override
     public void addResourceHandlers(ResourceHandlerRegistry registry) {
+        String location = java.nio.file.Path.of(uploadDir).toAbsolutePath().normalize().toUri().toString();
+        if (!location.endsWith("/")) location = location + "/";
         registry.addResourceHandler("/uploads/**")
-                .addResourceLocations("file:" + uploadDir);
+                .addResourceLocations(location);
     }
 
     /** 注册操作日志拦截器，覆盖所有 /admin/** 接口 */

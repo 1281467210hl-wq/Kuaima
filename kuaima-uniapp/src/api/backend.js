@@ -642,12 +642,13 @@ export function getBossProjectOverview() {
   return request({ url: "/boss/projects/stats/overview", skipUserIdHeader: true });
 }
 
-export function createBossProject(data = {}) {
+export function createBossProject(data = {}, idempotencyKey) {
   return request({
     url: "/boss/projects",
     method: "POST",
     data,
     skipUserIdHeader: true,
+    header: idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {},
   });
 }
 

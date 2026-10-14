@@ -40,6 +40,12 @@ public class ProjectMember extends BaseEntity {
     @Column(name = "`status`", comment = "状态:active在职/temp临时/left已离职")
     private String status = "temp";
 
+    @Column(name = "employment_type", comment = "用工类型:fulltime正式工/temp临时工，为空按 status 推断")
+    private String employmentType;
+
+    @Column(name = "leave_date", comment = "离职日期")
+    private LocalDate leaveDate;
+
     @Column(name = "join_date", comment = "入职日期")
     private LocalDate joinDate;
 }

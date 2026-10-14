@@ -67,6 +67,15 @@ public class AdminLogInterceptor implements HandlerInterceptor {
         MODULE_MAP.put("/admin/coupons", "营销管理/优惠券管理");
         MODULE_MAP.put("/admin/rewards", "营销管理/奖励金管理");
         MODULE_MAP.put("/admin/auth", "后台登录");
+        // 企业工作台
+        MODULE_MAP.put("/admin/transfers", "企业工作台/闪电发薪");
+        MODULE_MAP.put("/admin/merchant-accounts", "企业工作台/闪电发薪");
+        MODULE_MAP.put("/admin/projects", "企业工作台/项目管理");
+        MODULE_MAP.put("/admin/positions", "企业工作台/智能招聘");
+        MODULE_MAP.put("/admin/resumes", "企业工作台/智能招聘");
+        MODULE_MAP.put("/admin/candidates", "企业工作台/智能招聘");
+        MODULE_MAP.put("/admin/live-showcases", "企业工作台/智能招聘");
+        MODULE_MAP.put("/admin/enterprises", "企业工作台/企业成员");
     }
 
     private static final Pattern ID_PATTERN = Pattern.compile("/(\\d+)");

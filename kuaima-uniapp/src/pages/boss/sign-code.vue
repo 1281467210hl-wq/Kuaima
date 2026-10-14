@@ -3,7 +3,7 @@
     <!-- 顶部导航 -->
     <view class="wb-header" style="position: relative; width: 100%">
       <view class="wb-back" @click="goBack"><text class="back-icon">‹</text></view>
-      <view class="wb-title" style="color: #4a3500">签到码</view>
+      <view class="wb-title" style="color: #4a3500">{{ signLabel }}</view>
       <!-- 微信小程序原生胶囊已占右上角，自绘胶囊会与其重叠，仅在非小程序端保留 -->
       <!-- #ifndef MP-WEIXIN -->
       <view class="wb-capsule">
@@ -14,7 +14,21 @@
       <!-- #endif -->
     </view>
 
-    <view class="sign-title">签到码</view>
+    <!-- 签到/签退切换 -->
+    <view class="sign-tabs">
+      <view
+        class="sign-tab"
+        :class="{ active: signType === 'in' }"
+        @click="switchSignTab('in')"
+      >签到码</view>
+      <view
+        class="sign-tab"
+        :class="{ active: signType === 'out' }"
+        @click="switchSignTab('out')"
+      >签退码</view>
+    </view>
+
+    <view class="sign-title">{{ signLabel }}</view>
     <view class="sign-sub">
       <text class="shield-ico">🛡</text>
       <text>安全加密·隐私保护</text>
@@ -33,69 +47,123 @@
 
     <view class="qr-tip">
       <text class="wechat-ico">💬</text>
-      <text>微信扫一扫 开始签到</text>
+      <text>{{ qrTip }}</text>
     </view>
 
     <view class="expire-tip">
-      <text>签到码有效期：{{ expireMinutes }}分钟</text>
+      <text v-if="currentCodeExpire">{{ signLabel }}有效期至 {{ currentCodeExpire }}</text>
+      <text v-else>{{ signLabel }}有效期：{{ expireMinutes }}分钟</text>
     </view>
 
     <!-- 刷新按钮 -->
     <view class="refresh-btn" @click="refreshQR">
-      <text>刷新签到码</text>
+      <text>刷新{{ signLabel }}</text>
     </view>
   </view>
 </template>
 
 <script>
+import {
+  getProject,
+  getAttendanceCodes,
+  refreshWorkAttendanceCode,
+  refreshLeaveAttendanceCode,
+} from "@/api/project";
+
 export default {
   data() {
     return {
+      projectId: "",
       project: {},
       expireMinutes: 60,
+      signType: "in", // in=签到码 out=签退码
+      codes: {}, // 后端当日两码 {workCode, workCodeExpiresAt, leaveCode, leaveCodeExpiresAt}
       qrContent: "",
       qrImageUrl: "",
     };
   },
+  computed: {
+    signLabel() {
+      return this.signType === "in" ? "签到码" : "签退码";
+    },
+    qrTip() {
+      return this.signType === "in" ? "微信扫一扫 开始签到" : "微信扫一扫 完成签退";
+    },
+    currentCode() {
+      return this.signType === "in" ? this.codes.workCode : this.codes.leaveCode;
+    },
+    currentCodeExpire() {
+      const v = this.signType === "in" ? this.codes.workCodeExpiresAt : this.codes.leaveCodeExpiresAt;
+      if (!v) return "";
+      const s = String(v).replace("T", " ");
+      const m = s.match(/\d{4}-\d{2}-\d{2} (\d{2}:\d{2})/);
+      return m ? m[1] : "";
+    },
+  },
   onLoad(options) {
-    const projectId = options.id;
-    if (projectId) {
-      this.loadProject(projectId);
+    this.projectId = options.id || "";
+    this.loadCodes();
+    if (this.projectId) {
+      this.loadProject(this.projectId);
+    } else {
+      this.generateQR();
     }
   },
   methods: {
     async loadProject(id) {
-      const { getProject } = await import("@/api/project");
       try {
         const res = await getProject(id);
-        this.project = res.data || {};
+        // request 已解包 Result.data，直接就是项目对象；兜底兼容未解包场景
+        this.project = (res && res.id) ? res : (res && res.data) || {};
         this.expireMinutes = this.project.signCodeExpire || 60;
-        this.generateQR();
       } catch (e) {
         console.warn("加载项目失败", e);
-        // 即使加载失败也生成二维码
-        this.generateQR();
+      }
+      this.generateQR();
+    },
+    async loadCodes() {
+      // 后端签到/签退两码（GET /boss/attendance-codes），失败不阻塞二维码展示
+      try {
+        const res = await getAttendanceCodes();
+        const body = (res && res.workCode !== undefined) ? res : (res && res.data) || {};
+        this.codes = body || {};
+      } catch (e) {
+        console.warn("考勤码加载失败", e);
       }
     },
+    switchSignTab(type) {
+      if (this.signType === type) return;
+      this.signType = type;
+      this.generateQR();
+    },
     generateQR() {
-      // 生成签到URL - 包含项目ID和用户信息
-      const projectId = this.project.id || "0";
+      // 二维码内容包含项目ID、签到/签退类型与后端验证码，扫码后完成对应打卡记录
+      const projectId = this.project.id || this.projectId || "0";
       const timestamp = Date.now();
-      // 使用微信小程序的URL Scheme或网页链接
-      this.qrContent = `https://kuaima.com/checkin?projectId=${projectId}&t=${timestamp}&auto=1`;
-      
+      const code = this.currentCode || "";
+      this.qrContent = `https://kuaima.com/checkin?projectId=${projectId}&type=${this.signType}&code=${code}&t=${timestamp}&auto=1`;
+
       // 使用在线QR码生成服务
       this.generateQRImageUrl();
     },
     generateQRImageUrl() {
-      // 使用 Google Charts API 生成二维码
+      // 使用 QR 码生成服务
       const content = encodeURIComponent(this.qrContent);
       const size = 300;
       this.qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&data=${content}`;
     },
-    refreshQR() {
+    async refreshQR() {
+      // 调后端刷新接口重新生成对应码（签到/签退分别刷新，均记录数据）
+      const refresh = this.signType === "in" ? refreshWorkAttendanceCode : refreshLeaveAttendanceCode;
+      try {
+        const res = await refresh();
+        const body = (res && res.workCode !== undefined) ? res : (res && res.data) || {};
+        if (body && body.workCode !== undefined) this.codes = body;
+      } catch (e) {
+        console.warn("考勤码刷新失败，使用本地刷新兜底", e);
+      }
       this.generateQR();
-      uni.showToast({ title: "签到码已刷新", icon: "success" });
+      uni.showToast({ title: `${this.signLabel}已刷新`, icon: "success" });
     },
     goBack() {
       uni.navigateBack();
@@ -174,6 +242,34 @@ export default {
   height: 16px;
   background: rgba(74, 53, 0, 0.2);
   margin: 0 2px;
+}
+
+.sign-tabs {
+  display: flex;
+  background: rgba(255, 255, 255, 0.5);
+  border-radius: 22px;
+  padding: 4px;
+  margin-top: 18px;
+  width: 200px;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.sign-tab {
+  flex: 1;
+  text-align: center;
+  padding: 8px 0;
+  border-radius: 18px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #4a3500;
+  transition: all 0.2s;
+}
+
+.sign-tab.active {
+  background: #fff;
+  color: #4a3500;
+  box-shadow: 0 2px 8px rgba(120, 80, 0, 0.15);
 }
 
 .sign-title {

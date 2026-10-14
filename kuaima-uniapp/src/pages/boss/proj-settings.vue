@@ -22,7 +22,7 @@
         <view class="row" @click="editField('leaderName', '负责人', project.leaderName)">
           <view class="row-main">
             <view class="row-title">负责人</view>
-            <view class="row-desc">{{ project.leaderName || "—" }}</view>
+            <view class="row-desc">{{ project.leaderName || "—" }}<text v-if="project.leaderPhone"> · {{ project.leaderPhone }}</text></view>
           </view>
           <text class="row-arrow">›</text>
         </view>
@@ -32,65 +32,6 @@
             <view class="row-desc">{{ project.location || "—" }}</view>
           </view>
           <text class="row-arrow">›</text>
-        </view>
-      </view>
-
-      <!-- 打卡设置 -->
-      <view class="section-title">打卡设置</view>
-      <view class="card">
-        <view class="row">
-          <view class="row-main">
-            <view class="row-title">定位打卡</view>
-            <view class="row-desc">员工需到达项目地点附近才能打卡</view>
-          </view>
-          <view class="switch" :class="{ on: project.locationCheckin }" @click="toggleBool('locationCheckin')" />
-        </view>
-        <view class="row" @click="editField('checkinRadius', '打卡有效范围（米）', project.checkinRadius)">
-          <view class="row-main">
-            <view class="row-title">打卡有效范围</view>
-            <view class="row-desc">默认 {{ project.checkinRadius || 200 }} 米</view>
-          </view>
-          <text class="row-arrow">›</text>
-        </view>
-        <view class="row" @click="editField('signCodeExpire', '签到码有效期（分钟）', project.signCodeExpire)">
-          <view class="row-main">
-            <view class="row-title">签到码有效期</view>
-            <view class="row-desc">每次生成 {{ project.signCodeExpire || 60 }} 分钟</view>
-          </view>
-          <text class="row-arrow">›</text>
-        </view>
-        <view class="row">
-          <view class="row-main">
-            <view class="row-title">迟到自动判定</view>
-            <view class="row-desc">迟到 {{ project.lateThreshold || 10 }} 分钟以上自动标记</view>
-          </view>
-          <view class="switch" :class="{ on: project.lateAuto }" @click="toggleBool('lateAuto')" />
-        </view>
-      </view>
-
-      <!-- 薪资设置 -->
-      <view class="section-title">薪资设置</view>
-      <view class="card">
-        <view class="row" @click="editField('payrollCycle', '发薪周期', project.payrollCycle)">
-          <view class="row-main">
-            <view class="row-title">发薪周期</view>
-            <view class="row-desc">{{ project.payrollCycle || "月结（每月10日发薪）" }}</view>
-          </view>
-          <text class="row-arrow">›</text>
-        </view>
-        <view class="row" @click="editField('settleType', '结算方式', project.settleType)">
-          <view class="row-main">
-            <view class="row-title">结算方式</view>
-            <view class="row-desc">{{ project.settleType || "按天结算" }}</view>
-          </view>
-          <text class="row-arrow">›</text>
-        </view>
-        <view class="row">
-          <view class="row-main">
-            <view class="row-title">发薪提醒</view>
-            <view class="row-desc">发薪前 1 天提醒负责人</view>
-          </view>
-          <view class="switch" :class="{ on: project.salaryRemind }" @click="toggleBool('salaryRemind')" />
         </view>
       </view>
 
@@ -142,11 +83,6 @@ export default {
         uni.showToast({ title: "保存失败", icon: "none" });
         this.load();
       }
-    },
-    async toggleBool(field) {
-      const next = !this.project[field];
-      this.$set(this.project, field, next);
-      await this.patch(field, next);
     },
     editField(field, title, current) {
       uni.showModal({
@@ -217,29 +153,6 @@ export default {
 .row-title { font-size: 14px; color: #333; }
 .row-desc { font-size: 12px; color: #999; margin-top: 3px; }
 .row-arrow { color: #c8c8c8; font-size: 16px; margin-left: 8px; }
-.switch {
-  width: 46px;
-  height: 26px;
-  background: #e0e0e0;
-  border-radius: 13px;
-  position: relative;
-  flex-shrink: 0;
-  transition: background 0.2s;
-}
-.switch::after {
-  content: "";
-  position: absolute;
-  top: 3px;
-  left: 3px;
-  width: 20px;
-  height: 20px;
-  background: #fff;
-  border-radius: 50%;
-  transition: left 0.2s;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
-}
-.switch.on { background: linear-gradient(135deg, #ff6b35, #ff8c5a); }
-.switch.on::after { left: 23px; }
 .danger-tip { font-size: 12px; color: #999; line-height: 1.6; padding: 14px 0; }
 .danger-btn {
   width: 100%;

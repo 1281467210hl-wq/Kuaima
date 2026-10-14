@@ -48,5 +48,15 @@ public interface ResumeRepository extends JpaRepository<Resume, Long> {
 
     long countByBossIdAndDate(Long bossId, LocalDate date);
 
+    /** 按日期区间统计新增简历数（闭区间），用于简历库统计的周环比增长率。 */
+    @Query("""
+            select count(r) from Resume r
+            where r.bossId = :bossId and r.date is not null
+              and r.date between :startDate and :endDate
+            """)
+    long countByBossIdAndDateBetween(@Param("bossId") Long bossId,
+                                     @Param("startDate") LocalDate startDate,
+                                     @Param("endDate") LocalDate endDate);
+
     long countByBossIdAndFavoriteTrue(Long bossId);
 }

@@ -33,6 +33,9 @@ import java.util.concurrent.TimeUnit;
 @Service
 public class OssStorageService {
     private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.ofPattern("yyyy/MM/dd");
+    /** 本地兜底存储时允许的扩展名形态（防路径穿越）：仅 . + 1~8 位字母数字。 */
+    private static final java.util.regex.Pattern SAFE_EXT =
+            java.util.regex.Pattern.compile("^\\.[a-z0-9]{1,8}$");
 
     @Value("${aliyun.oss.endpoint:}") private String endpoint;
     @Value("${aliyun.oss.bucket-name:}") private String bucketName;
@@ -40,16 +43,51 @@ public class OssStorageService {
     @Value("${aliyun.oss.access-key-secret:}") private String accessKeySecret;
     @Value("${aliyun.oss.domain:}") private String domain;
     @Value("${aliyun.oss.signed-url-expiration-seconds:3600}") private long signedUrlExpirationSeconds;
+    @Value("${kuaima.upload.dir:./uploads/}") private String uploadDir;
+    @Value("${kuaima.upload.public-base-url:}") private String uploadBaseUrl;
     private volatile OSS client;
+
+    /** OSS 四项必填配置齐全才走云端，否则本地磁盘兜底（开发/测试环境无 OSS 也能上传成功）。 */
+    private boolean ossConfigured() {
+        return StringUtils.hasText(endpoint) && StringUtils.hasText(bucketName)
+                && StringUtils.hasText(accessKeyId) && StringUtils.hasText(accessKeySecret);
+    }
+
+    /** 写入 kuaima.upload.dir 并返回 /uploads/** 静态映射可访问的结果。 */
+    private OssUploadResult saveLocal(byte[] content, String folder, String extension) {
+        String suffix = extension == null ? "" : extension.toLowerCase();
+        if (!SAFE_EXT.matcher(suffix).matches()) {
+            suffix = "";
+        }
+        String relative = folder.replaceAll("^/+", "") + "/" + LocalDate.now().format(DATE_FORMAT) + "/"
+                + UUID.randomUUID().toString().replace("-", "") + suffix;
+        Path root = Path.of(uploadDir).toAbsolutePath().normalize();
+        Path target = root.resolve(relative).normalize();
+        if (!target.startsWith(root)) {
+            throw new IllegalArgumentException("非法上传路径");
+        }
+        try {
+            Files.createDirectories(target.getParent());
+            Files.write(target, content);
+        } catch (IOException e) {
+            throw new IllegalStateException("本地存储写入失败", e);
+        }
+        String url = uploadBaseUrl.replaceAll("/$", "") + "/uploads/" + relative;
+        return new OssUploadResult("uploads/" + relative, url,
+                relative.substring(relative.lastIndexOf('/') + 1));
+    }
 
     public Map<String, String> upload(MultipartFile file, String folder, String extension) {
         return uploadResult(file, folder, extension).toMap();
     }
 
     public OssUploadResult uploadResult(MultipartFile file, String folder, String extension) {
-        if (!StringUtils.hasText(endpoint) || !StringUtils.hasText(bucketName)
-                || !StringUtils.hasText(accessKeyId) || !StringUtils.hasText(accessKeySecret)) {
-            throw new IllegalStateException("OSS 配置不完整，请检查 aliyun.oss 配置或 ALIYUN_OSS_* 环境变量");
+        if (!ossConfigured()) {
+            try {
+                return saveLocal(file.getBytes(), folder, extension);
+            } catch (IOException e) {
+                throw new IllegalStateException("读取上传文件失败", e);
+            }
         }
         String suffix = extension == null ? "" : extension.toLowerCase();
         String objectKey = folder + "/" + LocalDate.now().format(DATE_FORMAT) + "/"
@@ -75,9 +113,12 @@ public class OssStorageService {
     }
 
     public OssUploadResult uploadResult(Path file, String contentType, String folder, String extension) {
-        if (!StringUtils.hasText(endpoint) || !StringUtils.hasText(bucketName)
-                || !StringUtils.hasText(accessKeyId) || !StringUtils.hasText(accessKeySecret)) {
-            throw new IllegalStateException("OSS 配置不完整，请检查 aliyun.oss 配置或 ALIYUN_OSS_* 环境变量");
+        if (!ossConfigured()) {
+            try {
+                return saveLocal(Files.readAllBytes(file), folder, extension);
+            } catch (IOException e) {
+                throw new IllegalStateException("读取上传文件失败", e);
+            }
         }
         String suffix = extension == null ? "" : extension.toLowerCase();
         String objectKey = folder + "/" + LocalDate.now().format(DATE_FORMAT) + "/"
@@ -103,12 +144,11 @@ public class OssStorageService {
      * 上传内存中的字节内容（如 PDF 渲染出的预览图），返回 {objectKey, url, fileName}。
      */
     public Map<String, String> upload(byte[] content, String contentType, String folder, String extension) {
-        if (!StringUtils.hasText(endpoint) || !StringUtils.hasText(bucketName)
-                || !StringUtils.hasText(accessKeyId) || !StringUtils.hasText(accessKeySecret)) {
-            throw new IllegalStateException("OSS 配置不完整，请检查 aliyun.oss 配置或 ALIYUN_OSS_* 环境变量");
-        }
         if (content == null || content.length == 0) {
             throw new IllegalArgumentException("上传内容为空");
+        }
+        if (!ossConfigured()) {
+            return saveLocal(content, folder, extension).toMap();
         }
         String suffix = extension == null ? "" : extension.toLowerCase();
         String objectKey = folder + "/" + LocalDate.now().format(DATE_FORMAT) + "/"

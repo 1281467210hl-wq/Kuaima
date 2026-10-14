@@ -103,7 +103,7 @@
         </view>
         <view class="sheet-actions">
           <view class="sheet-btn cancel" @click="closeCreate">取消</view>
-          <view class="sheet-btn confirm" @click="submitCreate">确认创建</view>
+          <view class="sheet-btn confirm" :class="{ disabled: creating }" @click="submitCreate">{{ creating ? "创建中…" : "确认创建" }}</view>
         </view>
       </view>
     </view>
@@ -129,6 +129,8 @@ export default {
       overview: {},
       loading: false,
       showCreate: false,
+      creating: false,
+      idemKey: "",
       form: {
         name: "",
         companyName: "",
@@ -183,6 +185,8 @@ export default {
     },
     openCreate() {
       this.form = { name: "", companyName: "", leaderName: "", establishDate: "" };
+      // 每次打开创建弹层生成一个幂等键：同一次创建意图内多次点击共用它，后端据此去重。
+      this.idemKey = "proj-" + Date.now() + "-" + Math.random().toString(36).slice(2, 10);
       this.showCreate = true;
     },
     closeCreate() {
@@ -192,10 +196,12 @@ export default {
       this.form.establishDate = e.detail.value;
     },
     async submitCreate() {
+      if (this.creating) return;
       if (!this.form.name.trim()) {
         uni.showToast({ title: "请填写项目名称", icon: "none" });
         return;
       }
+      this.creating = true;
       try {
         await createBossProject({
           name: this.form.name.trim(),
@@ -203,13 +209,15 @@ export default {
           leaderName: this.form.leaderName.trim(),
           establishDate: this.form.establishDate || null,
           status: "active",
-        });
+        }, this.idemKey);
         uni.showToast({ title: "创建成功", icon: "success" });
         this.showCreate = false;
         this.tab = "created";
         this.loadData();
       } catch (e) {
         uni.showToast({ title: "创建失败，请重试", icon: "none" });
+      } finally {
+        this.creating = false;
       }
     },
   },
@@ -401,4 +409,5 @@ export default {
   background: linear-gradient(135deg, #ff6b35, #ff8c5a);
   color: #fff;
 }
+.sheet-btn.confirm.disabled { opacity: 0.6; }
 </style>

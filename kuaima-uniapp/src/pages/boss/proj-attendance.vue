@@ -15,11 +15,11 @@
           <text class="stat-label">实到</text>
         </view>
         <view class="stat">
-          <text class="stat-value late">{{ stats.late || 0 }}</text>
+          <text class="stat-value">{{ stats.late || 0 }}</text>
           <text class="stat-label">迟到</text>
         </view>
         <view class="stat">
-          <text class="stat-value absent">{{ stats.absent || 0 }}</text>
+          <text class="stat-value">{{ stats.absent || 0 }}</text>
           <text class="stat-label">缺卡</text>
         </view>
       </view>
@@ -35,27 +35,21 @@
         >{{ t.label }}</view>
       </view>
 
-      <!-- 打卡列表 -->
-      <view class="card">
-        <view v-for="r in filteredList" :key="r.id" class="row">
-          <view class="avatar" :style="{ background: avatarColor(r.name) }">
-            {{ (r.name || "?").charAt(0) }}
-          </view>
-          <view class="row-main">
-            <view class="row-title">
-              {{ r.name }}
-              <text class="pill" :class="pillClass(r.status)">{{ ATTEND_STATUS_TEXT[r.status] || r.status }}</text>
-            </view>
-            <view class="row-desc">
-              签到 {{ formatTime(r.signInTime) || "—" }} · 签退 {{ formatTime(r.signOutTime) || "—" }}
-            </view>
-          </view>
-          <view class="row-right" :class="rightClass(r.status)">
-            {{ rightText(r) }}
-          </view>
+      <!-- 签到明细列表 -->
+      <view v-for="r in filteredList" :key="r.key" class="ck-card">
+        <view class="ck-avatar" :style="{ background: avatarColor(r.name) }">
+          {{ (r.name || "?").charAt(0) }}
         </view>
-        <view v-if="!filteredList.length" class="empty-text">暂无考勤记录</view>
+        <view class="ck-info">
+          <view class="ck-name">
+            <text>{{ r.name }}</text>
+            <text class="status-pill" :class="pillClass(r.status)">{{ ATTEND_STATUS_TEXT[r.status] || r.status }}</text>
+          </view>
+          <view class="ck-time" :class="{ 'time-absent': r.status === 'absent' }">{{ timeText(r) }}</view>
+        </view>
+        <view class="ck-right" :class="rightClass(r.status)">{{ rightText(r) }}</view>
       </view>
+      <view v-if="!filteredList.length" class="empty-text">暂无考勤记录</view>
       <view class="bottom-space" />
     </scroll-view>
   </view>
@@ -67,9 +61,9 @@ import {
   getProject,
   getAttendanceStats,
   listAttendance,
+  listMembers,
   avatarColor,
   ATTEND_STATUS_TEXT,
-  formatShortDate,
 } from "@/api/project";
 
 export default {
@@ -79,7 +73,10 @@ export default {
       ATTEND_STATUS_TEXT,
       projectId: "",
       project: {},
-      today: formatShortDate(new Date().toISOString().slice(0, 10)),
+      today: (() => {
+        const d = new Date();
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      })(),
       stats: {},
       filter: "all",
       tabs: [
@@ -103,17 +100,37 @@ export default {
   },
   methods: {
     avatarColor,
-    formatShortDate,
     async load() {
       try {
-        const [project, stats, list] = await Promise.all([
+        const [project, stats, records, members] = await Promise.all([
           getProject(this.projectId).catch(() => ({})),
           getAttendanceStats(this.projectId).catch(() => ({})),
           listAttendance(this.projectId).catch(() => []),
+          listMembers(this.projectId, "all").catch(() => []),
         ]);
         this.project = project || {};
         this.stats = stats || {};
-        this.list = Array.isArray(list) ? list : [];
+        const rows = (Array.isArray(records) ? records : []).map((r) => ({
+          key: `r${r.id}`,
+          name: r.name,
+          status: r.status,
+          signIn: this.formatTime(r.signInTime),
+          signOut: this.formatTime(r.signOutTime),
+          lateMinutes: r.lateMinutes,
+        }));
+        // 缺卡成员：在职/临时成员中今日无打卡记录者（与统计里的缺卡数对应）
+        const active = (Array.isArray(members) ? members : []).filter(
+          (m) => m.status === "active" || m.status === "temp",
+        );
+        const present = new Set(rows.map((r) => r.name));
+        const absentCount = Math.max((stats.absent || 0) - rows.filter((r) => r.status === "absent").length, 0);
+        active
+          .filter((m) => !present.has(m.name))
+          .slice(0, Math.min(absentCount, 20))
+          .forEach((m) =>
+            rows.push({ key: `a${m.id}`, name: m.name, status: "absent", signIn: "", signOut: "", lateMinutes: 0 }),
+          );
+        this.list = rows;
       } catch (e) {
         console.warn("考勤加载失败", e);
         this.list = [];
@@ -128,6 +145,11 @@ export default {
       const m = s.match(/\d{4}-\d{2}-\d{2} (\d{2}:\d{2})/);
       return m ? m[1] : s.slice(11, 16);
     },
+    timeText(r) {
+      if (r.status === "absent") return "今日未签到，标记为缺卡";
+      const lateTip = r.status === "late" && r.lateMinutes ? `（迟到${r.lateMinutes}分钟）` : "";
+      return `签到 ${r.signIn || "—"}${lateTip} · 签退 ${r.signOut || "—"}`;
+    },
     pillClass(status) {
       return {
         on: "status-on",
@@ -137,13 +159,14 @@ export default {
       }[status] || "status-on";
     },
     rightClass(status) {
-      if (status === "late") return "c-late";
-      if (status === "absent") return "c-absent";
-      return "c-on";
+      if (status === "late") return "late";
+      if (status === "absent") return "absent";
+      return "";
     },
     rightText(r) {
       if (r.status === "late") return `迟到${r.lateMinutes || "?"}分`;
       if (r.status === "absent") return "缺卡";
+      if (r.status === "leave") return "请假";
       return "已完成";
     },
   },
@@ -165,8 +188,6 @@ export default {
 .stat { flex: 1; text-align: center; }
 .stat-value { font-size: 20px; font-weight: 700; color: #333; display: block; }
 .stat-value.orange { color: #ff6b35; }
-.stat-value.late { color: #d97706; }
-.stat-value.absent { color: #dc2626; }
 .stat-label { font-size: 11px; color: #999; margin-top: 3px; display: block; }
 .tab-bar {
   display: flex;
@@ -185,12 +206,22 @@ export default {
   border-radius: 10px;
 }
 .tab-item.active { background: linear-gradient(135deg, #fff0e8, #ffe0d0); color: #ff6b35; font-weight: 600; }
-.card { background: #fff; border-radius: 14px; padding: 4px 16px; box-shadow: 0 1px 6px rgba(0, 0, 0, 0.04); }
-.row { display: flex; align-items: center; gap: 12px; padding: 13px 0; border-bottom: 0.5px solid #f5f5f5; }
-.row:last-child { border-bottom: none; }
-.avatar {
-  width: 42px;
-  height: 42px;
+.ck-card {
+  background: #fff;
+  border-radius: 14px;
+  padding: 14px 16px;
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
+  width: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+.ck-avatar {
+  width: 44px;
+  height: 44px;
   border-radius: 12px;
   flex-shrink: 0;
   display: flex;
@@ -200,17 +231,18 @@ export default {
   font-size: 16px;
   font-weight: 600;
 }
-.row-main { flex: 1; min-width: 0; }
-.row-title { font-size: 14px; font-weight: 600; color: #333; display: flex; align-items: center; gap: 6px; }
-.row-desc { font-size: 12px; color: #999; margin-top: 4px; }
-.row-right { font-size: 11px; color: #999; }
-.row-right.c-on { color: #999; }
-.row-right.c-late { color: #d97706; }
-.row-right.c-absent { color: #dc2626; }
-.pill {
-  font-size: 10px;
+.ck-info { flex: 1; min-width: 0; }
+.ck-name { font-size: 15px; font-weight: 600; color: #333; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.ck-time { font-size: 12px; color: #999; margin-top: 4px; }
+.ck-time.time-absent { color: #dc2626; }
+.ck-right { text-align: right; font-size: 12px; color: #666; flex-shrink: 0; }
+.ck-right.late { color: #d97706; font-weight: 600; }
+.ck-right.absent { color: #dc2626; font-weight: 600; }
+.status-pill {
+  display: inline-block;
   padding: 2px 8px;
   border-radius: 10px;
+  font-size: 10px;
   font-weight: 600;
 }
 .status-on { background: #e8f8ef; color: #10b981; }

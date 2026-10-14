@@ -17,9 +17,11 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.alibaba.fastjson2.JSON;
 import com.kuaima.app.common.BusinessHttpException;
 import com.kuaima.app.common.Result;
 import com.kuaima.app.common.util.QrCodeUtils;
+import com.kuaima.app.domain.enterprise.constant.WorkbenchPermCodes;
 import com.kuaima.app.domain.enterprise.entity.EnterpriseJoinApply;
 import com.kuaima.app.domain.enterprise.entity.EnterpriseMember;
 import com.kuaima.app.domain.enterprise.repository.EnterpriseJoinApplyRepository;
@@ -67,7 +69,10 @@ public class EnterpriseMemberController {
         if (!member.getEnterpriseId().equals(ctx.enterprise().getId())) {
             throw new BusinessHttpException(HttpStatus.BAD_REQUEST, "无权查看该成员");
         }
-        return Result.success(service.memberDetail(member));
+        Map<String, Object> detail = service.memberDetail(member);
+        // remark 列本轮新增，service.memberDetail 未返回，这里补齐供 member-detail/member-edit 回显。
+        detail.put("remark", member.getRemark() != null ? member.getRemark() : "");
+        return Result.success(detail);
     }
 
     @PutMapping("/members/{memberId}/role")
@@ -210,6 +215,74 @@ public class EnterpriseMemberController {
         var ctx = context.require(auth);
         service.exitEnterprise(ctx.member());
         return Result.success();
+    }
+
+    @PutMapping("/members/{userId}/info")
+    @Operation(summary = "编辑成员信息（title=职位/remark=备注；姓名与手机号属 sys_user 域，本接口不修改）")
+    public Result<EnterpriseMember> updateInfo(Authentication auth, @PathVariable Long userId,
+            @RequestBody Map<String, String> body) {
+        var ctx = context.require(auth, "MEMBER_WRITE");
+        EnterpriseMember member = requireActiveMemberByUserId(ctx, userId);
+        if ("OWNER".equals(member.getMemberRole())) {
+            throw new BusinessHttpException(HttpStatus.BAD_REQUEST, "不可编辑超级管理员信息");
+        }
+        // title 即成员「职位」，remark 为备注，均落 enterprise_member；
+        // name/phone 属于 sys_user（User）表字段，不在本接口（企业成员域）写入，由用户中心维护。
+        if (body.containsKey("title")) {
+            String title = body.get("title");
+            member.setTitle(title == null || title.isBlank() ? null : title.trim());
+        }
+        if (body.containsKey("remark")) {
+            String remark = body.get("remark");
+            if (remark != null && remark.length() > 500) {
+                throw new BusinessHttpException(HttpStatus.BAD_REQUEST, "备注不能超过500字");
+            }
+            member.setRemark(remark == null || remark.isBlank() ? null : remark.trim());
+        }
+        return Result.success(memberRepo.save(member));
+    }
+
+    @PutMapping("/members/{userId}/permissions")
+    @Operation(summary = "编辑成员工作台权限（permissions 支持 code/中文名/前端 key，写 JSON 并自增 permission_version；portalEnabled 为工作台访问开关；仅 OWNER/ADMIN 可操作）")
+    public Result<Map<String, Object>> updatePermissions(Authentication auth, @PathVariable Long userId,
+            @RequestBody Map<String, Object> body) {
+        var ctx = context.require(auth);
+        if (!ctx.ownerOrAdmin()) {
+            throw new BusinessHttpException(HttpStatus.BAD_REQUEST, "仅超级管理员和管理员可设置成员权限");
+        }
+        EnterpriseMember member = requireActiveMemberByUserId(ctx, userId);
+        if ("OWNER".equals(member.getMemberRole())) {
+            throw new BusinessHttpException(HttpStatus.BAD_REQUEST, "超级管理员默认拥有全部权限，不可修改");
+        }
+        if (body.containsKey("permissions")) {
+            // 与 admin 端 AdminEnterpriseMemberController.applyPermissions 同一写法：
+            // WorkbenchPermCodes.normalize 归一为大写 code 后 fastjson2 序列化存 JSON 数组。
+            List<String> codes = WorkbenchPermCodes.normalize(body.get("permissions"));
+            member.setPermissions(JSON.toJSONString(codes));
+            Integer version = member.getPermissionVersion();
+            member.setPermissionVersion(version == null ? 1 : version + 1);
+        }
+        if (body.containsKey("portalEnabled")) {
+            Object value = body.get("portalEnabled");
+            member.setPortalEnabled(value instanceof Boolean flag ? flag
+                    : value != null && "true".equalsIgnoreCase(String.valueOf(value).trim()));
+        }
+        EnterpriseMember saved = memberRepo.save(member);
+        List<String> savedCodes = saved.getPermissions() == null
+                ? List.of() : WorkbenchPermCodes.normalize(JSON.parseArray(saved.getPermissions()));
+        return Result.success(Map.of(
+                "memberId", saved.getId(),
+                "userId", saved.getUserId(),
+                "permissions", savedCodes,
+                "permissionVersion", saved.getPermissionVersion() == null ? 1 : saved.getPermissionVersion(),
+                "portalEnabled", !Boolean.FALSE.equals(saved.getPortalEnabled())));
+    }
+
+    /** 按 sys_user 的 userId 定位当前企业的 ACTIVE 成员（注意：路径参数是 userId，非成员表主键）。 */
+    private EnterpriseMember requireActiveMemberByUserId(EnterpriseContextService.Context ctx, Long userId) {
+        return memberRepo.findByEnterpriseIdAndUserId(ctx.enterprise().getId(), userId)
+                .filter(m -> "ACTIVE".equals(m.getStatus()))
+                .orElseThrow(() -> new BusinessHttpException(HttpStatus.BAD_REQUEST, "成员不存在"));
     }
 
     private String maskPhone(String phone) {

@@ -37,6 +37,18 @@ public class ProjectOnsiteStaff extends BaseEntity {
     @Column(comment = "驻场角色:leader项目负责人/assistant项目助理")
     private String onsiteRole = "assistant";
 
+    @Column(comment = "驻场岗位，如 项目助理/安全督导")
+    private String position;
+
+    @Column(name = "start_date", comment = "驻场开始日期")
+    private java.time.LocalDate startDate;
+
+    @Column(name = "end_date", comment = "驻场结束日期")
+    private java.time.LocalDate endDate;
+
+    @Column(name = "onsite_status", comment = "驻场状态:ongoing驻场中/ended已结束")
+    private String onsiteStatus = "ongoing";
+
     @Column(comment = "驻场天数")
     private Integer onsiteDays = 0;
 }

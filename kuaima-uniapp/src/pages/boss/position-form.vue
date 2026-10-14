@@ -230,6 +230,14 @@ export default {
         uni.showToast({ title: "请选择岗位类别", icon: "none" });
         return;
       }
+      if (!this.form.department) {
+        uni.showToast({ title: "请选择所属部门", icon: "none" });
+        return;
+      }
+      if (!this.form.location) {
+        uni.showToast({ title: "请选择工作地点", icon: "none" });
+        return;
+      }
       if (!this.form.hireCount) {
         uni.showToast({ title: "请输入招聘人数", icon: "none" });
         return;

@@ -146,7 +146,11 @@ export default {
       uni.navigateTo({ url: `/pages/boss/position-form?mode=edit&id=${this.positionId}` });
     },
     goApplicants() {
-      uni.showToast({ title: "跳转到申请人员列表", icon: "none" });
+      // 原型 boss-position-detail.html「查看申请」→ boss-applicants.html（按岗位过滤）
+      const job = encodeURIComponent(this.position?.name || "");
+      uni.navigateTo({
+        url: `/pages/boss/applicants?positionId=${this.positionId || ""}&job=${job}`,
+      });
     },
     shareJob() {
       uni.showToast({ title: "原型演示：分享岗位到微信/抖音/复制链接", icon: "none" });

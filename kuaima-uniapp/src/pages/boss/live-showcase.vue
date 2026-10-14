@@ -127,28 +127,71 @@
         </view>
       </view>
     </view>
+
+    <!-- 绑定新抖音账号弹窗 -->
+    <view v-if="showBindModal" class="modal-mask" @click="closeBindModal">
+      <view class="modal-box" @click.stop>
+        <view class="modal-header">
+          <text class="modal-title">绑定新的抖音直播账号</text>
+          <view class="modal-close" @click="closeBindModal">
+            <image class="modal-close-ico" src="/static/icons/boss-live-showcase/xmark-gray.svg" mode="aspectFit" />
+          </view>
+        </view>
+        <view class="modal-body">
+          <view class="bind-tip">
+            <text>填写抖音账号信息后即可完成绑定；如需官方授权，请在抖音小程序端完成授权。</text>
+          </view>
+          <view class="form-item">
+            <text class="form-label">账号名称</text>
+            <input class="form-input" v-model="bindForm.name" placeholder="请输入账号名称（如：晴时招工）" />
+          </view>
+          <view class="form-item">
+            <text class="form-label">抖音号</text>
+            <input class="form-input" v-model="bindForm.douyinId" placeholder="请输入抖音号 / 抖音ID" />
+          </view>
+          <view class="form-item" style="margin-bottom:0;">
+            <text class="form-label">主播人员</text>
+            <input class="form-input" v-model="bindForm.anchor" placeholder="选填，负责该账号的主播" />
+          </view>
+        </view>
+        <view class="modal-footer">
+          <view class="modal-btn outline" @click="closeBindModal">取消</view>
+          <view class="modal-btn primary" @click="confirmBind">确认绑定</view>
+        </view>
+      </view>
+    </view>
   </view>
 </template>
 
 <script>
+import {
+  listLiveShowcases, createLiveShowcase,
+  listDouyinAccounts, bindDouyinAccount,
+} from "@/api/liveShowcase";
+
+const AVATAR_PALETTE = [
+  "linear-gradient(135deg,#FF6B35,#FF8C5A)",
+  "linear-gradient(135deg,#FFB84D,#F0A500)",
+  "linear-gradient(135deg,#8B5CF6,#6D28D9)",
+  "linear-gradient(135deg,#10B981,#059669)",
+  "linear-gradient(135deg,#3B82F6,#2563EB)",
+];
+
 export default {
   data() {
     return {
       statusBarHeight: 0,
       keyword: "",
+      loading: false,
       showCreateModal: false,
       showAccountSheet: false,
-      form: { name: "", anchor: "", account: "", accountName: "" },
-      list: [
-        { id: 1, name: "菜鸟仓库日结招工专场", anchor: "张晴", account: "晴时招工", createTime: "2026-09-15 14:30" },
-        { id: 2, name: "肯德基周末兼职专场", anchor: "王晓", account: "晴时兼职", createTime: "2026-09-16 10:00" },
-        { id: 3, name: "顺丰分拣夜班急招", anchor: "李播", account: "晴时招工", createTime: "2026-09-10 09:15" },
-      ],
-      accounts: [
-        { id: 1, name: "晴时招工", authorized: true, desc: "抖音号：qingshi_job · 已绑定小程序", initial: "晴", avatarBg: "linear-gradient(135deg,#FF6B35,#FF8C5A)" },
-        { id: 2, name: "晴时兼职", authorized: true, desc: "抖音号：qingshi_part · 已绑定小程序", initial: "兼", avatarBg: "linear-gradient(135deg,#FFB84D,#F09A3E)" },
-        { id: 3, name: "晴时蓝领", authorized: false, desc: "抖音号：qingshi_work · 点击后需完成授权", initial: "蓝", avatarBg: "linear-gradient(135deg,#8B5CF6,#6D28D9)" },
-      ],
+      showBindModal: false,
+      creating: false,
+      binding: false,
+      bindForm: { name: "", douyinId: "", anchor: "" },
+      form: { name: "", anchor: "", account: "", accountName: "", douyinAccount: "" },
+      list: [],
+      accounts: [],
     };
   },
   computed: {
@@ -164,22 +207,48 @@ export default {
     const info = typeof uni.getWindowInfo === "function"
       ? uni.getWindowInfo() : uni.getSystemInfoSync();
     this.statusBarHeight = Number(info.statusBarHeight || 0);
+    this.loadAll();
   },
   methods: {
+    async loadAll() {
+      this.loading = true;
+      try {
+        const [rows, accounts] = await Promise.all([
+          listLiveShowcases({ page: 0, size: 50 }).catch(() => []),
+          listDouyinAccounts().catch(() => []),
+        ]);
+        this.list = Array.isArray(rows) ? rows : (rows && rows.data) || [];
+        this.accounts = (Array.isArray(accounts) ? accounts : []).map((a, i) => this.toAccountView(a, i));
+      } catch (e) {
+        console.warn("直播橱窗加载失败", e);
+      } finally {
+        this.loading = false;
+      }
+    },
+    toAccountView(a, i) {
+      return {
+        id: a.id, name: a.name, douyinId: a.douyinId || "",
+        anchorName: a.anchorName || "", authorized: a.authorized !== false,
+        desc: `抖音号：${a.douyinId || "—"} · ${a.authorized !== false ? "已绑定" : "未授权"}`,
+        initial: (a.name || "?").charAt(0),
+        avatarBg: AVATAR_PALETTE[(i || 0) % AVATAR_PALETTE.length],
+      };
+    },
     goBack() {
       uni.navigateBack({
         fail: () => uni.reLaunch({ url: "/pages/boss/workbench" }),
       });
     },
     openCreateModal() {
-      this.form = { name: "", anchor: "", account: "", accountName: "" };
+      this.form = { name: "", anchor: "", account: "", accountName: "", douyinAccount: "" };
       this.showCreateModal = true;
     },
     closeCreateModal() {
       this.showCreateModal = false;
       this.closeAccountSheet();
     },
-    confirmCreate() {
+    async confirmCreate() {
+      if (this.creating) return;
       if (!this.form.name.trim()) {
         uni.showToast({ title: "请输入橱窗名称", icon: "none" });
         return;
@@ -192,8 +261,22 @@ export default {
         uni.showToast({ title: "请选择直播账号", icon: "none" });
         return;
       }
-      uni.showToast({ title: `直播橱窗「${this.form.name.trim()}」创建成功！`, icon: "success" });
-      this.closeCreateModal();
+      this.creating = true;
+      try {
+        await createLiveShowcase({
+          title: this.form.name.trim(),
+          anchorName: this.form.anchor.trim(),
+          douyinAccount: this.form.douyinAccount || this.form.accountName,
+        });
+        uni.showToast({ title: `直播橱窗「${this.form.name.trim()}」创建成功！`, icon: "success" });
+        this.closeCreateModal();
+        const rows = await listLiveShowcases({ page: 0, size: 50 }).catch(() => []);
+        this.list = Array.isArray(rows) ? rows : (rows && rows.data) || [];
+      } catch (e) {
+        uni.showToast({ title: "创建失败，请重试", icon: "none" });
+      } finally {
+        this.creating = false;
+      }
     },
     openAccountSheet() {
       this.showAccountSheet = true;
@@ -202,13 +285,51 @@ export default {
       this.showAccountSheet = false;
     },
     pickAccount(acc) {
-      this.form.account = `${acc.name}（抖音号 ${acc.desc.split("：")[1]?.split(" ")[0] || ""}）`;
+      this.form.account = `${acc.name}（抖音号 ${acc.douyinId || ""}）`;
       this.form.accountName = acc.name;
+      this.form.douyinAccount = acc.douyinId || acc.name;
       this.closeAccountSheet();
     },
     bindNewAccount() {
-      this.closeAccountSheet();
-      uni.showToast({ title: "原型演示：授权绑定新抖音账号", icon: "none" });
+      this.bindForm = { name: "", douyinId: "", anchor: "" };
+      this.showBindModal = true;
+    },
+    closeBindModal() {
+      this.showBindModal = false;
+    },
+    async confirmBind() {
+      if (this.binding) return;
+      const name = this.bindForm.name.trim();
+      const douyinId = this.bindForm.douyinId.trim();
+      if (!name) {
+        uni.showToast({ title: "请输入账号名称", icon: "none" });
+        return;
+      }
+      if (!douyinId) {
+        uni.showToast({ title: "请输入抖音号", icon: "none" });
+        return;
+      }
+      if (this.accounts.some((a) => a.name === name || (a.douyinId && a.douyinId === douyinId))) {
+        uni.showToast({ title: "该账号已存在", icon: "none" });
+        return;
+      }
+      this.binding = true;
+      try {
+        const saved = await bindDouyinAccount({
+          name, douyinId, anchorName: this.bindForm.anchor.trim(),
+        });
+        const list = await listDouyinAccounts().catch(() => this.accounts);
+        this.accounts = (Array.isArray(list) ? list : []).map((a, i) => this.toAccountView(a, i));
+        const picked = this.accounts.find((a) => a.name === name)
+          || this.toAccountView(saved, this.accounts.length);
+        this.pickAccount(picked);
+        this.showBindModal = false;
+        uni.showToast({ title: `已绑定「${name}」`, icon: "success" });
+      } catch (e) {
+        uni.showToast({ title: (e && e.message) || "绑定失败，请重试", icon: "none" });
+      } finally {
+        this.binding = false;
+      }
     },
   },
 };
@@ -315,6 +436,15 @@ export default {
   justify-content: center;
   padding: 0 20px;
   box-sizing: border-box;
+}
+.bind-tip {
+  background: #FFF6F0;
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 14px;
+  font-size: 12px;
+  color: #FF6B35;
+  line-height: 1.5;
 }
 .modal-box {
   width: 100%;

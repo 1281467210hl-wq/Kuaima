@@ -17,7 +17,7 @@
         <view class="wb-capsule">
           <view class="cap-btn"><image class="cap-svg" src="/static/icons/boss-profile/ellipsis.svg" mode="aspectFit" /></view>
           <view class="cap-divider"></view>
-          <view class="cap-btn"><image class="cap-svg cap-svg-dot" src="/static/icons/boss-publish-info/circle-white.svg" mode="aspectFit" /></view>
+          <view class="cap-btn"><image class="cap-svg cap-svg-dot" src="/static/icons/boss-profile/dot.svg" mode="aspectFit" /></view>
         </view>
         <!-- #endif -->
       </view>
@@ -40,7 +40,10 @@
     <!-- 滚动内容区 -->
     <scroll-view scroll-y class="scroll-area">
       <!-- 智能招聘 -->
-      <view class="wb-section-title" style="margin-top:2px;">智能招聘</view>
+      <view class="wb-section-title" style="margin-top:2px;">
+        <view class="wb-section-title-bar"></view>
+        <text>智能招聘</text>
+      </view>
       <view class="wb-grid">
         <view class="wb-grid-item" @click="navigateTo('resume')">
           <view class="wb-grid-icon" style="background: linear-gradient(135deg, #FF8C5A, #FF6B35)">
@@ -69,7 +72,7 @@
             <text class="wb-grid-desc">抖音直播、带岗招聘</text>
           </view>
         </view>
-        <view class="wb-grid-item" @click="navigateTo('talent-list')">
+        <view class="wb-grid-item" @click="navigateTo('candidates')">
           <view class="wb-grid-icon" style="background: linear-gradient(135deg, #FFA94D, #FF8C42)">
             <image class="grid-svg" src="/static/icons/boss-workbench/user-check-white.svg" mode="aspectFit" />
           </view>
@@ -81,7 +84,10 @@
       </view>
 
       <!-- 闪电发薪 -->
-      <view class="wb-section-title">闪电发薪</view>
+      <view class="wb-section-title">
+        <view class="wb-section-title-bar"></view>
+        <text>闪电发薪</text>
+      </view>
       <view class="wb-grid">
         <view class="wb-grid-item" @click="navigateTo('payroll')">
           <view class="wb-grid-icon" style="background: linear-gradient(135deg, #FF8C5A, #FF6B35)">
@@ -122,7 +128,10 @@
       </view>
 
       <!-- 员工管理 -->
-      <view class="wb-section-title">员工管理</view>
+      <view class="wb-section-title">
+        <view class="wb-section-title-bar"></view>
+        <text>员工管理</text>
+      </view>
       <view class="wb-grid">
         <view class="wb-grid-item" @click="navigateTo('payroll-employees')">
           <view class="wb-grid-icon" style="background: linear-gradient(135deg, #FF8C5A, #FF6B35)">
@@ -200,6 +209,7 @@ export default {
         position: "/pages/boss/position",
         "live-showcase": "/pages/boss/live-showcase",
         "talent-list": "/pages/boss/talent-list",
+        "candidates": "/pages/boss/candidates",
         payroll: "/pages/boss/payroll",
         approve: "/pages/boss/approve",
         transfers: "/pages/boss/transfers",
@@ -244,7 +254,7 @@ export default {
   width: 100%;
   display: flex;
   flex-direction: column;
-  background: #f3f4f6;
+  background: #f7f7f7;
   overflow-x: hidden;
   box-sizing: border-box;
 }
@@ -262,8 +272,9 @@ export default {
   justify-content: space-between;
   align-items: center;
   height: 20px;
-  font-size: 12px;
-  color: #4a3500;
+  font-size: 15px;
+  font-weight: 600;
+  color: #333;
 }
 
 .status-icons {
@@ -296,15 +307,17 @@ export default {
 .wb-capsule {
   display: flex;
   align-items: center;
-  background: rgba(255, 255, 255, 0.25);
-  border-radius: 17px;
-  padding: 0 6px;
-  height: 34px;
+  gap: 2px;
+  background: rgba(255, 255, 255, 0.9);
+  border-radius: 20px;
+  padding: 4px 6px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+  flex-shrink: 0;
 }
 
 .cap-btn {
   width: 28px;
-  height: 28px;
+  height: 24px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -321,15 +334,14 @@ export default {
 }
 
 .cap-svg-dot {
-  width: 10px;
-  height: 10px;
+  width: 20px;
+  height: 20px;
 }
 
 .cap-divider {
   width: 1px;
-  height: 16px;
-  background: rgba(74, 53, 0, 0.2);
-  margin: 0 2px;
+  height: 14px;
+  background: #ddd;
 }
 
 .entry-cards {
@@ -350,6 +362,7 @@ export default {
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
+  transition: transform 0.15s;
 }
 
 .entry-card:active {
@@ -410,14 +423,23 @@ export default {
   font-size: 15px;
   font-weight: 600;
   color: #333;
-  margin: 16px 0 12px;
-  padding-left: 4px;
+  margin: 18px 2px 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.wb-section-title-bar {
+  width: 4px;
+  height: 15px;
+  border-radius: 2px;
+  background: linear-gradient(180deg, #ff6b35, #ff8c5a);
 }
 
 .wb-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  gap: 10px;
   width: 100%;
   box-sizing: border-box;
 }
@@ -425,24 +447,25 @@ export default {
 .wb-grid-item {
   background: #fff;
   border-radius: 14px;
-  padding: 16px;
+  padding: 14px;
   display: flex;
   align-items: center;
-  gap: 12px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  gap: 10px;
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.04);
+  transition: transform 0.15s;
   cursor: pointer;
   box-sizing: border-box;
   min-width: 0;
 }
 
 .wb-grid-item:active {
-  transform: scale(0.98);
+  transform: scale(0.97);
 }
 
 .wb-grid-icon {
-  width: 42px;
-  height: 42px;
-  border-radius: 12px;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -454,8 +477,8 @@ export default {
 }
 
 .grid-svg {
-  width: 20px;
-  height: 20px;
+  width: 17px;
+  height: 17px;
 }
 
 .wb-grid-info {
@@ -475,7 +498,7 @@ export default {
 .wb-grid-desc {
   font-size: 11px;
   color: #999;
-  margin-top: 3px;
+  margin-top: 2px;
 }
 
 .tab-bar {
@@ -506,11 +529,6 @@ export default {
 .tab-svg {
   width: 22px;
   height: 22px;
-  opacity: 0.55;
-}
-
-.tab-item.active .tab-svg {
-  opacity: 1;
 }
 
 .tab-icon-wrap {

@@ -57,7 +57,24 @@ public class ProjectService {
         if (operatorId != null) {
             project.setCreateBy(operatorId);
         }
-        return projectRepository.save(project);
+        // 幂等：客户端每次「创建意图」带唯一 idempotencyKey，命中已存在记录直接返回，避免重复提交产生多条。
+        String key = project.getIdempotencyKey();
+        if (StringUtils.hasText(key)) {
+            java.util.Optional<Project> existing = projectRepository.findByIdempotencyKey(key.trim());
+            if (existing.isPresent()) {
+                return existing.get();
+            }
+            project.setIdempotencyKey(key.trim());
+        }
+        try {
+            return projectRepository.save(project);
+        } catch (org.springframework.dao.DataIntegrityViolationException race) {
+            // 并发下唯一键冲突：返回先落库的那条，保证幂等。
+            if (StringUtils.hasText(key)) {
+                return projectRepository.findByIdempotencyKey(key.trim()).orElseThrow(() -> race);
+            }
+            throw race;
+        }
     }
 
     @Transactional

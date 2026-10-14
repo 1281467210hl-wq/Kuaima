@@ -3,6 +3,7 @@ package com.kuaima.app.controller.payroll;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -16,6 +17,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.kuaima.app.admin.entity.AdminUser;
+import com.kuaima.app.admin.repository.AdminUserRepository;
 import com.kuaima.app.common.Result;
 import com.kuaima.app.domain.boss.repository.BossMerchantAccountRepository;
 import com.kuaima.app.domain.payroll.entity.PayrollOrder;
@@ -33,11 +36,14 @@ public class PayrollController {
 
     private final PayrollService payrollService;
     private final BossMerchantAccountRepository accountRepository;
+    private final AdminUserRepository adminUserRepository;
 
     public PayrollController(PayrollService payrollService,
-                             BossMerchantAccountRepository accountRepository) {
+                             BossMerchantAccountRepository accountRepository,
+                             AdminUserRepository adminUserRepository) {
         this.payrollService = payrollService;
         this.accountRepository = accountRepository;
+        this.adminUserRepository = adminUserRepository;
     }
 
     @GetMapping
@@ -106,19 +112,32 @@ public class PayrollController {
     }
 
     /**
-     * 取操作人名称。
+     * 取操作人显示名：优先 admin_user.name（中文名），为空回退 username。
      * LoginUser 是 record，UsernamePasswordAuthenticationToken.getName() 在 principal
      * 不是 UserDetails/Principal 时会退化成 principal.toString()，导致库里存进
-     * "LoginUser[id=1, username=admin, ...]" 这类脏值，故显式取 username。
+     * "LoginUser[id=1, username=admin, ...]" 这类脏值，故绝不使用 getName() 兜底。
      */
     private String operator(Authentication authentication) {
         if (authentication == null) {
             return "system";
         }
-        if (authentication.getPrincipal() instanceof LoginUser login && login.username() != null) {
-            return login.username();
+        if (authentication.getPrincipal() instanceof LoginUser login) {
+            Optional<AdminUser> account = login.id() != null
+                    ? adminUserRepository.findById(login.id())
+                    : Optional.empty();
+            if (account.isEmpty() && login.username() != null) {
+                account = adminUserRepository.findByUsername(login.username());
+            }
+            if (account.isPresent() && account.get().getName() != null
+                    && !account.get().getName().isBlank()) {
+                return account.get().getName();
+            }
+            if (login.username() != null) {
+                return login.username();
+            }
         }
-        return authentication.getName();
+        String name = authentication.getName();
+        return name != null && !name.startsWith("LoginUser[") ? name : "system";
     }
 
     private Long currentUserId(Authentication authentication) {

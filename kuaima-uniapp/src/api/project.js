@@ -129,6 +129,19 @@ export function listCheckin(projectId, start, end) {
   return request({ url: `/boss/projects/${projectId}/checkin?${query({ start, end })}` });
 }
 
+// -------------------- 签到/签退码（老板当日两码，后端 BossAttendanceCodeController） --------------------
+export function getAttendanceCodes() {
+  return request({ url: "/boss/attendance-codes" });
+}
+
+export function refreshWorkAttendanceCode() {
+  return request({ url: "/boss/attendance-codes/work/refresh", method: "POST" });
+}
+
+export function refreshLeaveAttendanceCode() {
+  return request({ url: "/boss/attendance-codes/leave/refresh", method: "POST" });
+}
+
 // -------------------- 入职记录 --------------------
 export function listOnboard(projectId, status = "all") {
   return request({ url: `/boss/projects/${projectId}/onboard?${query({ status })}` });

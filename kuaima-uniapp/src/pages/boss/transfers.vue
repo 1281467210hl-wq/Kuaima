@@ -12,13 +12,14 @@
     </view>
 
     <scroll-view scroll-y class="body">
-      <!-- 搜索行：下载 + 筛选 + 搜索 -->
+      <!-- 搜索行：下载 + 筛选 + 搜索（原型 boss-transfers.html：筛选打开底部弹层） -->
       <view class="action-row">
         <view class="dl-btn" @click="goExport">
           <image class="dl-svg" src="/static/icons/boss-workbench/download-orange.svg" mode="aspectFit" />
           <text>下载</text>
         </view>
-        <view class="filter-btn" @click="goExport">
+        <view class="filter-btn" :class="{ active: hasFilter }" @click="openFilter">
+          <image class="filter-svg" src="/static/icons/boss-resume/sliders-gray.svg" mode="aspectFit" />
           <text>筛选</text>
           <image class="filter-arrow-svg" src="/static/icons/boss-authorize/chevron-down-gray.svg" mode="aspectFit" />
         </view>
@@ -26,6 +27,14 @@
           <image class="search-svg" src="/static/icons/boss-points/search-gray.svg" mode="aspectFit" />
           <input class="search-input" v-model="keyword" placeholder="请输入转账标题" @confirm="loadRecords" @input="onInput" />
         </view>
+      </view>
+
+      <!-- 已应用筛选条件 -->
+      <view v-if="hasFilter" class="applied-row">
+        <view class="applied-tags">
+          <text v-for="(tag, i) in appliedTags" :key="i" class="applied-tag">{{ tag }}</text>
+        </view>
+        <text class="applied-clear" @click="clearFilter">清空筛选</text>
       </view>
 
       <!-- 转账统计 -->
@@ -73,15 +82,73 @@
       </view>
       <view class="bottom-space" />
     </scroll-view>
+
+    <!-- 筛选弹层（原型：项目名称 / 所属项目 / 转账时间区间 + 重置 / 确认筛选） -->
+    <view v-if="filterShow" class="filter-overlay" @click.self="closeFilter">
+      <view class="filter-sheet">
+        <view class="filter-sheet-head">
+          <text>筛选转账记录</text>
+          <view class="filter-close" @click="closeFilter">
+            <image class="close-svg" src="/static/icons/boss-points/xmark-gray.svg" mode="aspectFit" />
+          </view>
+        </view>
+        <scroll-view scroll-y class="filter-sheet-body">
+          <view class="f-item">
+            <text class="f-label">项目名称</text>
+            <input
+              class="f-input"
+              v-model="filterDraft.projectName"
+              type="text"
+              placeholder="请输入项目名称"
+            />
+          </view>
+          <view class="f-item">
+            <text class="f-label">所属项目</text>
+            <view class="f-opts">
+              <text
+                v-for="p in projectOptions"
+                :key="p.id"
+                class="f-opt"
+                :class="{ active: String(filterDraft.projectId) === String(p.id) }"
+                @click="filterDraft.projectId = p.id"
+              >{{ p.name }}</text>
+            </view>
+            <text v-if="!projects.length" class="f-opts-hint">项目列表加载失败或为空，可先用「项目名称」输入筛选</text>
+          </view>
+          <view class="f-item">
+            <text class="f-label">转账时间</text>
+            <view class="f-date-row">
+              <picker mode="date" :value="filterDraft.startDate" @change="onStartDateChange">
+                <view class="f-input f-date" :class="{ placeholder: !filterDraft.startDate }">
+                  {{ filterDraft.startDate || "开始日期" }}
+                </view>
+              </picker>
+              <text class="f-date-sep">至</text>
+              <picker mode="date" :value="filterDraft.endDate" @change="onEndDateChange">
+                <view class="f-input f-date" :class="{ placeholder: !filterDraft.endDate }">
+                  {{ filterDraft.endDate || "结束日期" }}
+                </view>
+              </picker>
+            </view>
+          </view>
+        </scroll-view>
+        <view class="filter-sheet-footer">
+          <view class="f-btn f-reset" @click="resetFilter">重置</view>
+          <view class="f-btn f-confirm" @click="applyFilter">确认筛选</view>
+        </view>
+      </view>
+    </view>
   </view>
 </template>
 
 <script>
-import { listTransferRecords } from "@/api/backend";
+import { listTransferRecords, listBossProjects } from "@/api/backend";
 
 function parsePayload(data) {
   return data?.data ?? data ?? {};
 }
+
+const EMPTY_FILTER = () => ({ projectName: "", projectId: "", startDate: "", endDate: "" });
 
 export default {
   data() {
@@ -93,7 +160,34 @@ export default {
       records: [],
       stats: { count: 0, people: 0, amount: 0 },
       statRange: "",
+      // 筛选（原型 filterModal）
+      filterShow: false,
+      filter: EMPTY_FILTER(),
+      filterDraft: EMPTY_FILTER(),
+      projects: [],
     };
+  },
+  computed: {
+    projectOptions() {
+      return [{ id: "", name: "全部项目" }, ...this.projects];
+    },
+    hasFilter() {
+      const f = this.filter;
+      return Boolean(f.projectName || f.projectId || f.startDate || f.endDate);
+    },
+    appliedTags() {
+      const f = this.filter;
+      const tags = [];
+      if (f.projectName) tags.push(`项目名称：${f.projectName}`);
+      if (f.projectId) {
+        const hit = this.projects.find((p) => String(p.id) === String(f.projectId));
+        tags.push(`所属项目：${hit ? hit.name : f.projectId}`);
+      }
+      if (f.startDate || f.endDate) {
+        tags.push(`转账时间：${f.startDate || "不限"} ~ ${f.endDate || "不限"}`);
+      }
+      return tags;
+    },
   },
   onLoad() {
     const info = typeof uni.getWindowInfo === "function"
@@ -116,10 +210,71 @@ export default {
     goExport() {
       uni.navigateTo({ url: "/pages/boss/transfer-export" });
     },
+    openFilter() {
+      this.filterDraft = { ...this.filter };
+      this.filterShow = true;
+      if (!this.projects.length) this.loadProjects();
+    },
+    closeFilter() {
+      this.filterShow = false;
+    },
+    resetFilter() {
+      this.filterDraft = EMPTY_FILTER();
+    },
+    applyFilter() {
+      const draft = this.filterDraft;
+      const start = draft.startDate;
+      const end = draft.endDate;
+      if (start && end && start > end) {
+        uni.showToast({ title: "转账时间区间不正确", icon: "none" });
+        return;
+      }
+      this.filter = { ...draft };
+      this.filterShow = false;
+      this.loadRecords();
+      if (this.appliedTags.length) {
+        uni.showToast({ title: `已应用筛选：${this.appliedTags.join("；")}`, icon: "none" });
+      }
+    },
+    clearFilter() {
+      this.filter = EMPTY_FILTER();
+      this.filterDraft = EMPTY_FILTER();
+      this.loadRecords();
+    },
+    onStartDateChange(e) {
+      this.filterDraft.startDate = e.detail.value;
+    },
+    onEndDateChange(e) {
+      this.filterDraft.endDate = e.detail.value;
+    },
+    /** 所属项目筛选项：复用老板项目管理真实接口 */
+    async loadProjects() {
+      try {
+        const data = await listBossProjects({ page: 0, size: 50 });
+        const body = parsePayload(data);
+        const rows = Array.isArray(body) ? body : body.records || body.content || [];
+        this.projects = (Array.isArray(rows) ? rows : [])
+          .map((item) => ({
+            id: item.id ?? item.projectId,
+            name: item.name || item.projectName || `项目${item.id ?? ""}`,
+          }))
+          .filter((item) => item.id !== undefined && item.id !== null && item.name);
+      } catch (error) {
+        this.projects = [];
+      }
+    },
     async loadRecords() {
       this.loading = true;
       try {
-        const data = await listTransferRecords({ keyword: this.keyword.trim() || undefined });
+        const f = this.filter;
+        const data = await listTransferRecords({
+          keyword: this.keyword.trim() || undefined,
+          // 待后端：/boss/transfers 目前只支持 keyword(标题)/projectId/creator/日期，projectName 模糊匹配未实现
+          projectName: f.projectName || undefined,
+          projectId: f.projectId || undefined,
+          startDate: f.startDate || undefined,
+          endDate: f.endDate || undefined,
+        });
         const body = parsePayload(data);
         this.records = Array.isArray(body.records) ? body.records : (Array.isArray(body) ? body : []);
         this.stats = body.stats || { count: 0, people: 0, amount: 0 };
@@ -187,24 +342,37 @@ export default {
   width: 100%;
   box-sizing: border-box;
 }
+.filter-btn {
+  display: inline-flex; align-items: center; gap: 5px; font-size: 13px; color: #666;
+  flex-shrink: 0; background: #fff; border: 1px solid #f0f0f0; border-radius: 10px; padding: 8px 12px;
+}
+.filter-btn.active { color: #FF6B35; border-color: #ffd2bc; }
+.filter-svg { width: 13px; height: 13px; flex-shrink: 0; }
+.filter-arrow-svg { width: 10px; height: 10px; flex-shrink: 0; }
 .dl-btn {
   display: inline-flex; align-items: center; gap: 5px; background: #fff;
-  border-radius: 16px; padding: 8px 14px; font-size: 12px; color: #FF6B35;
-  box-shadow: 0 1px 6px rgba(0,0,0,0.06); flex-shrink: 0;
+  border: 1px solid #f0f0f0; border-radius: 10px; padding: 8px 14px; font-size: 13px; color: #FF6B35;
+  flex-shrink: 0;
 }
 .dl-svg { width: 13px; height: 13px; flex-shrink: 0; }
-.filter-btn {
-  display: inline-flex; align-items: center; gap: 4px; font-size: 12px;
-  color: #666; flex-shrink: 0;
-}
-.filter-arrow-svg { width: 10px; height: 10px; flex-shrink: 0; }
 .search-bar {
   flex: 1; display: flex; align-items: center; gap: 8px; padding: 8px 14px;
-  background: #fff; border-radius: 22px;
+  background: #fff; border: 1px solid #f0f0f0; border-radius: 10px;
   min-width: 0;
 }
 .search-svg { width: 15px; height: 15px; flex-shrink: 0; }
 .search-input { flex: 1; font-size: 13px; color: #333; }
+
+/* 已应用筛选条件 */
+.applied-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  margin-bottom: 12px;
+}
+.applied-tags { display: flex; flex-wrap: wrap; gap: 6px; flex: 1; min-width: 0; }
+.applied-tag {
+  font-size: 11px; color: #FF6B35; background: #fff3ed; border-radius: 6px; padding: 3px 8px;
+}
+.applied-clear { font-size: 12px; color: #999; flex-shrink: 0; }
 
 .stat-card {
   background: #fff; border-radius: 16px; padding: 14px 16px; margin-bottom: 12px;
@@ -249,4 +417,90 @@ export default {
 .record-line { font-size: 12px; color: #888; margin-top: 5px; }
 .record-line .lab { color: #B0B0B0; }
 .bottom-space { height: 20px; }
+
+/* 筛选弹层（原型 .filter-overlay / .filter-sheet） */
+.filter-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 80;
+  display: flex;
+  align-items: flex-end;
+}
+.filter-sheet {
+  width: 100%;
+  background: #fff;
+  border-radius: 16px 16px 0 0;
+  box-sizing: border-box;
+}
+.filter-sheet-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 18px;
+  border-bottom: 1px solid #f0f0f0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #333;
+}
+.filter-close { display: flex; align-items: center; justify-content: center; padding: 4px; }
+.close-svg { width: 16px; height: 16px; }
+.filter-sheet-body {
+  padding: 16px 18px;
+  max-height: 60vh;
+}
+.f-item { margin-bottom: 16px; }
+.f-label { font-size: 13px; color: #666; font-weight: 500; display: block; margin-bottom: 8px; }
+.f-input {
+  width: 100%;
+  border: 1px solid #e5e5e5;
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 14px;
+  color: #333;
+  box-sizing: border-box;
+  background: #fff;
+}
+.f-input.placeholder { color: #c0c0c0; }
+.f-date-row { display: flex; align-items: center; gap: 8px; }
+.f-date-row picker { flex: 1; min-width: 0; }
+.f-date { text-align: center; }
+.f-date-sep { color: #999; font-size: 13px; flex-shrink: 0; }
+.f-opts { display: flex; flex-wrap: wrap; gap: 8px; }
+.f-opt {
+  padding: 7px 14px;
+  border-radius: 16px;
+  background: #f5f6f8;
+  color: #666;
+  font-size: 13px;
+  border: 1px solid transparent;
+}
+.f-opt.active {
+  background: #fff0e8;
+  color: #ff6b35;
+  border-color: #ffd2bc;
+  font-weight: 500;
+}
+.f-opts-hint {
+  display: block;
+  margin-top: 8px;
+  font-size: 12px;
+  color: #999;
+}
+.filter-sheet-footer {
+  display: flex;
+  gap: 12px;
+  padding: 12px 18px calc(18px + env(safe-area-inset-bottom));
+  border-top: 1px solid #f0f0f0;
+}
+.f-btn {
+  flex: 1;
+  text-align: center;
+  padding: 12px 0;
+  border-radius: 24px;
+  font-size: 15px;
+  font-weight: 600;
+}
+.f-reset { background: #f5f5f5; color: #666; }
+.f-confirm { background: linear-gradient(135deg, #ff6b35, #ff8c5a); color: #fff; }
 </style>

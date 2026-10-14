@@ -1,85 +1,77 @@
 <template>
   <div>
-    <div class="back-bar">
-      <button class="btn btn-outline btn-sm" @click="goBack"><i class="fas fa-arrow-left"></i> 返回发薪管理</button>
-    </div>
-
     <div v-loading="loading">
-      <!-- Hero 卡 -->
-      <div class="card hero-card" v-if="order">
-        <div class="hero-top">
-          <div>
-            <div class="hero-title">{{ order.title }}</div>
+      <!-- Hero 卡：返回 + 标题 + 元信息 + 金额 -->
+      <div class="pd-hero" v-if="order">
+        <div class="back-btn" @click="goBack" title="返回发薪管理">
+          <i class="fas fa-arrow-left"></i>
+        </div>
+        <div class="pd-hero-info">
+          <div class="pd-hero-title">
+            <span>{{ order.title }}</span>
             <span :class="['status-badge', statusClass(order.status)]">{{ statusText(order.status) }}</span>
           </div>
-          <div class="hero-amount">
-            <div class="hero-amount-label">应发总金额</div>
-            <div class="hero-amount-value">¥{{ fen2yuan(order.amount) }}</div>
+          <div class="pd-hero-meta">
+            <div class="item"><b>发薪单号</b><span>{{ order.orderNo || '—' }}</span></div>
+            <div class="item"><b>所属项目</b><span>{{ order.projectName || '—' }}</span></div>
+            <div class="item"><b>制单人</b><span>{{ order.creator || '—' }}</span></div>
+            <div class="item"><b>提交时间</b><span>{{ order.submitTime || '—' }}</span></div>
           </div>
         </div>
-        <el-descriptions :column="3" border class="hero-desc">
-          <el-descriptions-item label="发薪单号">{{ order.orderNo || '—' }}</el-descriptions-item>
-          <el-descriptions-item label="所属项目">{{ order.projectName || '—' }}</el-descriptions-item>
-          <el-descriptions-item label="发薪人数">{{ order.peopleCount ?? 0 }} 人</el-descriptions-item>
-          <el-descriptions-item label="制单人">{{ order.creator || '—' }}</el-descriptions-item>
-          <el-descriptions-item label="提交时间">{{ formatTime(order.submitTime) }}</el-descriptions-item>
-          <el-descriptions-item label="审核人 / 时间">
-            {{ order.reviewBy || '—' }}<template v-if="order.reviewTime"> / {{ formatTime(order.reviewTime) }}</template>
-          </el-descriptions-item>
-        </el-descriptions>
+        <div class="pd-hero-total">
+          <div class="label">应发总金额</div>
+          <div class="value">¥{{ fmtMoney(order.amount) }}</div>
+          <div class="sub"><span>{{ peopleNum }}</span> 人 · 已通过 <span>{{ successNum }}</span></div>
+        </div>
       </div>
 
       <!-- 发薪明细 -->
-      <div class="card">
-        <div class="card-header">
-          <div class="card-title">发薪明细（{{ details.length }} 人）</div>
+      <div class="pd-detail-card" v-if="order">
+        <div class="pd-detail-head">
+          <div class="pd-detail-title"><i class="fas fa-list"></i> 发薪明细</div>
+          <div class="pd-head-actions">
+            <template v-if="order.status === 'pending'">
+              <button class="btn btn-outline btn-sm" @click="confirmReject"><i class="fas fa-times"></i> 驳回</button>
+              <button class="btn btn-primary btn-sm" @click="confirmApprove"><i class="fas fa-check"></i> 通过</button>
+            </template>
+            <template v-else>
+              <button class="btn btn-outline btn-sm" @click="exportStub('PDF')"><i class="fas fa-file-pdf"></i> 导出明细</button>
+              <button class="btn btn-outline btn-sm" @click="exportStub('Excel')"><i class="fas fa-file-excel"></i> 下载Excel</button>
+            </template>
+          </div>
         </div>
-        <el-table :data="details" stripe :header-cell-style="{ background: '#F9FAFB', color: '#6B7280', fontWeight: 500 }">
-          <el-table-column label="姓名" min-width="120">
-            <template #default="{ row }">
-              <div class="avatar-cell">
-                <div class="mini-avatar" :class="avatarColor(row.name)">{{ (row.name || '?').charAt(0) }}</div>
-                <span class="emp-name">{{ row.name }}</span>
-              </div>
-            </template>
-          </el-table-column>
-          <el-table-column prop="job" label="岗位" show-overflow-tooltip />
-          <el-table-column prop="phone" label="手机号" show-overflow-tooltip />
-          <el-table-column prop="attendDays" label="出勤天数" width="90" />
-          <el-table-column label="日薪" show-overflow-tooltip>
-            <template #default="{ row }">¥{{ fen2yuan(row.dailyWage) }}</template>
-          </el-table-column>
-          <el-table-column label="应发金额" show-overflow-tooltip>
-            <template #default="{ row }"><span class="amount-cell">¥{{ fen2yuan(row.amount) }}</span></template>
-          </el-table-column>
-          <el-table-column label="状态" width="100">
-            <template #default="{ row }">
-              <span :class="['status-badge', detailStatusClass(row.status)]">{{ detailStatusText(row.status) }}</span>
-            </template>
-          </el-table-column>
-        </el-table>
-      </div>
-
-      <!-- 底部操作 -->
-      <div class="footer-actions" v-if="order">
-        <template v-if="order.status === 'pending'">
-          <el-button @click="exportStub('PDF')"><i class="fas fa-file-export"></i> 导出明细</el-button>
-          <el-button type="success" @click="doApprove"><i class="fas fa-check"></i> 通过</el-button>
-          <el-button type="danger" @click="doReject"><i class="fas fa-xmark"></i> 驳回</el-button>
-        </template>
-        <template v-else>
-          <el-button @click="exportStub('PDF')"><i class="fas fa-file-export"></i> 导出明细</el-button>
-          <el-button @click="exportStub('Excel')"><i class="fas fa-file-excel"></i> 下载 Excel</el-button>
-        </template>
+        <div>
+          <div class="pd-row hdr">
+            <div></div>
+            <div>姓名</div>
+            <div>岗位</div>
+            <div>手机号</div>
+            <div>出勤</div>
+            <div>日薪</div>
+            <div style="text-align:right;">应发金额（元）</div>
+            <div>状态</div>
+          </div>
+          <div class="pd-row" v-for="(m, i) in details" :key="i">
+            <div><div class="avatar" :style="{ background: avatarColor(i) }">{{ (m.name || '?').charAt(0) }}</div></div>
+            <div class="pd-name">{{ m.name }}</div>
+            <div><span class="role-tag">{{ m.job || '—' }}</span></div>
+            <div class="pd-phone">{{ m.phone || '—' }}</div>
+            <div>{{ m.attendDays ?? 0 }}天</div>
+            <div>¥{{ fmtMoney(m.dailyWage) }}</div>
+            <div class="amount">¥{{ fmtMoney(m.amount) }}</div>
+            <div><span :class="['status-badge', detailStatusClass(m.status)]">{{ detailStatusText(m.status) }}</span></div>
+          </div>
+          <div v-if="!details.length" class="pd-empty">暂无人员明细</div>
+        </div>
       </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { getPayroll, approvePayroll, rejectPayroll } from '@/api/payroll'
 
 const route = useRoute()
@@ -96,19 +88,26 @@ const fen2yuan = (fen) => {
   if (isNaN(n)) return '0.00'
   return (n / 100).toFixed(2)
 }
-const formatTime = (t) => { if (!t) return '—'; const s = String(t).replace('T', ' '); return s.length > 10 ? s.substring(0, 10) : s }
+
+/** 分 → 金额文本（原型风格：整数不带小数，最多两位小数） */
+const fmtMoney = (fen) => {
+  const yuan = Number(fen || 0) / 100
+  return yuan.toLocaleString('zh-CN', { minimumFractionDigits: yuan % 1 === 0 ? 0 : 2, maximumFractionDigits: 2 })
+}
+
+const formatTime = (t) => { if (!t) return '—'; const s = String(t).replace('T', ' '); return s.length > 16 ? s.substring(0, 16) : s }
 
 const statusText = (s) => ({ pending: '待审批', approved: '审批通过', rejected: '已驳回', withdrawn: '已撤回' }[s] || s || '—')
 const statusClass = (s) => ({ pending: 'warning', approved: 'success', rejected: 'danger', withdrawn: 'default' }[s] || 'default')
-const detailStatusText = (s) => ({ pending: '待转账', success: '转账成功', failed: '转账失败' }[s] || s || '—')
+const detailStatusText = (s) => ({ pending: '待转账', success: '已到账', failed: '转账失败' }[s] || s || '—')
 const detailStatusClass = (s) => ({ pending: 'warning', success: 'success', failed: 'danger' }[s] || 'default')
 
-const avatarColors = ['orange', 'blue', 'green', 'purple']
-const avatarColor = (seed) => {
-  let h = 0
-  for (let i = 0; i < (seed || '').length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0
-  return avatarColors[h % avatarColors.length]
-}
+// 原型 AVATAR_COLORS：按行序取色
+const AVATAR_COLORS = ['#FF6B35', '#FF8C5A', '#FFB84D', '#F09A3E', '#2563EB', '#10B981', '#8B5CF6', '#EF4444']
+const avatarColor = (i) => AVATAR_COLORS[i % AVATAR_COLORS.length]
+
+const peopleNum = computed(() => (details.value.length ? details.value.length : order.value?.peopleCount ?? 0))
+const successNum = computed(() => details.value.filter((m) => m.status === 'success').length)
 
 const goBack = () => router.push('/admin/project-salary')
 
@@ -164,11 +163,17 @@ const loadData = async () => {
   }
 }
 
-const doApprove = async () => {
+const confirmApprove = async () => {
+  try {
+    await ElMessageBox.confirm('确认通过该发薪单？', '提示', { confirmButtonText: '确定', cancelButtonText: '取消', type: 'warning' })
+  } catch { return }
   try { await approvePayroll(id); ElMessage.success('已通过'); loadData() }
   catch (err) { ElMessage.error('审批失败') }
 }
-const doReject = async () => {
+const confirmReject = async () => {
+  try {
+    await ElMessageBox.confirm('确认驳回？', '提示', { confirmButtonText: '确定', cancelButtonText: '取消', type: 'warning' })
+  } catch { return }
   try { await rejectPayroll(id); ElMessage.success('已驳回'); loadData() }
   catch (err) { ElMessage.error('驳回失败') }
 }
@@ -182,7 +187,7 @@ const csvCell = (v) => {
 
 /** 通用：二维数组 → CSV Blob 下载。 */
 const downloadCsv = (rows, filename) => {
-  const bom = '\uFEFF' // 防 Excel 中文乱码
+  const bom = '﻿' // 防 Excel 中文乱码
   const content = bom + rows.map(row => row.map(csvCell).join(',')).join('\r\n')
   const blob = new Blob([content], { type: 'text/csv;charset=utf-8' })
   const url = URL.createObjectURL(blob)
@@ -233,12 +238,8 @@ const exportDetails = () => {
   ElMessage.success('导出成功')
 }
 
-/** 下载 Excel（CSV 格式，Excel 可直接打开）。 */
+/** 导出明细（PDF 按钮当前以 CSV 形式导出，Excel 按钮同样输出 CSV）。 */
 const exportStub = (type) => {
-  if (type === 'Excel') {
-    exportDetails()
-    return
-  }
   exportDetails()
 }
 
@@ -246,28 +247,70 @@ onMounted(loadData)
 </script>
 
 <style scoped>
-.back-bar { margin-bottom: 12px; }
-.hero-card { padding: 20px; }
-.hero-top { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 16px; }
-.hero-title { font-size: 18px; font-weight: 700; color: #1F2937; margin-bottom: 8px; }
-.hero-amount { text-align: right; }
-.hero-amount-label { font-size: 12px; color: var(--text-muted); }
-.hero-amount-value { font-size: 24px; font-weight: 700; color: var(--primary); }
-.hero-desc { margin-top: 4px; }
-
-.card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
-.avatar-cell { display: flex; align-items: center; gap: 10px; }
-.mini-avatar {
-  width: 34px; height: 34px; border-radius: 50%;
-  display: inline-flex; align-items: center; justify-content: center;
-  font-size: 13px; font-weight: 600; color: #fff; flex-shrink: 0;
+/* --- Hero 卡：返回 + 标题 + 元信息 + 金额 --- */
+.pd-hero {
+  background: #fff; border-radius: 14px; padding: 18px 24px; margin-bottom: 16px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
+  display: flex; align-items: center; gap: 18px;
 }
-.mini-avatar.orange { background: linear-gradient(135deg, #FF8C42 0%, #FF6B35 100%); }
-.mini-avatar.blue { background: linear-gradient(135deg, #60A5FA 0%, #2563EB 100%); }
-.mini-avatar.green { background: linear-gradient(135deg, #34D399 0%, #10B981 100%); }
-.mini-avatar.purple { background: linear-gradient(135deg, #A78BFA 0%, #7C3AED 100%); }
-.emp-name { font-weight: 500; font-size: 14px; }
-.amount-cell { font-weight: 600; }
+.pd-hero .back-btn {
+  width: 36px; height: 36px; flex-shrink: 0; border-radius: 8px;
+  border: 1px solid #ECECEC; background: #FAFAFA;
+  display: flex; align-items: center; justify-content: center;
+  color: #666; font-size: 13px; cursor: pointer;
+  transition: all 0.15s;
+}
+.pd-hero .back-btn:hover { color: #FF6B35; border-color: #FFE4CC; background: #FFF7F0; }
 
-.footer-actions { display: flex; gap: 12px; justify-content: flex-end; margin-top: 16px; }
+.pd-hero-info { flex: 1; min-width: 0; }
+.pd-hero-title {
+  font-size: 18px; font-weight: 700; color: #222;
+  display: flex; align-items: center; gap: 10px; margin-bottom: 6px;
+}
+.pd-hero-meta { display: flex; flex-wrap: wrap; gap: 14px 22px; font-size: 12px; color: #666; }
+.pd-hero-meta .item b { color: #999; font-weight: normal; margin-right: 4px; }
+.pd-hero-meta .item span { color: #333; }
+
+.pd-hero-total { text-align: right; flex-shrink: 0; }
+.pd-hero-total .label { font-size: 12px; color: #999; }
+.pd-hero-total .value { font-size: 24px; font-weight: 700; color: #FF6B35; margin-top: 2px; }
+.pd-hero-total .sub { font-size: 12px; color: #999; margin-top: 2px; }
+
+/* --- 发薪明细 --- */
+.pd-detail-card {
+  background: #fff; border-radius: 14px; margin-bottom: 16px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04); overflow: hidden;
+}
+.pd-detail-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 24px; border-bottom: 1px solid #F0F0F0; gap: 12px;
+}
+.pd-detail-title { font-size: 14px; font-weight: 600; color: #333; display: flex; align-items: center; gap: 8px; }
+.pd-detail-title i { color: #FF6B35; }
+.pd-head-actions { display: flex; gap: 8px; }
+
+.pd-row {
+  display: grid; grid-template-columns: 44px 110px 100px 120px 70px 70px 135px 125px;
+  gap: 14px; align-items: center; padding: 14px 24px;
+  font-size: 13px; border-bottom: 1px solid #F7F7F7;
+}
+.pd-row:last-child { border-bottom: none; }
+.pd-row.hdr {
+  font-size: 12px; color: #999; padding: 10px 24px; background: #FAFAFA; font-weight: 500;
+}
+.pd-row.hdr > div { white-space: nowrap; }
+.pd-row .avatar {
+  width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  color: #fff; font-size: 12px; font-weight: 600;
+}
+.pd-row .pd-name { font-weight: 500; color: #333; }
+.pd-row .pd-phone { font-family: monospace; font-size: 12px; }
+.pd-row .role-tag {
+  display: inline-block; font-size: 12px; color: #FF6B35; background: #FFF0E8;
+  padding: 3px 10px; border-radius: 12px;
+}
+.pd-row .amount { color: #FF6B35; font-weight: 600; text-align: right; font-variant-numeric: tabular-nums; }
+.pd-row .status-badge { white-space: nowrap; }
+
+.pd-empty { text-align: center; padding: 40px; color: #9ca3af; }
 </style>

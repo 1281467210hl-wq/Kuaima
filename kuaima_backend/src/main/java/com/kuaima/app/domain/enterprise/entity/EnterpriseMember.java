@@ -36,6 +36,12 @@ public class EnterpriseMember extends BaseEntity {
     private Integer permissionVersion = 1;
     @Column(length = 50)
     private String title;
+    /** 备注（老板端成员编辑页维护，最长 500 字）。 */
+    @Column(length = 500)
+    private String remark;
     @Column(name = "invited_by")
     private Long invitedBy;
+    /** 绑定角色 employee_role.id；为空表示仅按 member_role 粗粒度角色授权。 */
+    @Column(name = "role_id")
+    private Long roleId;
 }

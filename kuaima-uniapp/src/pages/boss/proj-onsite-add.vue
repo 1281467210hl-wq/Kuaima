@@ -49,17 +49,18 @@
             v-for="p in filteredPeople"
             :key="p.id"
             class="people-item"
-            :class="{ selected: selectedIds.includes(p.id) }"
-            @click="toggle(p.id)"
+            :class="{ selected: selectedId === p.id }"
+            @click="pick(p.id)"
           >
-            <view class="check-circle" />
-            <view class="pa" :style="{ background: p.color }">{{ p.name.charAt(0) }}</view>
+            <view class="role-radio" />
+            <view class="pa" :style="{ background: avatarColor(p.name) }">{{ p.name.charAt(0) }}</view>
             <view class="pinfo">
               <text class="pname">{{ p.name }}</text>
               <text class="psub">{{ p.phone }} · {{ p.company }}</text>
             </view>
           </view>
-          <view v-if="!filteredPeople.length" class="people-empty">未找到匹配员工</view>
+          <view v-if="!people.length" class="people-empty">{{ loading ? "加载中…" : "暂无企业员工" }}</view>
+          <view v-else-if="!filteredPeople.length" class="people-empty">暂无匹配的企业员工</view>
         </view>
       </view>
       <view class="bottom-space" />
@@ -75,16 +76,8 @@
 
 <script>
 import BossPageHeader from "@/components/BossPageHeader.vue";
-import { addOnsite, ONSITE_ROLE_TEXT } from "@/api/project";
-
-const MOCK_PEOPLE = [
-  { id: 1, name: "李建国", phone: "138****8899", company: "上海晴时网络科技有限公司", color: "#FF6B35" },
-  { id: 2, name: "陈美玲", phone: "139****5521", company: "上海晴时网络科技有限公司", color: "#10B981" },
-  { id: 3, name: "王志强", phone: "137****7733", company: "上海晴时网络科技有限公司", color: "#2563EB" },
-  { id: 4, name: "刘敏", phone: "136****4418", company: "上海晴时网络科技有限公司", color: "#8B5CF6" },
-  { id: 5, name: "赵晓东", phone: "135****2266", company: "上海晴时网络科技有限公司", color: "#F59E0B" },
-  { id: 6, name: "孙晓清", phone: "134****9901", company: "上海晴时网络科技有限公司", color: "#EF4444" },
-];
+import { addOnsite, getProject, avatarColor, ONSITE_ROLE_TEXT } from "@/api/project";
+import { getMembers } from "@/api/enterprise";
 
 export default {
   components: { BossPageHeader },
@@ -93,8 +86,11 @@ export default {
       projectId: "",
       role: "leader",
       kw: "",
-      people: MOCK_PEOPLE,
-      selectedIds: [],
+      people: [],
+      companyName: "",
+      selectedId: null,
+      loading: false,
+      submitting: false,
     };
   },
   computed: {
@@ -102,44 +98,75 @@ export default {
       const kw = this.kw.trim();
       if (!kw) return this.people;
       return this.people.filter(
-        (p) => p.name.includes(kw) || p.phone.includes(kw),
+        (p) => (p.name || "").includes(kw) || (p.phone || "").includes(kw),
       );
     },
   },
   onLoad(query) {
     this.projectId = query.id;
+    this.load();
   },
   methods: {
-    ONSITE_ROLE_TEXT,
+    avatarColor,
     render() {},
-    toggle(id) {
-      const idx = this.selectedIds.indexOf(id);
-      if (idx >= 0) this.selectedIds.splice(idx, 1);
-      else this.selectedIds.push(id);
+    async load() {
+      this.loading = true;
+      try {
+        // 企业员工池（GET /boss/enterprise/members）+ 项目用工企业名
+        const [members, project] = await Promise.all([
+          getMembers().catch(() => []),
+          getProject(this.projectId).catch(() => ({})),
+        ]);
+        const body = (members && members.data) || members;
+        const rows = Array.isArray(body) ? body : [];
+        this.companyName = (project && project.companyName) || "";
+        this.people = rows.map((m) => ({
+          id: m.id,
+          userId: m.userId,
+          name: m.name || `成员${m.userId}`,
+          phone: m.phone || "—",
+          company: this.companyName || m.company || "",
+        }));
+      } catch (e) {
+        console.warn("企业员工加载失败", e);
+        this.people = [];
+      } finally {
+        this.loading = false;
+      }
+    },
+    pick(id) {
+      // 1013 原型为单选：再次点击可取消
+      this.selectedId = this.selectedId === id ? null : id;
     },
     async submit() {
-      if (!this.selectedIds.length) {
-        uni.showToast({ title: "请至少选择 1 名员工", icon: "none" });
+      if (!this.projectId) {
+        uni.showToast({ title: "缺少项目参数，请返回重试", icon: "none" });
         return;
       }
-      const picked = this.people.filter((p) => this.selectedIds.includes(p.id));
+      if (!this.selectedId) {
+        uni.showToast({ title: "请选择要添加的企业员工", icon: "none" });
+        return;
+      }
+      const p = this.people.find((x) => x.id === this.selectedId);
+      if (!p) return;
+      this.submitting = true;
       try {
-        await Promise.all(
-          picked.map((p) =>
-            addOnsite(this.projectId, {
-              name: p.name,
-              phone: p.phone,
-              company: p.company,
-              onsiteRole: this.role,
-              onsiteDays: 0,
-            }),
-          ),
-        );
+        await addOnsite(this.projectId, {
+          userId: p.userId,
+          name: p.name,
+          phone: p.phone,
+          company: p.company,
+          onsiteRole: this.role,
+          onsiteDays: 0,
+        });
         const roleLabel = ONSITE_ROLE_TEXT[this.role];
-        uni.showToast({ title: `已添加 ${picked.length} 名${roleLabel}`, icon: "success" });
+        uni.showToast({ title: `已添加 ${p.name} 为${roleLabel}`, icon: "none" });
         setTimeout(() => uni.navigateBack({ fail: () => uni.reLaunch({ url: "/pages/boss/proj-onsite?id=" + this.projectId }) }), 800);
       } catch (e) {
-        uni.showToast({ title: "添加失败，请重试", icon: "none" });
+        const msg = e && (e.message || e.payload && e.payload.message);
+        uni.showToast({ title: msg ? `添加失败：${msg}` : "添加失败，请重试", icon: "none" });
+      } finally {
+        this.submitting = false;
       }
     },
   },
@@ -195,6 +222,7 @@ export default {
   border-radius: 50%;
   border: 2px solid #ddd;
   flex-shrink: 0;
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -233,9 +261,8 @@ export default {
   border: 1px solid #f0f0f0;
 }
 .people-item.selected { border-color: #ff6b35; background: #fff7f0; }
-.check-circle { width: 18px; height: 18px; border-radius: 50%; border: 2px solid #ddd; flex-shrink: 0; }
-.people-item.selected .check-circle { border-color: #ff6b35; background: #ff6b35; position: relative; }
-.people-item.selected .check-circle::after { content: "✓"; color: #fff; font-size: 11px; position: absolute; top: -2px; left: 3px; }
+.people-item.selected .role-radio { border-color: #ff6b35; }
+.people-item.selected .role-radio::after { content: ""; position: absolute; inset: 3px; border-radius: 50%; background: #ff6b35; }
 .pa {
   width: 36px;
   height: 36px;

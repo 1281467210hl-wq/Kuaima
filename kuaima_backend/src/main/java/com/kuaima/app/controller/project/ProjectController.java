@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -46,7 +47,12 @@ public class ProjectController {
 
     @PostMapping
     @Operation(summary = "创建项目")
-    public Result<Project> create(@RequestBody Project project, Authentication authentication) {
+    public Result<Project> create(@RequestBody Project project,
+            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
+            Authentication authentication) {
+        if (idempotencyKey != null && !idempotencyKey.isBlank()) {
+            project.setIdempotencyKey(idempotencyKey.trim());
+        }
         return Result.success(projectService.create(project, null));
     }
 

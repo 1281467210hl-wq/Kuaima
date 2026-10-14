@@ -52,17 +52,19 @@ public class BossTransferController {
 
     // ==================== 转账记录（发薪单维度） ====================
 
-    @Operation(summary = "转账记录列表与统计", description = "已审批通过的发薪单列表（按支付日期倒序），附带转账统计（笔数/人数/金额）")
+    @Operation(summary = "转账记录列表与统计", description = "已审批通过的发薪单列表（按支付日期倒序），附带转账统计（笔数/人数/金额）；projectName 按项目名模糊筛选")
     @GetMapping
     public Result<Map<String, Object>> listRecords(@RequestParam(required = false) String keyword,
                                                    @RequestParam(required = false) String type,
                                                    @RequestParam(required = false) Long projectId,
+                                                   @RequestParam(required = false) String projectName,
                                                    @RequestParam(required = false) String creator,
                                                    @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
                                                    @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
                                                    Authentication authentication) {
         Long bossId = requireBossId(authentication);
-        List<PayrollOrder> orders = filterOrders(bossId, keyword, type, projectId, creator, startDate, endDate);
+        List<PayrollOrder> orders = filterOrders(bossId, keyword, type, projectId, projectName, creator,
+                startDate, endDate);
         orders.sort((a, b) -> {
             Date ta = a.getPayTime() != null ? a.getPayTime() : a.getReviewTime();
             Date tb = b.getPayTime() != null ? b.getPayTime() : b.getReviewTime();
@@ -96,7 +98,7 @@ public class BossTransferController {
                                                    @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
                                                    Authentication authentication) {
         Long bossId = requireBossId(authentication);
-        List<PayrollOrder> orders = filterOrders(bossId, null, type, null, null, startDate, endDate);
+        List<PayrollOrder> orders = filterOrders(bossId, null, type, null, null, null, startDate, endDate);
         List<Long> orderIds = orders.stream().map(PayrollOrder::getId).toList();
         List<PayrollDetail> details = orderIds.isEmpty()
                 ? List.of()
@@ -126,7 +128,7 @@ public class BossTransferController {
                                                @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
                                                Authentication authentication) {
         Long bossId = requireBossId(authentication);
-        List<PayrollOrder> orders = filterOrders(bossId, null, null, null, null, startDate, endDate);
+        List<PayrollOrder> orders = filterOrders(bossId, null, null, null, null, null, startDate, endDate);
 
         long totalAmount = 0L;
         long peopleSum = 0;
@@ -218,7 +220,8 @@ public class BossTransferController {
 
     /** 按当前老板 + 筛选条件过滤已审批通过的发薪单（即转账记录）。 */
     private List<PayrollOrder> filterOrders(Long bossId, String keyword, String type, Long projectId,
-                                            String creator, LocalDate startDate, LocalDate endDate) {
+                                            String projectName, String creator,
+                                            LocalDate startDate, LocalDate endDate) {
         List<PayrollOrder> orders = orderRepository.findByCreatorIdAndStatusOrderByIdDesc(
                 bossId, PayrollConstants.ORDER_APPROVED);
         Date start = startDate == null ? null
@@ -226,6 +229,7 @@ public class BossTransferController {
         Date end = endDate == null ? null
                 : Date.from(endDate.plusDays(1).atStartOfDay(ZoneId.systemDefault()).toInstant());
         String kw = StringUtils.hasText(keyword) ? keyword.trim() : null;
+        String pn = StringUtils.hasText(projectName) ? projectName.trim() : null;
         String cr = StringUtils.hasText(creator) ? creator.trim() : null;
 
         List<PayrollOrder> filtered = new ArrayList<>();
@@ -237,6 +241,9 @@ public class BossTransferController {
                 continue;
             }
             if (projectId != null && !projectId.equals(order.getProjectId())) {
+                continue;
+            }
+            if (pn != null && (order.getProjectName() == null || !order.getProjectName().contains(pn))) {
                 continue;
             }
             if (cr != null && (order.getCreator() == null || !order.getCreator().contains(cr))) {

@@ -21,13 +21,14 @@
         <input type="text" placeholder="搜索职位、姓名、关键词等" disabled />
       </view>
 
-      <!-- 统计卡片 -->
+      <!-- 统计卡片（原型 boss-resume.html：两张卡 —— 简历总数 / 今日新增） -->
       <view class="stat-grid">
         <view class="stat-mini">
           <view class="stat-mini-icon" style="background: linear-gradient(135deg, #4A90E2, #357ABD)"><image class="stat-svg" src="/static/icons/boss-workbench/file-lines-white.svg" mode="aspectFit" /></view>
           <view class="stat-mini-info">
             <text class="stat-mini-num">{{ stats.total || 0 }}</text>
             <text class="stat-mini-label">简历总数</text>
+            <text v-if="stats.totalRate" class="stat-mini-rate">↑ {{ stats.totalRate }}%</text>
           </view>
         </view>
         <view class="stat-mini">
@@ -35,37 +36,8 @@
           <view class="stat-mini-info">
             <text class="stat-mini-num">{{ stats.todayNew || 0 }}</text>
             <text class="stat-mini-label">今日新增</text>
+            <text v-if="stats.todayNewRate" class="stat-mini-rate">↑ {{ stats.todayNewRate }}%</text>
           </view>
-        </view>
-        <view class="stat-mini">
-          <view class="stat-mini-icon" style="background: linear-gradient(135deg, #F5A623, #E8910C)"><image class="stat-svg" src="/static/icons/boss-resume/clock-white.svg" mode="aspectFit" /></view>
-          <view class="stat-mini-info">
-            <text class="stat-mini-num">{{ stats.pending || 0 }}</text>
-            <text class="stat-mini-label">待处理</text>
-          </view>
-        </view>
-        <view class="stat-mini">
-          <view class="stat-mini-icon" style="background: linear-gradient(135deg, #8B5CF6, #6D28D9)"><image class="stat-svg" src="/static/icons/boss-resume/paper-plane-white.svg" mode="aspectFit" /></view>
-          <view class="stat-mini-info">
-            <text class="stat-mini-num">{{ stats.sent || 0 }}</text>
-            <text class="stat-mini-label">已投递</text>
-          </view>
-        </view>
-      </view>
-
-      <!-- 快捷入口 -->
-      <view class="quick-grid">
-        <view class="quick-item" @click="goList()">
-          <image class="quick-svg" src="/static/icons/boss-profile/clipboard-list.svg" mode="aspectFit" />
-          <text class="q-name">简历管理</text>
-        </view>
-        <view class="quick-item" @click="goList('fav')">
-          <image class="quick-svg" src="/static/icons/boss-resume/star-orange.svg" mode="aspectFit" />
-          <text class="q-name">我的收藏</text>
-        </view>
-        <view class="quick-item" @click="goImport">
-          <image class="quick-svg" src="/static/icons/enterprise-cert-form/cloud-arrow-up.svg" mode="aspectFit" />
-          <text class="q-name">简历导入</text>
         </view>
       </view>
 
@@ -97,8 +69,9 @@
       </view>
     </view>
 
-    <!-- 底部按钮 -->
+    <!-- 底部按钮（原型：简历导入 描边 + 进入简历管理 主按钮，各占一半） -->
     <view class="wb-footer">
+      <view class="footer-btn-outline" @click="goImport"><image class="footer-svg" src="/static/icons/enterprise-cert-form/cloud-arrow-up.svg" mode="aspectFit" /><text>简历导入</text></view>
       <view class="footer-btn-primary" @click="goList()"><image class="footer-svg" src="/static/icons/boss-authorize/clipboard-list-white.svg" mode="aspectFit" /><text>进入简历管理</text></view>
     </view>
   </view>
@@ -295,6 +268,12 @@ export default {
   height: 18px;
 }
 
+.stat-mini-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
 .stat-mini-num {
   font-size: 19px;
   font-weight: 700;
@@ -310,35 +289,13 @@ export default {
   display: block;
 }
 
-.quick-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 10px;
-  margin-bottom: 6px;
-}
-
-.quick-item {
-  background: #fff;
-  border-radius: 14px;
-  padding: 14px 6px;
-  text-align: center;
-  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.04);
-}
-
-.quick-item:active {
-  transform: scale(0.96);
-}
-
-.quick-svg {
-  width: 22px;
-  height: 22px;
-  margin-bottom: 7px;
-}
-
-.q-name {
-  font-size: 12px;
-  color: #444;
-  font-weight: 500;
+/* 原型的增长率：后端暂未返回 totalRate / todayNewRate，缺数据时不渲染 */
+.stat-mini-rate {
+  font-size: 11px;
+  color: #10b981;
+  margin-top: 2px;
+  font-weight: 600;
+  display: block;
 }
 
 .section-head {
@@ -505,12 +462,31 @@ export default {
   bottom: 0;
   left: 0;
   right: 0;
+  display: flex;
+  gap: 10px;
   padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
   background: rgba(255, 255, 255, 0.98);
   border-top: 0.5px solid rgba(0, 0, 0, 0.05);
 }
 
+/* 简历导入：原型底部描边按钮（wb-btn-outline） */
+.footer-btn-outline {
+  flex: 1;
+  border: 1px solid #e0e0e0;
+  color: #666;
+  background: #fff;
+  border-radius: 24px;
+  padding: 12px 0;
+  text-align: center;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+}
+
 .footer-btn-primary {
+  flex: 1;
   background: linear-gradient(135deg, #ff6b35, #ff8c5a);
   color: #fff;
   border-radius: 24px;

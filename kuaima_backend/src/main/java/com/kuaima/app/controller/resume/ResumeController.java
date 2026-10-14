@@ -1,5 +1,7 @@
 package com.kuaima.app.controller.resume;
 
+import java.time.LocalDate;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -24,6 +26,7 @@ import com.kuaima.app.common.util.PdfUtil;
 import com.kuaima.app.common.util.ResumeTextExtractor;
 import com.kuaima.app.domain.resume.entity.Resume;
 import com.kuaima.app.domain.resume.entity.ResumeImportRecord;
+import com.kuaima.app.domain.resume.repository.ResumeRepository;
 import com.kuaima.app.domain.resume.service.ResumeFieldParser;
 import com.kuaima.app.domain.resume.service.ResumeService;
 import com.kuaima.app.security.model.LoginUser;
@@ -37,22 +40,42 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 public class ResumeController {
 
     private final ResumeService service;
+    private final ResumeRepository resumeRepository;
     private final OssStorageService ossStorageService;
     private final ResumeTextExtractor resumeTextExtractor;
     private final ResumeFieldParser resumeFieldParser;
 
-    public ResumeController(ResumeService service, OssStorageService ossStorageService,
+    public ResumeController(ResumeService service, ResumeRepository resumeRepository,
+                            OssStorageService ossStorageService,
                             ResumeTextExtractor resumeTextExtractor, ResumeFieldParser resumeFieldParser) {
         this.service = service;
+        this.resumeRepository = resumeRepository;
         this.ossStorageService = ossStorageService;
         this.resumeTextExtractor = resumeTextExtractor;
         this.resumeFieldParser = resumeFieldParser;
     }
 
     @GetMapping("/stats")
-    @Operation(summary = "简历库统计：总数/今日新增/待处理/已投递/收藏")
+    @Operation(summary = "简历库统计：总数/今日新增/待处理/已投递/收藏 + 增长率（totalRate 近7天环比、todayNewRate 今日对昨日）")
     public Result<Map<String, Object>> stats(Authentication auth) {
-        return Result.success(service.stats(currentUserId(auth)));
+        Long bossId = currentUserId(auth);
+        Map<String, Object> stats = new LinkedHashMap<>(service.stats(bossId));
+        LocalDate today = LocalDate.now();
+        long last7 = resumeRepository.countByBossIdAndDateBetween(bossId, today.minusDays(6), today);
+        long previous7 = resumeRepository.countByBossIdAndDateBetween(bossId, today.minusDays(13), today.minusDays(7));
+        long todayNew = resumeRepository.countByBossIdAndDate(bossId, today);
+        long yesterdayNew = resumeRepository.countByBossIdAndDate(bossId, today.minusDays(1));
+        stats.put("totalRate", growthRate(last7, previous7));
+        stats.put("todayNewRate", growthRate(todayNew, yesterdayNew));
+        return Result.success(stats);
+    }
+
+    /** 增长率百分比：(本期-上期)/上期，负增长返回负数；上期为 0 时除零兜底（本期有新增记 100，否则 0）。 */
+    private static int growthRate(long current, long previous) {
+        if (previous <= 0) {
+            return current > 0 ? 100 : 0;
+        }
+        return (int) ((current - previous) * 100 / previous);
     }
 
     @GetMapping("/latest")

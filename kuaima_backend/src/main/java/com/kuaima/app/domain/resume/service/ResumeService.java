@@ -149,7 +149,9 @@ public class ResumeService {
         resume.setSource("IMPORT");
         resume.setFavorite(false);
         resume.setFileUrl(fileUrl);
-        resume.setPreviewUrl(previewUrl);
+        // 图片简历：原件本身就是可展示内容，无 PDF 渲染预览时直接用原件做预览图
+        boolean imageResume = isImageExtension(safeName);
+        resume.setPreviewUrl(StringUtils.hasText(previewUrl) ? previewUrl : (imageResume ? fileUrl : null));
         applyParsedFields(resume, parsed);
         Resume saved = resumeRepo.save(resume);
 
@@ -164,12 +166,22 @@ public class ResumeService {
         record.setBossId(bossId);
         record.setFileName(safeName);
         record.setFileUrl(fileUrl);
-        // 开启解析但一个字段都没解析出来时，记录标记为「解析失败」，前端据此展示失败态与「重传」
-        boolean parseFailed = parseEnabled && (parsed == null || !parsed.hasAnyContent());
+        // 开启解析但一个字段都没解析出来时，记录标记为「解析失败」，前端据此展示失败态与「重传」。
+        // 图片简历例外：原件即内容，OCR（tesseract）缺失或不识图不算导入失败。
+        boolean parseFailed = parseEnabled && !imageResume && (parsed == null || !parsed.hasAnyContent());
         record.setStatus(parseFailed ? "FAILED" : "SUCCESS");
         record.setFailReason(parseFailed ? "未能从文件中解析出简历信息，请重新上传" : null);
         record.setResumeId(saved.getId());
         return importRepo.save(record);
+    }
+
+    /** 按文件名后缀判断是否为图片简历。 */
+    private static boolean isImageExtension(String fileName) {
+        if (fileName == null) return false;
+        String lower = fileName.toLowerCase();
+        return lower.endsWith(".jpg") || lower.endsWith(".jpeg") || lower.endsWith(".jpe")
+                || lower.endsWith(".png") || lower.endsWith(".bmp") || lower.endsWith(".webp")
+                || lower.endsWith(".gif");
     }
 
     /** 把解析出的字段补进简历，只覆盖空值，不写空字符串。 */

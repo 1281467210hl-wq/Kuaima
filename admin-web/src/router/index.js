@@ -163,6 +163,31 @@ const routes = [
         component: () => import('@/views/payroll/ProjectSalary.vue'),
         meta: { title: '发薪管理', icon: 'fa-money-bill-wave', permKey: 'permPayroll.payroll' }
       },
+      // 企业工作台
+      {
+        path: 'enterprise-member',
+        name: 'EnterpriseMember',
+        component: () => import('@/views/employee/EnterpriseMember.vue'),
+        meta: { title: '企业成员', icon: 'fa-sitemap', permKey: 'permEmployee.employees' }
+      },
+      {
+        path: 'project-mgmt',
+        name: 'ProjectMgmt',
+        component: () => import('@/views/project/ProjectMgmt.vue'),
+        meta: { title: '项目管理', icon: 'fa-tasks', permKey: 'permEmployee.employees' }
+      },
+      {
+        path: 'project-detail/:id',
+        name: 'ProjectDetail',
+        component: () => import('@/views/project/ProjectDetail.vue'),
+        meta: { title: '项目详情', icon: 'fa-circle-info', hidden: true, permKey: 'permEmployee.employees' }
+      },
+      {
+        path: 'smart-recruit',
+        name: 'SmartRecruit',
+        component: () => import('@/views/recruit/SmartRecruit.vue'),
+        meta: { title: '智能招聘', icon: 'fa-magnifying-glass-plus', permKey: 'permJob.jobs' }
+      },
       {
         path: 'payroll-detail/:id',
         name: 'PayrollDetail',
