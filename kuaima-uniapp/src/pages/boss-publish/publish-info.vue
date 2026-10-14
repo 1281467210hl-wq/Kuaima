@@ -169,13 +169,38 @@
               placeholder="补充工作要求或详细内容，请勿填写手机号或微信号"
             />
             <view class="upload-row">
-              <view class="upload-item" @click="uploadTaskVideo">
-                <text class="upload-icon">▶</text>
-                <text>上传视频</text>
+              <view :class="['upload-item', { disabled: mediaUploading }]" @click="uploadTaskVideo">
+                <text :class="['upload-icon', { loading: mediaUploading === 'video' }]">▶</text>
+                <text>{{ mediaUploading === "video" ? "上传中..." : taskDraft.video ? "重新上传" : "上传视频" }}</text>
               </view>
-              <view class="upload-item" @click="uploadTaskPhoto">
-                <text class="upload-icon">▧</text>
-                <text>上传照片</text>
+              <view :class="['upload-item', { disabled: mediaUploading }]" @click="uploadTaskPhoto">
+                <text :class="['upload-icon', { loading: mediaUploading === 'image' }]">▧</text>
+                <text>{{ mediaUploading === "image" ? "上传中..." : "上传照片" }}</text>
+              </view>
+            </view>
+            <view v-if="taskDraft.video || taskDraft.images.length" class="media-preview-list">
+              <view v-if="taskDraft.video" class="video-preview">
+                <video
+                  id="taskVideoPreview"
+                  :src="taskDraft.video.url"
+                  class="media-video"
+                  controls
+                  object-fit="contain"
+                  @fullscreenchange="handleTaskVideoFullscreenChange"
+                />
+                <view class="media-play-overlay" @click="previewTaskVideo">
+                  <text class="media-play-icon">▶</text>
+                </view>
+                <view class="media-remove" @click.stop="removeTaskVideo">×</view>
+              </view>
+              <view v-for="(image, index) in taskDraft.images" :key="image.objectKey || index" class="image-preview">
+                <image
+                  :src="image.url"
+                  class="media-image"
+                  mode="aspectFill"
+                  @click="previewTaskImage(index)"
+                />
+                <view class="media-remove" @click.stop="removeTaskImage(index)">×</view>
               </view>
             </view>
             <view class="upload-hint">
@@ -389,7 +414,12 @@
 </template>
 
 <script>
-import { getBossOrderTemplate, getOrder, listBossRecruitAddresses } from "@/api/backend";
+import {
+  getBossOrderTemplate,
+  getOrder,
+  listBossRecruitAddresses,
+  uploadRecruitmentMedia,
+} from "@/api/backend";
 import { handleTokenInvalid } from "@/api/auth";
 import { normalizeBossAddressSelection, readAddressCoordinates } from "@/utils/boss-address";
 
@@ -466,7 +496,26 @@ function parseTemplateTaskContent(detail = {}) {
     requirements: detail.requirements || detail.orderRemark || "",
     benefits: detail.benefits || "",
     exp: detail.exp || "",
+    images: parseMediaItems(detail.imageKeys, detail.imageUrls),
+    video: parseMediaItem(detail.videoKey, detail.videoUrl),
   };
+}
+
+function parseMediaItems(keys, urls) {
+  const keyList = String(keys || "")
+    .split(",")
+    .map((key) => key.trim())
+    .filter(Boolean);
+  const urlList = Array.isArray(urls) ? urls : [];
+  return keyList.map((objectKey, index) => ({
+    objectKey,
+    url: urlList[index] || objectKey,
+  }));
+}
+
+function parseMediaItem(key, url) {
+  const objectKey = String(key || "").trim();
+  return objectKey ? { objectKey, url: url || objectKey } : null;
 }
 
 function getTemplateRecruitSettings(detail = {}) {
@@ -571,7 +620,11 @@ export default {
         benefits: [],
         exp: [],
         requirements: [],
+        images: [],
+        video: null,
       },
+      mediaUploading: "",
+      videoFullscreen: false,
       benefitOptions: ["包工作餐", "中午包饭", "晚上包饭", "有空调", "有风扇", "室内工作"],
       experienceOptions: ["只要熟手", "欢迎新手"],
       requirementOptions: ["禁止吸烟", "认真负责", "手脚麻利", "提前到场", "不磨洋工", "禁穿凉鞋短裤"],
@@ -764,6 +817,10 @@ export default {
         benefits: splitDisplayTags(saved.benefits || (this.taskTags.length ? "" : "室内工作")),
         exp: splitDisplayTags(saved.exp || (this.taskTags.length ? "" : "欢迎新手")),
         requirements: splitDisplayTags(saved.requirements),
+        images: Array.isArray(saved.images)
+          ? saved.images
+          : parseMediaItems(saved.imageKeys, saved.imageUrls),
+        video: saved.video || parseMediaItem(saved.videoKey, saved.videoUrl),
       };
       this.activeSheet = "task";
     },
@@ -819,10 +876,96 @@ export default {
       else values.push(tag);
     },
     uploadTaskVideo() {
-      uni.showToast({ title: "请选择工作内容视频", icon: "none" });
+      if (this.mediaUploading) return;
+      uni.chooseVideo({
+        sourceType: ["album"],
+        compressed: true,
+        maxDuration: 60,
+        success: async ({ tempFile, tempFilePath, duration, size }) => {
+          const filePath = tempFilePath || tempFile?.path;
+          if (!filePath) return;
+          if (Number(duration) > 60) {
+            uni.showToast({ title: "视频最长60秒", icon: "none" });
+            return;
+          }
+          if (Number(size) > 100 * 1024 * 1024) {
+            uni.showToast({ title: "视频不能超过100MB", icon: "none" });
+            return;
+          }
+          this.mediaUploading = "video";
+          try {
+            const result = await uploadRecruitmentMedia(filePath, "video");
+            this.taskDraft.video = {
+              objectKey: result.objectKey,
+              url: filePath || result.url,
+            };
+            uni.showToast({ title: "视频上传成功", icon: "success" });
+          } catch (error) {
+            uni.showToast({ title: error?.message || "视频上传失败", icon: "none" });
+          } finally {
+            this.mediaUploading = "";
+          }
+        },
+      });
     },
     uploadTaskPhoto() {
-      uni.chooseImage({ count: 9, success: () => {} });
+      if (this.mediaUploading) return;
+      const remaining = 9 - this.taskDraft.images.length;
+      if (remaining <= 0) {
+        uni.showToast({ title: "最多上传9张图片", icon: "none" });
+        return;
+      }
+      uni.chooseImage({
+        count: remaining,
+        sizeType: ["compressed"],
+        success: async ({ tempFiles, tempFilePaths }) => {
+          const files = (tempFiles || [])
+            .map((file, index) => ({
+              file,
+              filePath: tempFilePaths?.[index] || file?.path,
+            }))
+            .filter((item) => item.filePath);
+          this.mediaUploading = "image";
+          try {
+            for (const item of files) {
+              const result = await uploadRecruitmentMedia(item.filePath, "image");
+              this.taskDraft.images.push({
+                objectKey: result.objectKey,
+                url: item.filePath || result.url,
+              });
+            }
+            uni.showToast({ title: "图片上传成功", icon: "success" });
+          } catch (error) {
+            uni.showToast({ title: error?.message || "图片上传失败", icon: "none" });
+          } finally {
+            this.mediaUploading = "";
+          }
+        },
+      });
+    },
+    previewTaskImage(index) {
+      const urls = this.taskDraft.images.map((item) => item.url).filter(Boolean);
+      const current = this.taskDraft.images[index]?.url;
+      if (!current) return;
+      uni.previewImage({ current, urls });
+    },
+    previewTaskVideo() {
+      if (!this.taskDraft.video?.url) return;
+      const context = uni.createVideoContext("taskVideoPreview", this);
+      context.requestFullScreen(0);
+      context.play();
+    },
+    handleTaskVideoFullscreenChange(event) {
+      this.videoFullscreen = Boolean(event?.fullScreen);
+      if (!this.videoFullscreen) {
+        uni.createVideoContext("taskVideoPreview", this).pause();
+      }
+    },
+    removeTaskVideo() {
+      this.taskDraft.video = null;
+    },
+    removeTaskImage(index) {
+      this.taskDraft.images.splice(index, 1);
     },
     saveTaskDetail() {
       const title = String(this.taskDraft.title || "").trim();
@@ -836,6 +979,8 @@ export default {
         benefits: this.taskDraft.benefits.join("、"),
         exp: this.taskDraft.exp.join("、"),
         requirements: this.taskDraft.requirements.join("、"),
+        images: this.taskDraft.images,
+        video: this.taskDraft.video,
       };
       uni.setStorageSync("taskContent", data);
       this.applyTaskContent(data);
@@ -1245,6 +1390,10 @@ export default {
         uni.showToast({ title: "请先填写任务详情", icon: "none" });
         return;
       }
+      if (!this.workLocationValue) {
+        uni.showToast({ title: "请先选择工作地点", icon: "none" });
+        return;
+      }
       const settings = uni.getStorageSync("recruitSettings") || {};
       const type = this.publishType || settings.type || "daily";
       const categoryQuery = [
@@ -1257,7 +1406,7 @@ export default {
           : "",
       ].join("");
       uni.redirectTo({
-        url: `/pages/boss/recruit-demand?job=${encodeURIComponent(this.primaryJobName || this.jobName.split("、")[0])}&type=${encodeURIComponent(type)}${this.orderId ? `&id=${encodeURIComponent(this.orderId)}` : ""}${this.sourceOrderId ? `&sourceOrderId=${encodeURIComponent(this.sourceOrderId)}` : ""}${this.templateId ? `&templateId=${encodeURIComponent(this.templateId)}` : ""}${categoryQuery}`,
+        url: `/pages/boss-publish/recruit-demand?job=${encodeURIComponent(this.primaryJobName || this.jobName.split("、")[0])}&type=${encodeURIComponent(type)}${this.orderId ? `&id=${encodeURIComponent(this.orderId)}` : ""}${this.sourceOrderId ? `&sourceOrderId=${encodeURIComponent(this.sourceOrderId)}` : ""}${this.templateId ? `&templateId=${encodeURIComponent(this.templateId)}` : ""}${categoryQuery}`,
       });
     },
   },
@@ -2034,6 +2183,70 @@ function formatWorkTime(start, end) {
   background: #fffbed;
   color: #333;
   font-size: 13px;
+}
+
+.upload-item.disabled {
+  opacity: 0.55;
+}
+
+.upload-icon.loading {
+  animation: media-spin 1s linear infinite;
+}
+
+@keyframes media-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.media-preview-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.video-preview,
+.image-preview {
+  position: relative;
+  width: 96px;
+  height: 88px;
+  overflow: hidden;
+  border-radius: 10px;
+  background: #f5f6f8;
+}
+
+.media-video,
+.media-image {
+  width: 96px;
+  height: 88px;
+}
+
+.media-play-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.22);
+}
+
+.media-play-icon {
+  color: #fff;
+  font-size: 22px;
+}
+
+.media-remove {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 13px;
+  line-height: 20px;
+  text-align: center;
 }
 
 .upload-icon {

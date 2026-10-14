@@ -350,6 +350,76 @@ const mockJobs = [
   },
 ];
 
+function formatDateValue(date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(
+    date.getDate(),
+  ).padStart(2, "0")}`;
+}
+
+function appendDateFilter(params) {
+  const value = filterForm.date;
+  const today = new Date();
+  if (value === "今天" || value === "明天" || value === "后天") {
+    const offset = value === "今天" ? 0 : value === "明天" ? 1 : 2;
+    const date = new Date(today);
+    date.setDate(date.getDate() + offset);
+    params.startDate = formatDateValue(date);
+    params.endDate = formatDateValue(date);
+  } else if (value === "本周内") {
+    const endDate = new Date(today);
+    endDate.setDate(endDate.getDate() + ((endDate.getDay() || 7) - 1));
+    params.startDate = formatDateValue(today);
+    params.endDate = formatDateValue(endDate);
+  }
+}
+
+function appendSalaryFilter(params) {
+  const value = filterForm.salary;
+  if (value === "100元以下") params.salaryMax = 100;
+  if (value === "100-200元") {
+    params.salaryMin = 100;
+    params.salaryMax = 200;
+  }
+  if (value === "200-300元") {
+    params.salaryMin = 200;
+    params.salaryMax = 300;
+  }
+  if (value === "300元以上") params.salaryMin = 300;
+}
+
+function appendDurationFilter(params) {
+  const value = String(filterForm.duration || "");
+  if (!value || value === "全部" || value === "不限") return;
+  if (value.includes("以内") || value.includes("内")) params.durationMax = 3;
+  if (value.includes("3") && (value.includes("~") || value.includes("-"))) {
+    params.durationMin = 3;
+    params.durationMax = 6;
+  }
+  if (value.includes("以上")) params.durationMin = 6;
+}
+
+function appendFilterParams(params) {
+  appendDateFilter(params);
+  appendSalaryFilter(params);
+  appendDurationFilter(params);
+  if (filterForm.type === "计时" || filterForm.type === "计件") {
+    params.tags = filterForm.type;
+  }
+  if (filterForm.days === "一天日结") params.sameDay = true;
+  if (filterForm.days === "多天日结") params.sameDay = false;
+  if (filterForm.jobType && filterForm.jobType !== "全部") params.position = filterForm.jobType;
+  if (filterForm.tag) {
+    params.tags = [params.tags, filterForm.tag].filter(Boolean).join(",");
+    params.tagMode = "ALL";
+  }
+  params.sort = {
+    推荐排序: "RECOMMEND",
+    近距离优先: "NEARBY",
+    时间优先: "TIME",
+    老雇主优先: "SENIOR_EMPLOYER",
+  }[filterForm.sort] || "RECOMMEND";
+}
+
 async function loadJobs() {
   loading.value = true;
   error.value = false;
@@ -359,30 +429,31 @@ async function loadJobs() {
       size: 20,
       type: activeTab.value === "DAY" ? "daily" : activeTab.value === "PRESS" ? "heldBack" : "month",
     };
+    appendFilterParams(params);
     const distanceText = String(filterForm.distance || "不限");
-    if (distanceText !== "不限") {
-      const distanceKm = Number(distanceText.match(/[\d.]+/)?.[0]);
+    const needsLocation = distanceText !== "不限" || params.sort === "NEARBY";
+    if (needsLocation) {
+      const distanceKm = distanceText === "不限"
+        ? null
+        : Number(distanceText.match(/[\d.]+/)?.[0]);
       const currentLocation = await requestCurrentLocation();
-      if (currentLocation && Number.isFinite(distanceKm) && distanceKm > 0) {
+      if (currentLocation && (!Number.isFinite(distanceKm) || distanceKm > 0)) {
         params.longitude = currentLocation.longitude;
         params.latitude = currentLocation.latitude;
-        params.distanceKm = distanceKm;
+        if (Number.isFinite(distanceKm) && distanceKm > 0) params.distanceKm = distanceKm;
       } else if (!currentLocation) {
         uni.showToast({ title: "请授权定位后才能按距离筛选", icon: "none" });
       }
     }
     const result = await listPublicJobs(params);
     const records = result?.records || result;
-    if (Array.isArray(records) && records.length > 0) {
-      const apiJobs = records.map((item) => {
+    jobs.value = Array.isArray(records)
+      ? records.map((item) => {
           const job = normalizeJob(item);
           job.hiredCount = item.applyCount ?? item.currentApplyCount ?? item.hiredCount ?? 0;
           return job;
-        });
-      jobs.value = apiJobs;
-      return;
-    }
-    jobs.value = USE_MOCK ? mockJobs.map(normalizeJob) : [];
+        })
+      : [];
   } catch (e) {
     jobs.value = USE_MOCK ? mockJobs.map(normalizeJob) : [];
     error.value = true;
@@ -524,6 +595,8 @@ onMounted(() => {
     }
   } catch (_) {}
   // 定位仅在用户选择距离筛选时按需获取；提前请求会触发微信隐私授权弹窗，阻塞首屏体验。
+  const savedFilter = uni.getStorageSync("workerJobFilter");
+  if (savedFilter) Object.assign(filterForm, filterDefaults, savedFilter);
   loadJobs();
 });
 </script>

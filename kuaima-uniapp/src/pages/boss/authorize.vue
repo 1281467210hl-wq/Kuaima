@@ -224,19 +224,8 @@ function toggleEmployee(employee) {
 }
 
 function togglePermission(value) {
-  if (value === "WORKBENCH") {
-    selectedPermissionGroups.value = permissions.map((item) => item.value);
-    return;
-  }
   const next = selectedPermissionGroups.value.filter((item) => item !== value);
   if (!selectedPermissionGroups.value.includes(value)) next.push(value);
-  const moduleValues = permissions.filter((item) => item.value !== "WORKBENCH").map((item) => item.value);
-  const allModulesSelected = moduleValues.every((item) => next.includes(item));
-  if (allModulesSelected && !next.includes("WORKBENCH")) next.push("WORKBENCH");
-  if (!allModulesSelected) {
-    const workbenchIndex = next.indexOf("WORKBENCH");
-    if (workbenchIndex >= 0) next.splice(workbenchIndex, 1);
-  }
   selectedPermissionGroups.value = next;
 }
 

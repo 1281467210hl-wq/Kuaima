@@ -215,6 +215,7 @@ export default {
       pointsToUse: "",
       pointsHint: "可用积分暂未获取",
       pointsDeductAmount: 0,
+      pointsPreviewTimer: null,
       couponLabel: "暂不可用",
       couponDeductAmount: 0,
       couponOptions: [],
@@ -248,6 +249,7 @@ export default {
   },
   onUnload() {
     this.stopPaymentPolling()
+    if (this.pointsPreviewTimer) clearTimeout(this.pointsPreviewTimer)
   },
   methods: {
     async loadPaymentPreview() {
@@ -255,6 +257,7 @@ export default {
         const result = await previewBossSettlementPayment(
           this.settlementIds,
           this.selectedUserCouponId,
+          Number(this.pointsToUse) || 0,
         )
         const preview = result?.data || result || {}
         const orderAmount = Number(preview.orderAmount)
@@ -270,7 +273,13 @@ export default {
           if (Number.isFinite(rate) && rate > 0) this.pointsDeductRate = rate
           this.pointsHint = `可用积分 ${pointsAvailable}${Number.isFinite(rate) && rate > 0 ? ` · ${rate}积分 = ¥1` : ""}`
         }
-        if (Number.isFinite(pointsDeductAmount)) this.pointsDeductAmount = pointsDeductAmount
+        const pointsUsed = Number(preview.pointsUsed)
+        if (Number.isFinite(pointsUsed)) {
+          this.pointsToUse = pointsUsed > 0 ? String(pointsUsed) : ""
+          this.pointsDeductAmount = Number((pointsUsed / this.pointsDeductRate).toFixed(2))
+        } else if (Number.isFinite(pointsDeductAmount)) {
+          this.pointsDeductAmount = pointsDeductAmount
+        }
         if (Number.isFinite(couponDeductAmount)) this.couponDeductAmount = couponDeductAmount
         // 该字段由后端按当前结算单金额筛选，作为最终可用优惠券列表。
         const options = preview.couponOptions
@@ -307,6 +316,7 @@ export default {
       this.selectedUserCouponId = userCouponId
       this.selectedCouponName = coupon.name || coupon.title || "优惠券"
       this.couponPickerVisible = false
+      if (this.pointsPreviewTimer) clearTimeout(this.pointsPreviewTimer)
       this.loadPaymentPreview()
     },
     formatFee(value, negative = false) {
@@ -326,6 +336,17 @@ export default {
       this.pointsDeductAmount = Number(
         (Number(this.pointsToUse) / this.pointsDeductRate).toFixed(2),
       )
+      const payableBeforePoints = Number(
+        (Number(this.orderAmount || 0)
+          + Number(this.serviceFee || 0)
+          - Number(this.couponDeductAmount || 0)).toFixed(2),
+      )
+      this.finalAmount = Math.max(0, Number((payableBeforePoints - this.pointsDeductAmount).toFixed(2)))
+      if (this.pointsPreviewTimer) clearTimeout(this.pointsPreviewTimer)
+      this.pointsPreviewTimer = setTimeout(() => {
+        this.pointsPreviewTimer = null
+        this.loadPaymentPreview()
+      }, 400)
     },
     goBack() {
       uni.navigateBack()
@@ -347,10 +368,6 @@ export default {
         uni.showToast({ title: "缺少待付款结算单", icon: "none" })
         return
       }
-      if (Number(this.pointsToUse) > 0) {
-        uni.showToast({ title: "支付接口暂未支持提交积分抵扣", icon: "none" })
-        return
-      }
       if (!this.idempotencyKey) this.idempotencyKey = createIdempotencyKey()
       this.submitting = true
       uni.showLoading({ title: "创建支付订单...", mask: true })
@@ -359,6 +376,7 @@ export default {
           this.settlementIds,
           this.idempotencyKey,
           this.selectedUserCouponId,
+          Number(this.pointsToUse) || 0,
         )
         const payment = result?.data || result || {}
         const orderAmount = Number(payment.orderAmount)
@@ -386,6 +404,13 @@ export default {
         }
         this.paymentNo = payment.paymentNo || payment.orderNo || ""
         const payParams = payment.payParams || {}
+        if (String(payment.status || "").toUpperCase() === "PAID" && Number(serverAmount) === 0) {
+          uni.hideLoading()
+          this.submitting = false
+          uni.showToast({ title: "支付成功", icon: "success" })
+          setTimeout(() => uni.navigateBack(), 700)
+          return
+        }
         const required = ["timeStamp", "nonceStr", "package", "paySign"]
         if (!this.paymentNo || required.some((key) => !payParams[key])) {
           throw new Error("支付参数不完整，请稍后重试")

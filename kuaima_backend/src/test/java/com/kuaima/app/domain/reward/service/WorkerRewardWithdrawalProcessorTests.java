@@ -11,10 +11,12 @@ import static org.mockito.Mockito.when;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.lang.reflect.Method;
 import java.util.Optional;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.transaction.annotation.Transactional;
 
 import com.kuaima.app.common.ForbiddenBusinessException;
 import com.kuaima.app.domain.reward.entity.RewardAccount;
@@ -58,6 +60,7 @@ class WorkerRewardWithdrawalProcessorTests {
 
         when(users.findByIdForUpdate(30L)).thenReturn(Optional.of(worker));
         when(accounts.findByUserIdForUpdate(30L)).thenReturn(Optional.of(account));
+        when(accounts.findByUserIdAndRoleForUpdate(30L, "USER")).thenReturn(Optional.of(account));
         when(withdrawals.saveAndFlush(any())).thenAnswer(invocation -> {
             RewardWithdrawal withdrawal = invocation.getArgument(0);
             if (withdrawal.getId() == null) withdrawal.setId(90001L);
@@ -74,8 +77,17 @@ class WorkerRewardWithdrawalProcessorTests {
         assertEquals(new BigDecimal("10.00"), result.getAmount());
         assertEquals(new BigDecimal("10.00"), account.getBalance());
         assertEquals("PENDING", result.getStatus());
-        verify(accounts).findByUserIdForUpdate(30L);
+        verify(accounts).findByUserIdAndRoleForUpdate(30L, "USER");
         verify(flows).saveAndFlush(any(RewardFlow.class));
+    }
+
+    @Test
+    void roleAwareSubmitMustDeclareItsOwnTransactionBoundary() throws Exception {
+        Method submit = WorkerRewardWithdrawalProcessor.class.getMethod(
+                "submit", Long.class, long.class, String.class,
+                RewardWithdrawSettings.class, String.class, String.class);
+
+        org.junit.jupiter.api.Assertions.assertNotNull(submit.getAnnotation(Transactional.class));
     }
 
     @Test
@@ -148,7 +160,7 @@ class WorkerRewardWithdrawalProcessorTests {
         RewardWithdrawal withdrawal = withdrawal("PENDING");
         when(withdrawals.findByIdForUpdate(90001L)).thenReturn(Optional.of(withdrawal));
         RewardFlow withdrawFlow = new RewardFlow();
-        when(flows.findByUserIdAndBizTypeAndBizId(30L, "WECHAT_WITHDRAW", 90001L))
+        when(flows.findByUserIdAndRoleAndBizTypeAndBizId(30L, "USER", "WECHAT_WITHDRAW", 90001L))
                 .thenReturn(Optional.of(withdrawFlow));
 
         processor.transferFailed(90001L, "微信支付接口请求失败");
@@ -182,7 +194,7 @@ class WorkerRewardWithdrawalProcessorTests {
         RewardWithdrawal withdrawal = withdrawal("PENDING");
         when(withdrawals.findByIdForUpdate(90001L)).thenReturn(Optional.of(withdrawal));
         RewardFlow withdrawFlow = new RewardFlow();
-        when(flows.findByUserIdAndBizTypeAndBizId(30L, "WECHAT_WITHDRAW", 90001L))
+        when(flows.findByUserIdAndRoleAndBizTypeAndBizId(30L, "USER", "WECHAT_WITHDRAW", 90001L))
                 .thenReturn(Optional.of(withdrawFlow));
 
         RewardWithdrawal success = processor.transferSucceeded(

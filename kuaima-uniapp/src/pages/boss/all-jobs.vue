@@ -389,7 +389,7 @@ export default {
         ];
         if (this.orderId) params.push(`id=${encodeURIComponent(this.orderId)}`);
         uni.navigateTo({
-          url: `/pages/boss/publish-info?${params.join("&")}`,
+          url: `/pages/boss-publish/publish-info?${params.join("&")}`,
         });
       }
     },

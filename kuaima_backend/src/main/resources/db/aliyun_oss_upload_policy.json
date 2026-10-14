@@ -5,6 +5,7 @@
       "Effect": "Allow",
       "Action": [
         "oss:PutObject",
+        "oss:GetObject",
         "oss:AbortMultipartUpload",
         "oss:ListParts"
       ],

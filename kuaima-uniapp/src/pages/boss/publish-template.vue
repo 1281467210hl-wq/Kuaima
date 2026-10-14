@@ -323,7 +323,7 @@ export default {
       const templateId = item?.id || this.templateId;
       if (templateId) {
         uni.navigateTo({
-          url: `/pages/boss/publish-info?templateId=${encodeURIComponent(templateId)}`,
+          url: `/pages/boss-publish/publish-info?templateId=${encodeURIComponent(templateId)}`,
         });
         return;
       }

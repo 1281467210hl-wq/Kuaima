@@ -193,15 +193,17 @@ class WorkerRewardServiceTests {
     void wechatFailureRefundsAndThrowsExplicitError() {
         RewardWithdrawal submitted = withdrawal("PENDING");
         when(processor.existing(eq(30L), eq(1000L), eq("WECHAT"), any())).thenReturn(Optional.empty());
-        when(processor.submit(eq(30L), eq(1000L), eq("WECHAT"), eq(settings), any())).thenReturn(submitted);
-        when(transferClient.transfer(any())).thenThrow(new IllegalStateException("微信支付接口请求失败"));
+        when(processor.submit(eq(30L), eq(1000L), eq("WECHAT"), eq(settings), any(), eq("USER"))).thenReturn(submitted);
+        String reason = "微信支付接口请求失败: HTTP 403, code=NO_AUTH, message=商户无权限";
+        when(transferClient.transfer(any())).thenThrow(new IllegalStateException(reason));
         RewardWithdrawal failed = withdrawal("FAILED");
-        when(processor.transferFailed(90001L, "微信支付接口请求失败")).thenReturn(failed);
+        when(processor.transferFailed(90001L, reason)).thenReturn(failed);
 
-        assertThrows(WorkerRewardWithdrawalFailedException.class,
+        WorkerRewardWithdrawalFailedException error = assertThrows(WorkerRewardWithdrawalFailedException.class,
                 () -> service.withdraw(30L, 1000L, "WECHAT", "request-1"));
 
-        verify(processor).transferFailed(90001L, "微信支付接口请求失败");
+        assertEquals("微信商家转账发起失败，奖励金已退回：" + reason, error.getMessage());
+        verify(processor).transferFailed(90001L, reason);
     }
 
     @Test

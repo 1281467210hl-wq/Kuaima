@@ -143,7 +143,7 @@ function selectJob(job) {
     params.push(`enterpriseTypeIds=${encodeURIComponent(job.enterpriseTypeId)}`);
   }
   uni.navigateTo({
-    url: `/pages/boss/publish-info?${params.join("&")}`,
+    url: `/pages/boss-publish/publish-info?${params.join("&")}`,
   });
 }
 function viewAllJobs() {

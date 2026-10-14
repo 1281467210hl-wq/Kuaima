@@ -115,7 +115,7 @@ export default {
   },
   methods: {
     goBack() {
-      uni.navigateBack({ fail: () => uni.redirectTo({ url: "/pages/boss/recruit-demand" }) });
+      uni.navigateBack({ fail: () => uni.redirectTo({ url: "/pages/boss-publish/recruit-demand" }) });
     },
     goDetail() {
       uni.navigateTo({

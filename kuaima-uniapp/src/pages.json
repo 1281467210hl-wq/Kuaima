@@ -743,18 +743,6 @@
           }
         },
         {
-          "path": "publish-info",
-          "style": {
-            "navigationStyle": "custom"
-          }
-        },
-        {
-          "path": "publish-success",
-          "style": {
-            "navigationStyle": "custom"
-          }
-        },
-        {
           "path": "realname",
           "style": {
             "navigationStyle": "custom"
@@ -762,12 +750,6 @@
         },
         {
           "path": "recruit-address",
-          "style": {
-            "navigationStyle": "custom"
-          }
-        },
-        {
-          "path": "recruit-demand",
           "style": {
             "navigationStyle": "custom"
           }
@@ -1134,6 +1116,29 @@
         },
         {
           "path": "recharge",
+          "style": {
+            "navigationStyle": "custom"
+          }
+        }
+      ]
+    },
+    {
+      "root": "pages/boss-publish",
+      "pages": [
+        {
+          "path": "publish-info",
+          "style": {
+            "navigationStyle": "custom"
+          }
+        },
+        {
+          "path": "recruit-demand",
+          "style": {
+            "navigationStyle": "custom"
+          }
+        },
+        {
+          "path": "publish-success",
           "style": {
             "navigationStyle": "custom"
           }

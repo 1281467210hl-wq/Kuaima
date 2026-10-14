@@ -35,7 +35,8 @@ public class Fastjson2HttpMessageConverter extends AbstractHttpMessageConverter<
     private static final JSONWriter.Feature[] WRITER_FEATURES = { JSONWriter.Feature.WriteNulls };
 
     public Fastjson2HttpMessageConverter() {
-        super(MediaType.APPLICATION_JSON, new MediaType("application", "*+json"));
+        super(new MediaType(MediaType.APPLICATION_JSON, StandardCharsets.UTF_8),
+                new MediaType("application", "*+json", StandardCharsets.UTF_8));
     }
 
     @Override
@@ -64,6 +65,8 @@ public class Fastjson2HttpMessageConverter extends AbstractHttpMessageConverter<
     @Override
     protected void writeInternal(Object value, HttpOutputMessage outputMessage)
             throws IOException, HttpMessageNotWritableException {
+        outputMessage.getHeaders().setContentType(
+                new MediaType(MediaType.APPLICATION_JSON, StandardCharsets.UTF_8));
         if (value instanceof byte[]) {
             outputMessage.getBody().write((byte[]) value);
             return;

@@ -26,7 +26,9 @@ public interface AdminLogRepository extends JpaRepository<AdminLog, Long> {
             select l from AdminLog l
             left join AdminUser a on a.id = l.operatorId
             where (:operatorId is null or l.operatorId = :operatorId)
-              and (:type is null or l.type = :type)
+              and (:type is null
+                   or l.type = :type
+                   or (:type = '编辑' and l.type in ('审核', '启用', '禁用', '启用/禁用', '重置密码')))
               and (:startTime is null or l.createTime >= :startTime)
               and (:endTime is null or l.createTime < :endTime)
               and (:keyword is null

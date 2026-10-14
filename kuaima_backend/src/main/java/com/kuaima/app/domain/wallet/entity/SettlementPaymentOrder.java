@@ -51,6 +51,12 @@ public class SettlementPaymentOrder {
     @Column(name = "coupon_deduct_amount", precision = 18, scale = 2)
     private BigDecimal couponDeductAmount = BigDecimal.ZERO;
 
+    @Column(name = "points_used")
+    private Integer pointsUsed = 0;
+
+    @Column(name = "points_deduct_amount", precision = 18, scale = 2)
+    private BigDecimal pointsDeductAmount = BigDecimal.ZERO;
+
     @Column(nullable = false, length = 20)
     private String status;
 

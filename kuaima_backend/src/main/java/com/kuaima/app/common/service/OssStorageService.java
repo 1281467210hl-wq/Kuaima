@@ -266,6 +266,12 @@ public class OssStorageService {
 
     private String previewContentType(String objectKey) {
         String lower = objectKey.toLowerCase();
+        if (lower.endsWith(".jpg") || lower.endsWith(".jpeg") || lower.endsWith(".jpe")) return "image/jpeg";
+        if (lower.endsWith(".png")) return "image/png";
+        if (lower.endsWith(".gif")) return "image/gif";
+        if (lower.endsWith(".webp")) return "image/webp";
+        if (lower.endsWith(".bmp")) return "image/bmp";
+        if (lower.endsWith(".mp4")) return "video/mp4";
         if (lower.endsWith(".pdf")) return "application/pdf";
         if (lower.endsWith(".doc")) return "application/msword";
         if (lower.endsWith(".docx")) return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";

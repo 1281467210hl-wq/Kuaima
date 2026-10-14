@@ -134,6 +134,7 @@ public class BossOrderService {
         if (!StringUtils.hasText(order.getOrderTitle())) {
             throw new IllegalArgumentException("订单标题不能为空");
         }
+        validateRecruitmentMedia(order);
         applyGlobalRecruitDefaults(order);
         if (!StringUtils.hasText(order.getType())) throw new IllegalArgumentException("招工类型不能为空");
         if (!BossType.isValid(order.getType())) {
@@ -180,6 +181,23 @@ public class BossOrderService {
                     catch (RuntimeException ignored) { return 1; }
                 }).orElse(1);
         order.setOrderNo(prefix + String.format("%04d", next));
+    }
+
+    /** 招工详情媒体只允许保存上传接口返回的 objectKey，禁止提交签名 URL 或任意路径。 */
+    private void validateRecruitmentMedia(BossOrder order) {
+        List<String> images = java.util.Arrays.stream(String.valueOf(order.getImageKeys() == null ? "" : order.getImageKeys()).split(","))
+                .map(String::trim)
+                .filter(StringUtils::hasText)
+                .toList();
+        if (images.size() > 9) throw new IllegalArgumentException("招工详情图片最多上传9张");
+        if (images.stream().anyMatch(key -> !key.startsWith("insurance/recruitment/"))) {
+            throw new IllegalArgumentException("招工详情图片地址无效");
+        }
+        if (StringUtils.hasText(order.getVideoKey())
+                && !order.getVideoKey().startsWith("insurance/recruitment/")) {
+            throw new IllegalArgumentException("招工详情视频地址无效");
+        }
+        order.setImageKeys(images.isEmpty() ? null : String.join(",", images));
     }
 
     /** admin 审核通过：订单从"待审核"变为"招工中"，并发岗位广播 */
@@ -257,6 +275,13 @@ public class BossOrderService {
         if (StringUtils.hasText(update.getTags())) {
             order.setTags(update.getTags());
         }
+        if (update.getImageKeys() != null) {
+            order.setImageKeys(update.getImageKeys());
+        }
+        if (update.getVideoKey() != null) {
+            order.setVideoKey(update.getVideoKey());
+        }
+        validateRecruitmentMedia(order);
         applyFilterFields(order, update);
         applyRecruitSettings(order, update);
         if (update.getOrderNum() != null) {

@@ -124,7 +124,7 @@ function normalizeApplicant(item) {
 }
 function openApplicants() { uni.navigateTo({ url: `/pages/boss/applicant-info?orderId=${encodeURIComponent(orderId)}` }); }
 function handleMainAction() {
-  if (mainAction.value.type === "edit") return uni.navigateTo({ url: `/pages/boss/publish-info?id=${encodeURIComponent(orderId)}` });
+  if (mainAction.value.type === "edit") return uni.navigateTo({ url: `/pages/boss-publish/publish-info?id=${encodeURIComponent(orderId)}` });
   if (mainAction.value.type === "settle") return uni.navigateTo({ url: "/pages/boss/suspend-settle" });
   if (mainAction.value.type === "arrive") return openApplicants();
 }

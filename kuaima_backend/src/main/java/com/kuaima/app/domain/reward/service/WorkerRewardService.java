@@ -128,8 +128,9 @@ public class WorkerRewardService {
                     submitted.getMerchantBatchNo(), submitted.getMerchantDetailNo(), amount,
                     user.getOpenid(), "快马日结奖励金提现"));
         } catch (RuntimeException e) {
-            withdrawalProcessor.transferFailed(submitted.getId(), e.getMessage());
-            throw new WorkerRewardWithdrawalFailedException("微信商家转账发起失败，奖励金已退回");
+            String reason = transferFailureReason(e.getMessage());
+            withdrawalProcessor.transferFailed(submitted.getId(), reason);
+            throw new WorkerRewardWithdrawalFailedException("微信商家转账发起失败，奖励金已退回：" + reason);
         }
         RewardWithdrawal accepted = withdrawalProcessor.transferAccepted(submitted, result);
         return withdrawalView(accepted);
@@ -140,6 +141,11 @@ public class WorkerRewardService {
         String trimmed = key.trim();
         if (trimmed.length() > 100) throw new IllegalArgumentException("Idempotency-Key 长度不能超过100");
         return "worker-reward:" + userId + ":" + trimmed;
+    }
+
+    private String transferFailureReason(String reason) {
+        String text = StringUtils.hasText(reason) ? reason.trim() : "未知错误";
+        return text.length() > 300 ? text.substring(0, 300) : text;
     }
 
     private User currentUser(Long userId) {

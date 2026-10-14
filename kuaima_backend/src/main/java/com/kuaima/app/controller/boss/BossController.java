@@ -14,6 +14,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 
 import org.springframework.data.domain.Page;
 import org.springframework.security.core.Authentication;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.ModelAttribute;
@@ -149,7 +150,9 @@ public class BossController {
     @GetMapping("/order/{id}")
     public Result<BossOrder> getOrder(@PathVariable Long id, Authentication authentication) {
         requireOwnedOrder(id, authentication);
-        return Result.success(bossOrderService.getOrder(id));
+        BossOrder order = bossOrderService.getOrder(id);
+        fillMediaPreview(order);
+        return Result.success(order);
     }
 
     /**
@@ -450,6 +453,52 @@ public class BossController {
         return Result.success(new com.kuaima.app.common.service.OssUploadResult(
                 uploaded.objectKey(), ossStorageService.playableUrl(uploaded.objectKey()),
                 uploaded.fileName()));
+    }
+
+    /** 上传招工详情媒体到私有 OSS：objectKey 随岗位落库，url 仅用于当前页面预览。 */
+    @Operation(summary = "上传招工详情图片/视频", description = "mediaType=image 支持 JPG、JPEG、PNG、WEBP 且不超过 10MB；mediaType=video 支持 MP4 且不超过 100MB")
+    @PostMapping("/order/media/upload")
+    public Result<OssUploadResult> uploadOrderMedia(@RequestParam("file") MultipartFile file,
+                                                     @RequestParam(defaultValue = "image") String mediaType,
+                                                     Authentication authentication) {
+        requireCurrentBossId(authentication);
+        if (ossStorageService == null) throw new IllegalStateException("OSS 上传服务未配置");
+        if (file == null || file.isEmpty()) throw new IllegalArgumentException("上传文件不能为空");
+        String extension = extension(file.getOriginalFilename() == null ? "" : file.getOriginalFilename());
+        String contentType = file.getContentType() == null ? "" : file.getContentType().toLowerCase(java.util.Locale.ROOT);
+        boolean unknownOrImageMime = contentType.isBlank() || "application/octet-stream".equals(contentType);
+        boolean image = !"video".equalsIgnoreCase(mediaType);
+        if (image) {
+            if (file.getSize() > 10L * 1024 * 1024) throw new IllegalArgumentException("图片不能超过10MB");
+            if (!java.util.Set.of("jpg", "jpeg", "png", "webp").contains(extension)
+                    || !(unknownOrImageMime || java.util.Set.of("image/jpeg", "image/png", "image/webp").contains(contentType))) {
+                throw new IllegalArgumentException("仅支持 JPG、JPEG、PNG、WEBP 图片");
+            }
+        } else {
+            if (file.getSize() > 100L * 1024 * 1024) throw new IllegalArgumentException("视频不能超过100MB");
+            if (!"mp4".equals(extension)
+                    || !(unknownOrImageMime || "video/mp4".equals(contentType))) {
+                throw new IllegalArgumentException("仅支持 MP4 视频");
+            }
+        }
+        OssUploadResult uploaded = ossStorageService.uploadResult(
+                file, "insurance/recruitment", "." + extension);
+        return Result.success(new OssUploadResult(
+                uploaded.objectKey(), ossStorageService.playableUrl(uploaded.objectKey()), uploaded.fileName()));
+    }
+
+    private void fillMediaPreview(BossOrder order) {
+        if (order == null || ossStorageService == null) return;
+        if (StringUtils.hasText(order.getImageKeys())) {
+            order.setImageUrls(java.util.Arrays.stream(order.getImageKeys().split(","))
+                    .map(String::trim)
+                    .filter(StringUtils::hasText)
+                    .map(ossStorageService::playableUrl)
+                    .toList());
+        }
+        if (StringUtils.hasText(order.getVideoKey())) {
+            order.setVideoUrl(ossStorageService.playableUrl(order.getVideoKey()));
+        }
     }
 
     private String extension(String name) {

@@ -84,6 +84,16 @@ export function getOrder(id) {
   return request({ url: `/boss/order/${id}`, skipUserIdHeader: true });
 }
 
+/** 上传招工详情图片/视频；mediaType = image / video。 */
+export function uploadRecruitmentMedia(filePath, mediaType = "image") {
+  return uploadFile({
+    url: `/boss/order/media/upload?mediaType=${encodeURIComponent(mediaType)}`,
+    filePath,
+    name: "file",
+    skipUserIdHeader: true,
+  });
+}
+
 /** 老板端全局招工默认设置，身份由当前 JWT 判断。 */
 export function getBossRecruitSettings() {
   return request({ url: "/boss/recruit-settings", skipUserIdHeader: true });
@@ -365,6 +375,7 @@ export function createBossSettlementWechatPayment(
   settlementIds = [],
   idempotencyKey = "",
   userCouponId = null,
+  pointsToUse = 0,
 ) {
   return request({
     url: "/boss/settlements/payments/wechat",
@@ -372,6 +383,7 @@ export function createBossSettlementWechatPayment(
     data: {
       settlementIds,
       ...(userCouponId ? { userCouponId } : {}),
+      pointsToUse: Number(pointsToUse) || 0,
     },
     header: idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {},
     skipUserIdHeader: true,
@@ -380,11 +392,16 @@ export function createBossSettlementWechatPayment(
 }
 
 /** 查询老板结算付款预览，不创建支付订单。 */
-export function previewBossSettlementPayment(settlementIds = [], userCouponId = null) {
+export function previewBossSettlementPayment(
+  settlementIds = [],
+  userCouponId = null,
+  pointsToUse = 0,
+) {
   return request({
     url: `/boss/settlements/payments/preview?${query({
       settlementIds: settlementIds.join(","),
       userCouponId: userCouponId || undefined,
+      pointsToUse: Number(pointsToUse) || 0,
     })}`,
     skipUserIdHeader: true,
     skipMock: true,
@@ -426,7 +443,11 @@ export function listExpenseApplications(params = {}) {
 }
 
 export function uploadExpenseFile(filePath) {
-  return uploadFile({ url: "/files/upload", filePath, name: "file" });
+  return uploadFile({ url: "/files/upload", filePath, name: "file" }).then(result => ({
+    ...result,
+    // 群二维码落库只保存 objectKey；列表展示由后端动态生成签名 URL。
+    url: result?.objectKey || result?.url,
+  }));
 }
 
 /** 上传实名认证图片（身份证人像面 / 人脸照片），按端走 /{role}/realname/upload。 */

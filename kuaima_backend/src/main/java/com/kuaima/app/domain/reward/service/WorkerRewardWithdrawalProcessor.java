@@ -63,6 +63,7 @@ public class WorkerRewardWithdrawalProcessor {
         return submit(userId, amount, channel, settings, normalizedKey, "USER");
     }
 
+    @Transactional
     public RewardWithdrawal submit(Long userId, long amount, String channel, RewardWithdrawSettings settings,
             String normalizedKey, String role) {
         Optional<RewardWithdrawal> old = existing(userId, amount, channel, normalizedKey, role);

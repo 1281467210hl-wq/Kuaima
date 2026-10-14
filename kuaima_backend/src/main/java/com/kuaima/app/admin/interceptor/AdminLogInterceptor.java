@@ -25,11 +25,11 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
 /**
- * 操作日志拦截器：自动记录 /admin/** 下的所有写操作（POST/PUT/DELETE）。
+ * 操作日志拦截器：自动记录 /admin/** 下 Web 端关键操作。
  * - 登录接口（/admin/auth/login）由 AdminAuthController 自行记录，此处跳过。
  * - 日志查询接口（/admin/logs）跳过，避免递归。
  * - 操作对象 target 记录为菜单中文名称（含二级菜单，如「用户管理/零工管理 #5」），完整 URI 记录到 detail。
- * - 操作类型：登录/新建/编辑/删除/审核/启用/禁用/重置密码。
+ * - 操作类型：新建/编辑/删除/查看/登录。
  */
 @Component
 public class AdminLogInterceptor implements HandlerInterceptor {
@@ -88,7 +88,7 @@ public class AdminLogInterceptor implements HandlerInterceptor {
         if (uri == null || !uri.startsWith("/admin/")) return;
         if (uri.startsWith("/admin/auth/login")) return;        // 登录由控制器记录
         if (uri.startsWith("/admin/logs")) return;              // 跳过日志自身
-        if ("GET".equalsIgnoreCase(method) || "OPTIONS".equalsIgnoreCase(method)) return;
+        if ("OPTIONS".equalsIgnoreCase(method)) return;
         // 管理员标记公告已读，属个人行为，不记业务操作日志
         if (uri.matches("(?i)/admin/notices/\\d+/read")) return;
 
@@ -105,7 +105,7 @@ public class AdminLogInterceptor implements HandlerInterceptor {
         String resourceId = extractId(uri);
         String target = module + (resourceId != null ? " #" + resourceId : "");
         String body = readBody(request);
-        String type = resolveType(method, uri, body);
+        String type = resolveType(method, uri, body, request);
         if (type == null) return;   // 无需记录的动作（如标记最近使用）
 
         String result = (response.getStatus() >= 200 && response.getStatus() < 300) ? "成功" : "失败";
@@ -192,61 +192,47 @@ public class AdminLogInterceptor implements HandlerInterceptor {
     /**
      * 推断操作类型。返回 null 表示该动作不记录。
      */
-    private String resolveType(String method, String uri, String body) {
+    private String resolveType(String method, String uri, String body, HttpServletRequest request) {
         String lower = uri.toLowerCase();
 
-        // 1. 重置密码
-        if (lower.contains("reset-password")) return "重置密码";
-
-        // 2. 审核（招工审核、认证审核、举报处理）
-        if (lower.contains("/audit/")
-                || (lower.startsWith("/admin/certifications/") && (lower.endsWith("/pass") || lower.endsWith("/reject")))
-                || lower.matches(".*/reports/\\d+/handle")) {
-            return "审核";
+        // 详情页加载接口记录查看；编辑/表单页面拉取原数据不记录。
+        if ("GET".equalsIgnoreCase(method)) {
+            return isDetailView(uri, request) ? "查看" : null;
         }
 
-        // 3. 启用 / 禁用
-        if (lower.endsWith("/unfreeze") || lower.endsWith("/unfreeze/batch")) return "启用";
-        if (lower.endsWith("/freeze") || lower.endsWith("/freeze/batch")) return "禁用";
-        if (lower.endsWith("/toggle")) {
-            // 只有通知模板需要读取切换后的状态；其他模块不得误查通知模板表。
-            String id = lower.startsWith("/admin/message-templates/") ? extractId(uri) : null;
-            if (id != null) {
-                try {
-                    return templateRepository.findById(Long.valueOf(id))
-                            .map(t -> "enabled".equalsIgnoreCase(t.getStatus()) ? "启用" : "禁用")
-                            .orElse("启用/禁用");
-                } catch (Exception e) {
-                    return "启用/禁用";
-                }
-            }
-            return "启用/禁用";
-        }
-        // 管理员账号通过整体更新切换状态（body.status 为 启用/禁用）
-        if ("PUT".equalsIgnoreCase(method) && lower.startsWith("/admin/admin-users/")) {
-            String status = bodyStatus(body);
-            if ("启用".equals(status)) return "启用";
-            if ("禁用".equals(status)) return "禁用";
-        }
-
-        // 4. 删除
+        // 删除
         if ("DELETE".equalsIgnoreCase(method)) return "删除";
 
-        // 5. POST：默认新建，动作型接口归入编辑
+        // POST：集合地址对应“新建”按钮；带资源 ID 或动作语义的接口归入“编辑”。
         if ("POST".equalsIgnoreCase(method)) {
-            if (lower.endsWith("/test-send")) return "编辑";          // 测试发送
-            if (lower.matches(".*/settlements/\\d+/pay")) return "编辑"; // 结算付款
-            if (lower.matches(".*/service/sessions/\\d+/messages")) return "编辑"; // 客服回复
-            if (lower.matches(".*/reports/\\d+/handle")) return "审核";
-            return "新建";
+            return lower.matches(".*/\\d+(/.*)?$") || isActionPost(lower) ? "编辑" : "新建";
         }
 
-        // 6. PUT：标记最近使用不记录，其余为编辑
-        if ("PUT".equalsIgnoreCase(method)) {
-            if (lower.endsWith("/used")) return null;
-            return "编辑";
-        }
         return "编辑";
+    }
+
+    private boolean isActionPost(String lower) {
+        return lower.contains("batch-pay")
+                || lower.contains("test-send")
+                || lower.contains("upload")
+                || lower.contains("license-upload")
+                || lower.matches(".*/(approve|reject|submit|withdraw|pay|read|pass|handle|toggle|freeze|unfreeze|status|send|init|adjust|cancel|close|open|claim|type|messages|video)(/|$)");
+    }
+
+    private boolean isDetailView(String uri, HttpServletRequest request) {
+        String lower = uri.toLowerCase();
+        if (lower.endsWith("/pay-url") || lower.endsWith("/export")) return false;
+
+        String referer = request.getHeader("Referer");
+        if (referer != null) {
+            String refererLower = referer.toLowerCase();
+            if (refererLower.contains("/edit") || refererLower.contains("/form")) return false;
+        }
+
+        return lower.matches("^/admin/(settlements|insurances|jobs|admin-users|users|rewards|credit|message-templates|payrolls|employees)/\\d+/?$")
+                || lower.matches("^/admin/(point-purchase/orders|service/sessions)/[^/]+/?$")
+                || lower.matches("^/admin/jobs/\\d+/applicants/?$")
+                || lower.matches("^/admin/users/\\d+/overview/?$");
     }
 
     /** 获取真实客户端 IP（穿透 Nginx 等代理） */

@@ -31,6 +31,16 @@ class OssStorageServiceObjectKeyTests {
         assertNull(objectKey(service, "https://evil.example.com/insurance/realname/a.png"));
     }
 
+    @Test
+    void previewContentTypeShouldSupportRecruitmentImagesAndVideos() throws Exception {
+        OssStorageService service = new OssStorageService();
+        assertEquals("image/png", previewContentType(service, "insurance/recruitment/a.png"));
+        assertEquals("image/jpeg", previewContentType(service, "insurance/recruitment/a.JPG"));
+        assertEquals("image/webp", previewContentType(service, "insurance/recruitment/a.webp"));
+        assertEquals("video/mp4", previewContentType(service, "insurance/recruitment/a.mp4"));
+        assertEquals("application/octet-stream", previewContentType(service, "insurance/recruitment/a.unknown"));
+    }
+
     private OssStorageService configured() throws Exception {
         OssStorageService service = new OssStorageService();
         field(service, "endpoint", "oss-cn-beijing.aliyuncs.com");
@@ -42,6 +52,12 @@ class OssStorageServiceObjectKeyTests {
         Method method = OssStorageService.class.getDeclaredMethod("objectKey", String.class);
         method.setAccessible(true);
         return method.invoke(service, value);
+    }
+
+    private String previewContentType(OssStorageService service, String value) throws Exception {
+        Method method = OssStorageService.class.getDeclaredMethod("previewContentType", String.class);
+        method.setAccessible(true);
+        return String.valueOf(method.invoke(service, value));
     }
 
     private void field(OssStorageService service, String name, String value) throws Exception {
