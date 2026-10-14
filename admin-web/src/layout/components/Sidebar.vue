@@ -13,25 +13,6 @@
 
     <!-- 菜单：两级可折叠分组（对齐原型 initSidebar） -->
     <nav class="sidebar-menu">
-      <template v-for="group in filteredMenuGroups" :key="group.id">
-        <div v-if="group.items.length" class="menu-parent" :class="{ open: openGroups.has(group.id) }" @click="toggleGroup(group.id)">
-          <i :class="['fas', group.icon]"></i>
-          <span v-show="!appStore.sidebarCollapsed">{{ group.name }}</span>
-          <i v-show="!appStore.sidebarCollapsed" class="fas fa-chevron-down menu-arrow"></i>
-        </div>
-        <template v-if="openGroups.has(group.id) || appStore.sidebarCollapsed">
-          <router-link
-            v-for="item in group.items"
-            :key="item.path"
-            :to="item.path"
-            class="menu-item"
-            active-class="active"
-          >
-            <i :class="['fas', item.icon]"></i>
-            <span v-show="!appStore.sidebarCollapsed">{{ item.name }}</span>
-          </router-link>
-        </template>
-      </template>
       <div
         v-for="group in filteredMenuGroups"
         :key="group.id"
@@ -62,8 +43,6 @@
 </template>
 
 <script setup>
-import { computed, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
 import { computed, reactive, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAppStore } from '@/stores/app'
@@ -71,10 +50,9 @@ import { useUserStore } from '@/stores/user'
 import { hasPerm } from '@/utils/permission'
 
 const route = useRoute()
+const router = useRouter()
 const appStore = useAppStore()
 const userStore = useUserStore()
-const route = useRoute()
-const router = useRouter()
 
 // 分组顺序与图标严格按原型 menuGroups；企业工作台居第一位
 const menuGroups = [
@@ -177,24 +155,6 @@ const filteredMenuGroups = computed(() => {
     }))
     .filter((group) => group.items.length > 0)
 })
-
-const openGroups = ref(new Set())
-
-const toggleGroup = groupId => {
-  const next = new Set(openGroups.value)
-  if (next.has(groupId)) next.delete(groupId)
-  else next.add(groupId)
-  openGroups.value = next
-}
-
-const syncOpenGroupByRoute = () => {
-  const activeGroup = filteredMenuGroups.value.find(group =>
-    group.items.some(item => route.path === item.path || route.path.startsWith(item.path + '/'))
-  )
-  if (activeGroup) openGroups.value = new Set([activeGroup.id])
-}
-
-watch(() => route.path, syncOpenGroupByRoute, { immediate: true })
 
 // 展开的分组集合：当前路由所属分组默认展开，其余收起
 const openGroups = reactive(new Set())
