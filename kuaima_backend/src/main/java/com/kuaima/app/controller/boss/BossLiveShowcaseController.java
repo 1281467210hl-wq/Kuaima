@@ -25,9 +25,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.kuaima.app.common.ForbiddenBusinessException;
 import com.kuaima.app.common.Result;
-import com.kuaima.app.domain.recruit.entity.DouyinAccount;
 import com.kuaima.app.domain.recruit.entity.LiveShowcase;
-import com.kuaima.app.domain.recruit.repository.DouyinAccountRepository;
 import com.kuaima.app.domain.recruit.repository.LiveShowcaseRepository;
 import com.kuaima.app.domain.user.constant.UserRole;
 import com.kuaima.app.security.model.LoginUser;
@@ -37,26 +35,21 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.persistence.EntityNotFoundException;
 
 /**
- * 老板端-直播橱窗 + 抖音账号绑定（仅当前登录老板自己的数据）。
+ * 老板端-直播橱窗（仅当前登录老板自己的数据）。
  */
 @RestController
 @RequestMapping("/boss")
-@Tag(name = "老板-直播橱窗", description = "橱窗列表/新建/删除/状态，抖音账号列表/绑定")
+@Tag(name = "老板-直播橱窗", description = "橱窗列表/新建/删除/状态")
 public class BossLiveShowcaseController {
 
     private static final Set<String> ALLOWED_STATUS = Set.of("PENDING", "LIVE", "ENDED");
     private static final DateTimeFormatter MINUTE = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
 
     private final LiveShowcaseRepository showcaseRepository;
-    private final DouyinAccountRepository accountRepository;
 
-    public BossLiveShowcaseController(LiveShowcaseRepository showcaseRepository,
-                                      DouyinAccountRepository accountRepository) {
+    public BossLiveShowcaseController(LiveShowcaseRepository showcaseRepository) {
         this.showcaseRepository = showcaseRepository;
-        this.accountRepository = accountRepository;
     }
-
-    /* ==================== 直播橱窗 ==================== */
 
     @GetMapping("/live-showcases")
     @Operation(summary = "橱窗列表（当前老板）")
@@ -114,55 +107,6 @@ public class BossLiveShowcaseController {
         return Result.success();
     }
 
-    /* ==================== 抖音账号 ==================== */
-
-    @GetMapping("/douyin-accounts")
-    @Operation(summary = "当前老板已绑定的抖音账号列表")
-    public Result<List<Map<String, Object>>> accounts(Authentication authentication) {
-        Long bossId = requireBossId(authentication);
-        return Result.success(accountRepository.findByBossIdOrderByIdDesc(bossId).stream()
-                .map(this::accountRow).collect(Collectors.toList()));
-    }
-
-    @PostMapping("/douyin-accounts")
-    @Operation(summary = "绑定新的抖音直播账号",
-            description = "body: {name(必填), douyinId(必填), anchorName?}；同老板下账号名或抖音号重复时拒绝")
-    public Result<Map<String, Object>> bindAccount(@RequestBody Map<String, String> body, Authentication authentication) {
-        Long bossId = requireBossId(authentication);
-        String name = trim(body.get("name"));
-        String douyinId = trim(body.get("douyinId"));
-        if (name == null) {
-            throw new IllegalArgumentException("请输入账号名称");
-        }
-        if (douyinId == null) {
-            throw new IllegalArgumentException("请输入抖音号");
-        }
-        if (accountRepository.existsByBossIdAndName(bossId, name)
-                || accountRepository.existsByBossIdAndDouyinId(bossId, douyinId)) {
-            throw new IllegalArgumentException("该账号已存在");
-        }
-        DouyinAccount acc = new DouyinAccount();
-        acc.setBossId(bossId);
-        acc.setName(name);
-        acc.setDouyinId(douyinId);
-        acc.setAnchorName(trim(body.get("anchorName")));
-        acc.setAuthorized(true);
-        return Result.success(accountRow(accountRepository.save(acc)));
-    }
-
-    @DeleteMapping("/douyin-accounts/{id}")
-    @Operation(summary = "解绑抖音账号")
-    public Result<Void> unbindAccount(@PathVariable Long id, Authentication authentication) {
-        Long bossId = requireBossId(authentication);
-        DouyinAccount acc = accountRepository.findById(id)
-                .orElseThrow(() -> new EntityNotFoundException("账号不存在: " + id));
-        if (!bossId.equals(acc.getBossId())) {
-            throw new ForbiddenBusinessException("无权操作该账号");
-        }
-        accountRepository.delete(acc);
-        return Result.success();
-    }
-
     /* ==================== 视图与工具 ==================== */
 
     private Map<String, Object> showcaseRow(LiveShowcase s) {
@@ -175,16 +119,6 @@ public class BossLiveShowcaseController {
                 : (s.getTimestamp() != null ? new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm").format(s.getTimestamp()) : null));
         row.put("status", s.getStatus());
         row.put("statusName", statusName(s.getStatus()));
-        return row;
-    }
-
-    private Map<String, Object> accountRow(DouyinAccount a) {
-        Map<String, Object> row = new LinkedHashMap<>();
-        row.put("id", a.getId());
-        row.put("name", a.getName());
-        row.put("douyinId", a.getDouyinId());
-        row.put("anchorName", a.getAnchorName());
-        row.put("authorized", Boolean.TRUE.equals(a.getAuthorized()));
         return row;
     }
 

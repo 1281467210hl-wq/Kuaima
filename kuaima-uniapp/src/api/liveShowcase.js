@@ -43,18 +43,3 @@ export function deleteLiveShowcase(id) {
     skipUserIdHeader: true,
   });
 }
-
-/** 已绑定抖音账号列表：GET /boss/douyin-accounts。 */
-export function listDouyinAccounts() {
-  return request({ url: "/boss/douyin-accounts", skipUserIdHeader: true });
-}
-
-/** 绑定新抖音账号：POST /boss/douyin-accounts { name, douyinId, anchorName }。 */
-export function bindDouyinAccount(data = {}) {
-  return request({
-    url: "/boss/douyin-accounts",
-    method: "POST",
-    data,
-    skipUserIdHeader: true,
-  });
-}
