@@ -82,9 +82,13 @@ public class PointPurchaseService {
 
     private void grant(PointPurchaseOrder o) {
         if (Boolean.TRUE.equals(o.getPointsGranted())) return;
-        PointsAccount account = accountRepo.findByUserIdAndRoleForUpdate(o.getBossId(), UserRole.BOSS).orElseGet(() -> {
-            PointsAccount a = new PointsAccount(); a.setUserId(o.getBossId()); a.setRole(UserRole.BOSS); a.setBalance(0); return accountRepo.saveAndFlush(a);
-        });
+        java.util.List<PointsAccount> lockedAccounts =
+                accountRepo.findAllByUserIdAndRoleForUpdate(o.getBossId(), UserRole.BOSS);
+        PointsAccount account = lockedAccounts.isEmpty()
+                ? accountRepo.findFirstByUserIdAndRoleOrderByIdDesc(o.getBossId(), UserRole.BOSS).orElseGet(() -> {
+                    PointsAccount a = new PointsAccount(); a.setUserId(o.getBossId()); a.setRole(UserRole.BOSS); a.setBalance(0); return accountRepo.saveAndFlush(a);
+                })
+                : lockedAccounts.get(0);
         long before = account.getBalance() == null ? 0 : account.getBalance(); long after = before + o.getPoints();
         if (after > Integer.MAX_VALUE) throw new IllegalArgumentException("积分余额超出系统上限");
         account.setBalance((int) after); accountRepo.save(account);

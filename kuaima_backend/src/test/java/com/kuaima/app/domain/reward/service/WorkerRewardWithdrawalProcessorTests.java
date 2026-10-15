@@ -59,8 +59,7 @@ class WorkerRewardWithdrawalProcessorTests {
         settings = new RewardWithdrawSettings(1000L, true, null, "WECHAT");
 
         when(users.findByIdForUpdate(30L)).thenReturn(Optional.of(worker));
-        when(accounts.findByUserIdForUpdate(30L)).thenReturn(Optional.of(account));
-        when(accounts.findByUserIdAndRoleForUpdate(30L, "USER")).thenReturn(Optional.of(account));
+        when(accounts.findAllByUserIdAndRoleForUpdate(30L, "USER")).thenReturn(java.util.List.of(account));
         when(withdrawals.saveAndFlush(any())).thenAnswer(invocation -> {
             RewardWithdrawal withdrawal = invocation.getArgument(0);
             if (withdrawal.getId() == null) withdrawal.setId(90001L);
@@ -77,7 +76,7 @@ class WorkerRewardWithdrawalProcessorTests {
         assertEquals(new BigDecimal("10.00"), result.getAmount());
         assertEquals(new BigDecimal("10.00"), account.getBalance());
         assertEquals("PENDING", result.getStatus());
-        verify(accounts).findByUserIdAndRoleForUpdate(30L, "USER");
+        verify(accounts).findAllByUserIdAndRoleForUpdate(30L, "USER");
         verify(flows).saveAndFlush(any(RewardFlow.class));
     }
 

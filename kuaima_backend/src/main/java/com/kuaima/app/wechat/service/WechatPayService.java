@@ -91,14 +91,13 @@ public class WechatPayService {
     /** 发起已签名的微信支付 v3 JSON POST 请求；错误信息不携带密钥和完整响应。 */
     public JSONObject signedPost(String path, JSONObject body, String wechatpaySerial) {
         requireEnabled();
-        if (!StringUtils.hasText(wechatpaySerial)) throw new IllegalArgumentException("微信支付平台公钥序列号未配置");
         String payload = body.toJSONString();
         try {
-            HttpRequest request = HttpRequest.newBuilder(URI.create("https://api.mch.weixin.qq.com" + path))
+            HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create("https://api.mch.weixin.qq.com" + path))
                     .header("Content-Type", "application/json").header("Accept", "application/json")
-                    .header("Wechatpay-Serial", wechatpaySerial)
-                    .header("Authorization", authorization("POST", path, payload))
-                    .POST(HttpRequest.BodyPublishers.ofString(payload)).build();
+                    .header("Authorization", authorization("POST", path, payload));
+            if (StringUtils.hasText(wechatpaySerial)) builder.header("Wechatpay-Serial", wechatpaySerial);
+            HttpRequest request = builder.POST(HttpRequest.BodyPublishers.ofString(payload)).build();
             HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() / 100 != 2) {
                 throw new IllegalStateException(errorSummary("微信支付接口请求失败", response.statusCode(), response.body()));

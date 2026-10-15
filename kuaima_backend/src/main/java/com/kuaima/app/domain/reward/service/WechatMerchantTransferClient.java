@@ -6,6 +6,11 @@ public interface WechatMerchantTransferClient {
 
     MerchantTransferStatus query(String outBatchNo);
 
+    MerchantTransferStatus queryLegacy(String outBatchNo);
+
+    /**
+     * outDetailNo 仅兼容旧调用方保留；升级版商家转账使用 outBillNo 作为唯一商户单号。
+     */
     record MerchantTransferRequest(
             String outBatchNo,
             String outDetailNo,
@@ -16,16 +21,37 @@ public interface WechatMerchantTransferClient {
 
     record MerchantTransferResult(
             String outBatchNo,
-            String batchId,
+            String transferBillNo,
             String createTime,
-            String batchStatus,
+            String state,
+            String packageInfo,
+            String appId,
+            String mchId,
             String rawResponse) {
+
+        public MerchantTransferResult(
+                String outBatchNo,
+                String transferBillNo,
+                String createTime,
+                String state,
+                String rawResponse) {
+            this(outBatchNo, transferBillNo, createTime, state, null, null, null, rawResponse);
+        }
     }
 
     record MerchantTransferStatus(
-            String batchStatus,
+            String state,
+            String transferBillNo,
+            String failReason,
             String detailStatus,
-            String detailId,
             String rawResponse) {
+
+        public MerchantTransferStatus(
+                String state,
+                String transferBillNo,
+                String failReason,
+                String rawResponse) {
+            this(state, transferBillNo, failReason, null, rawResponse);
+        }
     }
 }

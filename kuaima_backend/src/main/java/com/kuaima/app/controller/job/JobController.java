@@ -32,6 +32,7 @@ import com.kuaima.app.domain.boss.model.BossOrderQuery;
 import com.kuaima.app.domain.boss.service.BossOrderService;
 import com.kuaima.app.domain.boss.entity.BaseOrderItem;
 import com.kuaima.app.domain.user.constant.UserRole;
+import com.kuaima.app.domain.user.repository.UserRepository;
 import com.kuaima.app.security.model.LoginUser;
 import com.kuaima.app.domain.browsehistory.entity.BrowseHistory;
 import com.kuaima.app.domain.browsehistory.repository.BrowseHistoryRepository;
@@ -55,6 +56,7 @@ public class JobController {
     private final BossOrderService bossOrderService;
     private final EnterpriseRepository enterpriseRepository;
     private final OssStorageService ossStorageService;
+    private final UserRepository userRepository;
 
     public JobController(JobFavoriteRepository favoriteRepository,
                          BrowseHistoryRepository browseHistoryRepository,
@@ -68,7 +70,18 @@ public class JobController {
                          BossOrderRespository orderRepository,
                          BossOrderService bossOrderService,
                          EnterpriseRepository enterpriseRepository) {
-        this(favoriteRepository, browseHistoryRepository, orderRepository, bossOrderService, enterpriseRepository, null);
+        this(favoriteRepository, browseHistoryRepository, orderRepository, bossOrderService,
+                enterpriseRepository, null, null);
+    }
+
+    public JobController(JobFavoriteRepository favoriteRepository,
+                         BrowseHistoryRepository browseHistoryRepository,
+                         BossOrderRespository orderRepository,
+                         BossOrderService bossOrderService,
+                         EnterpriseRepository enterpriseRepository,
+                         OssStorageService ossStorageService) {
+        this(favoriteRepository, browseHistoryRepository, orderRepository, bossOrderService,
+                enterpriseRepository, ossStorageService, null);
     }
 
     @org.springframework.beans.factory.annotation.Autowired
@@ -77,13 +90,15 @@ public class JobController {
                          BossOrderRespository orderRepository,
                          BossOrderService bossOrderService,
                          EnterpriseRepository enterpriseRepository,
-                         OssStorageService ossStorageService) {
+                         OssStorageService ossStorageService,
+                         UserRepository userRepository) {
         this.favoriteRepository = favoriteRepository;
         this.browseHistoryRepository = browseHistoryRepository;
         this.orderRepository = orderRepository;
         this.bossOrderService = bossOrderService;
         this.enterpriseRepository = enterpriseRepository;
         this.ossStorageService = ossStorageService;
+        this.userRepository = userRepository;
     }
 
     /** 零工公开岗位列表：GET /jobs。仅返回招工中的岗位，不按老板归属过滤。 */
@@ -110,6 +125,11 @@ public class JobController {
                             enterprise.getCompanyName() == null ? "" : enterprise.getCompanyName()));
         }
         if (order.getCompanyName() == null) order.setCompanyName("");
+        if (userRepository != null && order.getCreateBy() != null) {
+            userRepository.findById(order.getCreateBy()).ifPresent(user -> order.setContactPhone(
+                    StringUtils.hasText(user.getContactPhone()) ? user.getContactPhone() : user.getPhone()));
+        }
+        if (order.getContactPhone() == null) order.setContactPhone("");
         fillMediaPreview(order);
         return Result.success(order);
     }

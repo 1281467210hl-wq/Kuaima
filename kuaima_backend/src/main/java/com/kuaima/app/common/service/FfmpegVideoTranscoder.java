@@ -16,6 +16,38 @@ public class FfmpegVideoTranscoder {
     private final String executable;
     private final Duration timeout;
 
+    public boolean isHevc(Path input) throws IOException {
+        byte[] hvc1 = "hvc1".getBytes(java.nio.charset.StandardCharsets.US_ASCII);
+        byte[] hev1 = "hev1".getBytes(java.nio.charset.StandardCharsets.US_ASCII);
+        byte[] buffer = new byte[64 * 1024 + 3];
+        int carry = 0;
+        try (var reader = Files.newBufferedReader(input, java.nio.charset.StandardCharsets.ISO_8859_1)) {
+            int character;
+            while ((character = reader.read()) != -1) {
+                buffer[carry++] = (byte) character;
+                if (carry == buffer.length) {
+                    if (contains(buffer, hvc1) || contains(buffer, hev1)) return true;
+                    System.arraycopy(buffer, buffer.length - 3, buffer, 0, 3);
+                    carry = 3;
+                }
+            }
+        }
+        return contains(buffer, 0, carry, hvc1) || contains(buffer, 0, carry, hev1);
+    }
+
+    private boolean contains(byte[] buffer, byte[] pattern) {
+        return contains(buffer, 0, buffer.length, pattern);
+    }
+
+    private boolean contains(byte[] buffer, int offset, int length, byte[] pattern) {
+        for (int start = offset; start <= length - pattern.length; start++) {
+            int index = 0;
+            while (index < pattern.length && buffer[start + index] == pattern[index]) index++;
+            if (index == pattern.length) return true;
+        }
+        return false;
+    }
+
     public FfmpegVideoTranscoder(
             @Value("${kuaima.media.ffmpeg-path:ffmpeg}") String executable,
             @Value("${kuaima.media.transcode-timeout-seconds:900}") long timeoutSeconds) {

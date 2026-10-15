@@ -3,6 +3,7 @@ package com.kuaima.app.domain.wallet.service;
 import java.time.LocalDateTime;
 
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
 import com.kuaima.app.domain.reward.service.WechatMerchantTransferClient;
 import com.kuaima.app.domain.wallet.constant.WithDrawStatus;
@@ -25,12 +26,26 @@ public class WorkerWalletWithdrawalSyncService {
                 WithDrawStatus.PENDING, LocalDateTime.now().minusMinutes(1));
         for (var draw : pending) {
             WechatMerchantTransferClient.MerchantTransferStatus status;
-            try { status = transfers.query(draw.getMerchantBatchNo()); }
+            boolean legacyTransfer = StringUtils.hasText(draw.getTransferResponse())
+                    && draw.getTransferResponse().contains("batch_id")
+                    && !draw.getTransferResponse().contains("transfer_bill_no");
+            try {
+                status = legacyTransfer
+                        ? transfers.queryLegacy(draw.getMerchantBatchNo())
+                        : transfers.query(draw.getMerchantBatchNo());
+            }
             catch (RuntimeException e) { continue; }
-            if ("FINISHED".equals(status.batchStatus()) && "SUCCESS".equals(status.detailStatus())) {
-                wallets.succeedWechatWithdraw(draw.getId(), status.detailId(), status.rawResponse()); changed++;
-            } else if ("CLOSED".equals(status.batchStatus()) || "FAIL".equals(status.detailStatus())) {
-                wallets.failWechatWithdraw(draw.getId(), "微信提现失败", status.detailId(), status.rawResponse()); changed++;
+            boolean terminalSuccess = legacyTransfer
+                    ? "FINISHED".equals(status.state()) && "SUCCESS".equals(status.detailStatus())
+                    : "SUCCESS".equals(status.state());
+            boolean terminalFailure = legacyTransfer
+                    ? "CLOSED".equals(status.state()) || "FAIL".equals(status.detailStatus())
+                    : "FAIL".equals(status.state()) || "CANCELLED".equals(status.state());
+            if (terminalSuccess) {
+                wallets.succeedWechatWithdraw(draw.getId(), status.transferBillNo(), status.rawResponse()); changed++;
+            } else if (terminalFailure) {
+                String reason = StringUtils.hasText(status.failReason()) ? status.failReason() : "微信提现失败";
+                wallets.failWechatWithdraw(draw.getId(), reason, status.transferBillNo(), status.rawResponse()); changed++;
             }
         }
         return changed;

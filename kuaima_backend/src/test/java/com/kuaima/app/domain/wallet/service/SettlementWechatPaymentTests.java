@@ -115,8 +115,8 @@ class SettlementWechatPaymentTests {
                 null, null, payments, wechat, pointAccounts, null, null, pointFlows);
         when(settlements.findByIdForUpdate(11L)).thenReturn(Optional.of(settlement));
         when(orders.findById(102L)).thenReturn(Optional.of(order));
-        when(pointAccounts.findByUserIdAndRole(7L, "BOSS")).thenReturn(Optional.of(account));
-        when(pointAccounts.findByUserIdAndRoleForUpdate(7L, "BOSS")).thenReturn(Optional.of(account));
+        when(pointAccounts.findFirstByUserIdAndRoleOrderByIdDesc(7L, "BOSS")).thenReturn(Optional.of(account));
+        when(pointAccounts.findAllByUserIdAndRoleForUpdate(7L, "BOSS")).thenReturn(List.of(account));
         when(pointFlows.save(any(PointsFlow.class))).thenAnswer(invocation -> invocation.getArgument(0));
         when(items.findById(1L)).thenReturn(Optional.empty());
 

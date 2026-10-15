@@ -240,6 +240,9 @@ export default {
       this.experienceActive = 0;
       this.genderActive = 0;
       this.tagActive = [];
+      uni.removeStorageSync("bossOrderFilter");
+      uni.$emit("filterChanged", null);
+      uni.navigateBack();
     },
     confirmFilter() {
       const filterData = {

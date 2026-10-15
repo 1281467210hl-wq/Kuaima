@@ -10,7 +10,7 @@
     <scroll-view scroll-y class="chat-messages" :scroll-top="scrollTop" :show-scrollbar="false">
       <text class="msg-time">{{ currentTimeLabel }}</text>
       <view class="msg-row"><view class="msg-avatar service">🎧</view><view class="msg-content"><view class="msg-bubble">您好，请问有什么可以帮助您？</view></view></view>
-      <view class="msg-row"><view class="msg-avatar service">🎧</view><view class="msg-content hot-content"><view class="hot-questions"><text class="hot-title">热门问题</text><view v-for="item in hotQuestions" :key="item" class="hot-item" @click="sendText(item)"><text class="hot-dot">●</text><text>{{ item }}</text></view><view class="hot-item human" @click="sendText('转人工客服')"><text>🎧</text><text>人工客服</text></view></view></view></view>
+      <view class="msg-row"><view class="msg-avatar service">🎧</view><view class="msg-content hot-content"><view class="hot-questions"><text class="hot-title">常见问题</text><view v-for="item in hotQuestions" :key="item" class="hot-item" @click="sendText(item)"><text class="hot-dot">●</text><text>{{ item }}</text></view><view class="hot-item human" @click="sendText('转人工客服')"><text>🎧</text><text>人工客服</text></view></view></view></view>
       <view v-for="(item, index) in messages" :id="`msg-${index}`" :key="item.id || item.messageId || index" :class="['msg-row', { self: item.self }]"><view :class="['msg-avatar', item.self ? 'user' : 'service']">{{ item.self ? "我" : "🎧" }}</view><view class="msg-content"><view :class="['msg-bubble', { 'self-bubble': item.self }]">{{ item.text }}</view><text v-if="item.time" class="message-time">{{ item.time }}</text></view></view>
       <view v-if="sessionClosed" class="msg-row system-notice"><view class="msg-avatar service">🎧</view><view class="msg-content"><view class="msg-bubble">本次客服会话已结束，如有其他问题请重新发起咨询</view></view></view>
       <view class="scroll-space" />
@@ -36,6 +36,7 @@ import wsClient from "@/api/chat-websocket";
 const props = defineProps({
   hotQuestions: { type: Array, default: () => [] },
   fallbackPath: { type: String, default: "" },
+  initialInput: { type: String, default: "" },
 });
 
 const system = uni.getSystemInfoSync();
@@ -56,7 +57,10 @@ const currentTimeLabel = computed(() => { const now = new Date(); return `今天
 
 let syncTimer = null;
 
-onMounted(loadSession);
+onMounted(() => {
+  input.value = props.initialInput || "";
+  loadSession();
+});
 onUnmounted(() => {
   stopMessageSync();
   removeSocketListeners();

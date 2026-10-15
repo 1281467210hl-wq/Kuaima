@@ -231,6 +231,12 @@ export function listPublicJobs(params = {}) {
   });
 }
 
+export function reverseGeocode(latitude, longitude) {
+  return request({
+    url: `/location/reverse-geocode?${query({ latitude, longitude })}`,
+  });
+}
+
 export function getPublicJob(orderId) {
   return request({ url: `/jobs/${normalizeId(orderId, "orderId")}` });
 }
@@ -1407,11 +1413,11 @@ export function getBossRewardRecharge(orderNo) {
 }
 
 /** 老板端奖励金提现，金额单位为元。 */
-export function createBossRewardWithdrawal(amount, idempotencyKey = "") {
+export function createBossRewardWithdrawal(amount, idempotencyKey = "", channel = "WECHAT", account = "") {
   return request({
     url: "/boss/rewards/withdraw",
     method: "POST",
-    data: { amount },
+    data: { amount, channel, account },
     header: { "Idempotency-Key": idempotencyKey },
     skipUserIdHeader: true,
   });

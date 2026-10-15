@@ -40,7 +40,12 @@ public class BossRewardController {
     public Result<Map<String, Object>> withdraw(@RequestBody Map<String, Object> body,
             @RequestHeader(value = "Idempotency-Key", required = false) String key, Authentication authentication) {
         try {
-            Result<Map<String, Object>> result = Result.success(service.withdraw(bossId(authentication), moneyValue(body == null ? null : body.get("amount")), key));
+            Result<Map<String, Object>> result = Result.success(service.withdraw(
+                    bossId(authentication),
+                    moneyValue(body == null ? null : body.get("amount")),
+                    textValue(body == null ? null : body.get("channel")),
+                    textValue(body == null ? null : body.get("account")),
+                    key));
             result.setMessage("提现申请已提交");
             return result;
         } catch (WorkerRewardWithdrawalFailedException e) {
@@ -69,4 +74,5 @@ public class BossRewardController {
         try { return value == null ? null : new BigDecimal(String.valueOf(value)); }
         catch (Exception e) { throw new IllegalArgumentException("amount 必须是元金额"); }
     }
+    private String textValue(Object value) { return value == null ? null : String.valueOf(value); }
 }

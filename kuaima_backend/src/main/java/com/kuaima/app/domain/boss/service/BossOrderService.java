@@ -15,6 +15,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -520,7 +521,13 @@ public class BossOrderService {
         item.setTrialRequested(wantTrial);
         item.setApplyDate(Date.valueOf(LocalDate.now()));
         item.setApplyAt(LocalDateTime.now());
-        BaseOrderItem saved = itemRepository.save(item);
+        BaseOrderItem saved;
+        try {
+            saved = itemRepository.save(item);
+            itemRepository.flush();
+        } catch (DataIntegrityViolationException exception) {
+            throw new IllegalStateException("您已报名过该订单");
+        }
         // 通知老板有新的报名待审核
         String content = userName(userId) + " 报名了您发布的「" + order.getOrderTitle() + "」"
                 + order.getPostion() + "岗位，请及时审核报名信息";

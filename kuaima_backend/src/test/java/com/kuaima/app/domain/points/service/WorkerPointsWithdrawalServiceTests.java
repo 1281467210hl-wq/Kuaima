@@ -43,7 +43,7 @@ class WorkerPointsWithdrawalServiceTests {
         User user = new User(); user.setId(7L); user.setOpenid("openid-7");
         account = new PointsAccount(); account.setUserId(7L); account.setRole("USER"); account.setBalance(3280);
         when(users.findById(7L)).thenReturn(Optional.of(user));
-        when(accounts.findByUserIdAndRoleForUpdate(7L, "USER")).thenReturn(Optional.of(account));
+        when(accounts.findAllByUserIdAndRoleForUpdate(7L, "USER")).thenReturn(java.util.List.of(account));
         when(withdrawals.countValidToday(eq(7L), anyCollection(), any(LocalDateTime.class), any(LocalDateTime.class))).thenReturn(0L);
         when(withdrawals.save(any())).thenAnswer(invocation -> { PointsWithdrawal w = invocation.getArgument(0); if (w.getId() == null) w.setId(10001L); return w; });
     }
@@ -54,7 +54,7 @@ class WorkerPointsWithdrawalServiceTests {
 
         assertEquals(2280, account.getBalance()); assertEquals(new BigDecimal("10.00"), result.getAmount());
         assertEquals("PENDING", result.getStatus());
-        verify(accounts).findByUserIdAndRoleForUpdate(7L, "USER");
+        verify(accounts).findAllByUserIdAndRoleForUpdate(7L, "USER");
         verify(accounts).save(account); verify(flows).save(any());
     }
 

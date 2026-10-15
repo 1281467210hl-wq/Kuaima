@@ -67,6 +67,35 @@ class BossOrderSpecificationsTests {
     }
 
     @Test
+    void from_shouldSearchKeywordByTitlePositionAndAddress() {
+        CriteriaBuilder cb = mock(CriteriaBuilder.class);
+        Root<BossOrder> root = mock(Root.class);
+        CriteriaQuery<?> criteriaQuery = mock(CriteriaQuery.class);
+        Path<String> orderTitle = mock(Path.class);
+        Path<String> position = mock(Path.class);
+        Path<String> address = mock(Path.class);
+        Predicate titleMatch = mock(Predicate.class);
+        Predicate positionMatch = mock(Predicate.class);
+        Predicate addressMatch = mock(Predicate.class);
+        when(root.<String>get("orderTitle")).thenReturn(orderTitle);
+        when(root.<String>get("postion")).thenReturn(position);
+        when(root.<String>get("address")).thenReturn(address);
+        when(cb.like(orderTitle, "%松江%")).thenReturn(titleMatch);
+        when(cb.like(position, "%松江%")).thenReturn(positionMatch);
+        when(cb.like(address, "%松江%")).thenReturn(addressMatch);
+
+        BossOrderQuery filter = new BossOrderQuery();
+        filter.setKeyword(" 松江 ");
+
+        BossOrderSpecifications.from(null, filter).toPredicate(root, criteriaQuery, cb);
+
+        verify(cb).like(orderTitle, "%松江%");
+        verify(cb).like(position, "%松江%");
+        verify(cb).like(address, "%松江%");
+        verify(cb).or(titleMatch, positionMatch, addressMatch);
+    }
+
+    @Test
     void from_shouldUseAndForAllTagsAndOrForAnyTags() {
         CriteriaBuilder cb = mock(CriteriaBuilder.class);
         Root<BossOrder> root = mock(Root.class);

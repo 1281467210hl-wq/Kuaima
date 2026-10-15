@@ -52,6 +52,13 @@ public final class BossOrderSpecifications {
             if (StringUtils.hasText(filter.getTitle())) {
                 predicates.add(cb.like(root.get("orderTitle"), "%" + filter.getTitle().trim() + "%"));
             }
+            if (StringUtils.hasText(filter.getKeyword())) {
+                String keyword = filter.getKeyword().trim();
+                predicates.add(cb.or(
+                        cb.like(root.get("orderTitle"), "%" + keyword + "%"),
+                        cb.like(root.get("postion"), "%" + keyword + "%"),
+                        cb.like(root.get("address"), "%" + keyword + "%")));
+            }
             if (StringUtils.hasText(filter.getPosition())) {
                 predicates.add(cb.like(root.get("postion"), "%" + filter.getPosition().trim() + "%"));
             }

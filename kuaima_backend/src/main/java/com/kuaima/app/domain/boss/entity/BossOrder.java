@@ -35,6 +35,10 @@ public class BossOrder extends BaseEntity {
     @Transient
     private String companyName;
 
+    /** 公开岗位详情展示用联系电话，不落库。 */
+    @Transient
+    private String contactPhone;
+
     @Column(comment = "订单标题")
     private String orderTitle;
 

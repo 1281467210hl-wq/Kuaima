@@ -424,11 +424,32 @@ async function toggleFavorite() {
 }
 async function apply() {
   if (!isRealname.value) return goRealname();
+  const phoneNumber = String(job.value.contactPhone || "").trim();
+  if (!/^1\d{10}$/.test(phoneNumber)) {
+    uni.showToast({ title: "雇主暂未提供联系电话", icon: "none" });
+    return;
+  }
+
+  uni.makePhoneCall({
+    phoneNumber,
+    success: () => submitApplication(),
+    fail: (error) => {
+      const message = String(error?.errMsg || "");
+      if (!message.toLowerCase().includes("cancel")) {
+        uni.showToast({ title: "拨打报名电话失败", icon: "none" });
+      }
+    },
+  });
+}
+
+async function submitApplication() {
   applying.value = true;
   try {
     await applyPublicJob(job.value.id, { trial: job.value.salaryType === "MONTHLY" });
     applied.value = true;
     uni.showToast({ title: "报名成功", icon: "success" });
+  } catch (error) {
+    uni.showToast({ title: error?.message || "报名失败", icon: "none" });
   } finally {
     applying.value = false;
   }
@@ -462,6 +483,7 @@ function normalizeJob(item) {
     longitude: item.longitude ?? item.lng ?? item.workLongitude ?? item.locationLongitude,
     duration: item.duration ?? item.workHours ?? 0,
     employerName: item.employerName || item.companyName || item.enterpriseName || item.bossCompanyName || item.bossName || "",
+    contactPhone: item.contactPhone || item.phone || item.bossPhone || "",
     orderCompletedCount: item.orderCompletedCount ?? item.completedOrderCount ?? item.orderDoneCount,
   };
 }

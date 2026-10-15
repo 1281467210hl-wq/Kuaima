@@ -72,7 +72,7 @@ class WorkerRewardServiceTests {
         RewardAccount account = new RewardAccount();
         account.setBalance(new BigDecimal("20.00"));
         account.setFrozenAmount(new BigDecimal("5.00"));
-        when(accounts.findByUserId(30L)).thenReturn(Optional.of(account));
+        when(accounts.findFirstByUserIdAndRoleOrderByIdDesc(30L, "USER")).thenReturn(Optional.of(account));
 
         var result = service.overview(30L);
 
@@ -88,7 +88,7 @@ class WorkerRewardServiceTests {
         worker.setRealnameStatus("UNVERIFIED");
         RewardAccount account = new RewardAccount();
         account.setBalance(new BigDecimal("20.00"));
-        when(accounts.findByUserId(30L)).thenReturn(Optional.of(account));
+        when(accounts.findFirstByUserIdAndRoleOrderByIdDesc(30L, "USER")).thenReturn(Optional.of(account));
 
         var result = service.overview(30L);
 
@@ -145,7 +145,7 @@ class WorkerRewardServiceTests {
         when(processor.transferAccepted(eq(withdrawal), eq(accepted))).thenReturn(withdrawal);
         RewardAccount account = new RewardAccount();
         account.setBalance(new BigDecimal("10.00"));
-        when(accounts.findByUserId(30L)).thenReturn(Optional.of(account));
+        when(accounts.findFirstByUserIdAndRoleOrderByIdDesc(30L, "USER")).thenReturn(Optional.of(account));
 
         var result = service.withdraw(30L, 1000L, "WECHAT", "request-1");
 
@@ -162,7 +162,7 @@ class WorkerRewardServiceTests {
         when(processor.existing(eq(30L), eq(1000L), eq("WECHAT"), any())).thenReturn(Optional.of(existing));
         RewardAccount account = new RewardAccount();
         account.setBalance(new BigDecimal("10.00"));
-        when(accounts.findByUserId(30L)).thenReturn(Optional.of(account));
+        when(accounts.findFirstByUserIdAndRoleOrderByIdDesc(30L, "USER")).thenReturn(Optional.of(account));
 
         var result = service.withdraw(30L, 1000L, "WECHAT", "request-1");
 
@@ -181,7 +181,7 @@ class WorkerRewardServiceTests {
                 .thenThrow(new DataIntegrityViolationException("duplicate key"));
         RewardAccount account = new RewardAccount();
         account.setBalance(new BigDecimal("10.00"));
-        when(accounts.findByUserId(30L)).thenReturn(Optional.of(account));
+        when(accounts.findFirstByUserIdAndRoleOrderByIdDesc(30L, "USER")).thenReturn(Optional.of(account));
 
         var result = service.withdraw(30L, 1000L, "WECHAT", "request-1");
 

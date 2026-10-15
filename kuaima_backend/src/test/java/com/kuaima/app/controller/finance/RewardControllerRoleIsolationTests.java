@@ -42,7 +42,8 @@ class RewardControllerRoleIsolationTests {
         workerAccount.setRole(UserRole.USER);
         workerAccount.setBalance(100);
         when(rewards.findById(1L)).thenReturn(Optional.of(reward));
-        when(accounts.findByUserIdAndRoleForUpdate(7L, UserRole.USER)).thenReturn(Optional.of(workerAccount));
+        when(accounts.findAllByUserIdAndRoleForUpdate(7L, UserRole.USER))
+                .thenReturn(java.util.List.of(workerAccount));
         when(exchanges.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
         controller.exchange(1L, 7L, authentication(7L, UserRole.USER));

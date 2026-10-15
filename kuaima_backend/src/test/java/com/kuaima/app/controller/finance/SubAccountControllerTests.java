@@ -90,6 +90,44 @@ class SubAccountControllerTests {
                 Map.of("memberId", 7L, "code", "123456", "role", "OPERATOR"), bossAuthentication(1L)));
     }
 
+    @Test
+    void updatePermissions_shouldRejectCrossEnterpriseMember() {
+        EnterpriseMemberRepository members = mock(EnterpriseMemberRepository.class);
+        EnterpriseContextService contextService = mock(EnterpriseContextService.class);
+        Enterprise enterprise = new Enterprise(); enterprise.setId(13L);
+        EnterpriseMember contextMember = new EnterpriseMember(); contextMember.setEnterpriseId(13L); contextMember.setStatus("ACTIVE");
+        EnterpriseMember member = new EnterpriseMember(); member.setId(7L); member.setEnterpriseId(99L); member.setUserId(20L);
+        when(contextService.require(any(), org.mockito.ArgumentMatchers.eq("MEMBER_WRITE")))
+                .thenReturn(new EnterpriseContextService.Context(new User(), enterprise, contextMember));
+        when(members.findById(7L)).thenReturn(Optional.of(member));
+        SubAccountController controller = controller(mock(SubAccountRepository.class), mock(UserRepository.class),
+                members, contextService, true);
+
+        ForbiddenBusinessException exception = assertThrows(ForbiddenBusinessException.class,
+                () -> controller.updatePermissions(7L, Map.of(), bossAuthentication(1L)));
+
+        assertEquals("该成员不属于当前企业，请从当前企业成员列表中选择", exception.getMessage());
+    }
+
+    @Test
+    void updatePermissions_shouldRejectSelfModification() {
+        EnterpriseMemberRepository members = mock(EnterpriseMemberRepository.class);
+        EnterpriseContextService contextService = mock(EnterpriseContextService.class);
+        Enterprise enterprise = new Enterprise(); enterprise.setId(13L);
+        EnterpriseMember contextMember = new EnterpriseMember(); contextMember.setEnterpriseId(13L); contextMember.setStatus("ACTIVE");
+        EnterpriseMember member = new EnterpriseMember(); member.setId(7L); member.setEnterpriseId(13L); member.setUserId(1L);
+        when(contextService.require(any(), org.mockito.ArgumentMatchers.eq("MEMBER_WRITE")))
+                .thenReturn(new EnterpriseContextService.Context(new User(), enterprise, contextMember));
+        when(members.findById(7L)).thenReturn(Optional.of(member));
+        SubAccountController controller = controller(mock(SubAccountRepository.class), mock(UserRepository.class),
+                members, contextService, true);
+
+        ForbiddenBusinessException exception = assertThrows(ForbiddenBusinessException.class,
+                () -> controller.updatePermissions(7L, Map.of(), bossAuthentication(1L)));
+
+        assertEquals("不能修改当前登录老板自己的权限", exception.getMessage());
+    }
+
     private SubAccountController controller(SubAccountRepository repository, UserRepository users,
                                             EnterpriseMemberRepository members,
                                             EnterpriseContextService contextService, boolean dev) {

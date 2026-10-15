@@ -154,7 +154,10 @@ const actionText = computed(
     })[order.value.status] || "查看钱包",
 );
 function contact() {
-  uni.showToast({ title: "客服功能开发中", icon: "none" });
+  const message = `我在零工订单详情页需要客服帮助：岗位「${order.value.title || "未知岗位"}」，报名记录ID：${order.value.id || "未知"}，订单ID：${order.value.orderId || "未知"}。`;
+  uni.navigateTo({
+    url: `/pages/worker/service-chat?initialInput=${encodeURIComponent(message)}`,
+  });
 }
 function primaryAction() {
   if (order.value.status === "applied") return cancel();

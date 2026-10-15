@@ -163,8 +163,13 @@ import { computed, onMounted, reactive, ref } from "vue";
 import JobCard from "@/components/JobCard.vue";
 import WorkerTabBar from "@/components/WorkerTabBar.vue";
 import { request, USE_MOCK } from "@/api/http";
-import { applyPublicJob, getCertificationStatus, listPublicJobs } from "@/api/backend";
-import { requestCurrentLocation } from "@/utils/location";
+import {
+  applyPublicJob,
+  getCertificationStatus,
+  listPublicJobs,
+  reverseGeocode,
+} from "@/api/backend";
+import { getCachedLocation, requestCurrentLocation } from "@/utils/location";
 
 const tabs = [
   { key: "DAY", label: "每天日结" },
@@ -175,7 +180,9 @@ const tabs = [
 const activeTab = ref("DAY");
 const statusBarHeight = ref(0);
 const headerPaddingTop = ref(8);
-const location = ref("松江洞照路");
+const location = ref("定位中...");
+const selectedLocation = ref(null);
+const currentLocation = ref(null);
 const notices = [
   { prefix: "魏*洁提现 ", emphasis: "2538.6 元", suffix: "，已到账" },
   { prefix: "张*强今日完工到账 ", emphasis: "320 元", suffix: "" },
@@ -436,12 +443,12 @@ async function loadJobs() {
       const distanceKm = distanceText === "不限"
         ? null
         : Number(distanceText.match(/[\d.]+/)?.[0]);
-      const currentLocation = await requestCurrentLocation();
-      if (currentLocation && (!Number.isFinite(distanceKm) || distanceKm > 0)) {
-        params.longitude = currentLocation.longitude;
-        params.latitude = currentLocation.latitude;
+      const located = selectedLocation.value || currentLocation.value || await requestCurrentLocation();
+      if (located && (!Number.isFinite(distanceKm) || distanceKm > 0)) {
+        params.longitude = located.longitude;
+        params.latitude = located.latitude;
         if (Number.isFinite(distanceKm) && distanceKm > 0) params.distanceKm = distanceKm;
-      } else if (!currentLocation) {
+      } else if (!located) {
         uni.showToast({ title: "请授权定位后才能按距离筛选", icon: "none" });
       }
     }
@@ -504,12 +511,57 @@ function normalizeJob(item) {
 }
 
 function chooseLocation() {
-  requestCurrentLocation({ force: true }).then((result) => {
-    uni.showToast({
-      title: result ? "当前位置已更新" : "暂时无法获取当前位置",
-      icon: result ? "success" : "none",
+  if (typeof uni.chooseLocation !== "function") {
+    uni.showToast({ title: "当前环境不支持选择位置", icon: "none" });
+    return;
+  }
+
+  const current = selectedLocation.value || getCachedLocation();
+  const options = {
+    success: ({ name, address, latitude, longitude }) => {
+      const label = String(name || address || "").trim();
+      selectedLocation.value = {
+        name: label,
+        address: String(address || "").trim(),
+        latitude: Number(latitude),
+        longitude: Number(longitude),
+        updatedAt: Date.now(),
+      };
+      location.value = label || "已选择位置";
+      uni.setStorageSync("workerSelectedLocation", selectedLocation.value);
+      uni.showToast({ title: "位置已切换", icon: "success" });
+      loadJobs();
+    },
+    fail: handleLocationError,
+  };
+  if (current?.latitude != null && current?.longitude != null) {
+    options.latitude = Number(current.latitude);
+    options.longitude = Number(current.longitude);
+  }
+  uni.chooseLocation(options);
+}
+
+function handleLocationError(error) {
+  const message = String(error?.errMsg || error?.message || "");
+  if (message.toLowerCase().includes("cancel")) return;
+  if (
+    message.toLowerCase().includes("auth deny") ||
+    message.toLowerCase().includes("authorize") ||
+    message.toLowerCase().includes("permission denied")
+  ) {
+    uni.showModal({
+      title: "需要位置权限",
+      content: "请在设置中开启位置权限后重新选择",
+      confirmText: "去设置",
+      success: ({ confirm }) => {
+        if (confirm) uni.openSetting({});
+      },
     });
-    if (result && filterForm.distance !== "不限") loadJobs();
+    return;
+  }
+  uni.showToast({
+    title: message.replace(/^chooseLocation:fail\s*/i, "") || "选择位置失败",
+    icon: "none",
   });
 }
 
@@ -579,7 +631,7 @@ async function applyJob(job) {
   }
 }
 
-onMounted(() => {
+onMounted(async () => {
   try {
     const info =
       typeof uni.getWindowInfo === "function"
@@ -594,11 +646,40 @@ onMounted(() => {
       }
     }
   } catch (_) {}
-  // 定位仅在用户选择距离筛选时按需获取；提前请求会触发微信隐私授权弹窗，阻塞首屏体验。
+  const savedLocation = uni.getStorageSync("workerSelectedLocation");
+  if (
+    savedLocation &&
+    Number.isFinite(Number(savedLocation.latitude)) &&
+    Number.isFinite(Number(savedLocation.longitude))
+  ) {
+    selectedLocation.value = savedLocation;
+    location.value = savedLocation.name || savedLocation.address || "已选择位置";
+  } else {
+    await initializeCurrentLocation();
+  }
   const savedFilter = uni.getStorageSync("workerJobFilter");
   if (savedFilter) Object.assign(filterForm, filterDefaults, savedFilter);
-  loadJobs();
+  await loadJobs();
 });
+
+async function initializeCurrentLocation() {
+  const result = await requestCurrentLocation();
+  if (!result) {
+    location.value = "定位失败";
+    return;
+  }
+
+  currentLocation.value = result;
+  try {
+    location.value = await reverseGeocode(result.latitude, result.longitude);
+  } catch (_) {
+    location.value = formatCoordinateLocation(result);
+  }
+}
+
+function formatCoordinateLocation(location) {
+  return `${Number(location.latitude).toFixed(6)}, ${Number(location.longitude).toFixed(6)}`;
+}
 </script>
 
 <style scoped>

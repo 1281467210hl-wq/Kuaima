@@ -5,8 +5,17 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.net.URL;
 
+import com.aliyun.oss.OSS;
+import com.aliyun.oss.model.GeneratePresignedUrlRequest;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
+
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+import static org.mockito.ArgumentMatchers.any;
 
 class OssStorageServiceObjectKeyTests {
 
@@ -41,6 +50,43 @@ class OssStorageServiceObjectKeyTests {
         assertEquals("application/octet-stream", previewContentType(service, "insurance/recruitment/a.unknown"));
     }
 
+    @Test
+    void uploadContentTypeShouldCorrectMp4WhenClientSendsOctetStream() throws Exception {
+        OssStorageService service = new OssStorageService();
+        Method method = OssStorageService.class.getDeclaredMethod(
+                "resolveContentType", String.class, String.class);
+        method.setAccessible(true);
+
+        assertEquals("video/mp4", method.invoke(service, "application/octet-stream", ".mp4"));
+        assertEquals("video/mp4", method.invoke(service, null, ".MP4"));
+    }
+
+    @Test
+    void playableUrlShouldSignWithConfiguredCustomDomain() throws Exception {
+        OssStorageService service = configured();
+        field(service, "accessKeyId", "test-key");
+        field(service, "accessKeySecret", "test-secret");
+        objectField(service, "signedUrlExpirationSeconds", 3600L);
+        field(service, "domain", "https://media.example.com");
+        OSS previewClient = mock(OSS.class);
+        objectField(service, "previewClient", previewClient);
+        when(previewClient.generatePresignedUrl(any(GeneratePresignedUrlRequest.class)))
+                .thenReturn(new URL("http://media.example.com/insurance/recruitment/a.mp4?Expires=1"));
+
+        String url = service.playableUrl("insurance/recruitment/a.mp4");
+
+        org.junit.jupiter.api.Assertions.assertTrue(url.startsWith("https://media.example.com/"));
+        ArgumentCaptor<GeneratePresignedUrlRequest> captor =
+                ArgumentCaptor.forClass(GeneratePresignedUrlRequest.class);
+        verify(previewClient).generatePresignedUrl(captor.capture());
+        org.junit.jupiter.api.Assertions.assertEquals(
+                "resume-storage-20260923", captor.getValue().getBucketName());
+        org.junit.jupiter.api.Assertions.assertEquals(
+                "insurance/recruitment/a.mp4", captor.getValue().getKey());
+        assertEquals("inline", captor.getValue().getResponseHeaders().getContentDisposition());
+        assertNull(captor.getValue().getResponseHeaders().getContentType());
+    }
+
     private OssStorageService configured() throws Exception {
         OssStorageService service = new OssStorageService();
         field(service, "endpoint", "oss-cn-beijing.aliyuncs.com");
@@ -61,6 +107,12 @@ class OssStorageServiceObjectKeyTests {
     }
 
     private void field(OssStorageService service, String name, String value) throws Exception {
+        Field field = OssStorageService.class.getDeclaredField(name);
+        field.setAccessible(true);
+        field.set(service, value);
+    }
+
+    private void objectField(OssStorageService service, String name, Object value) throws Exception {
         Field field = OssStorageService.class.getDeclaredField(name);
         field.setAccessible(true);
         field.set(service, value);

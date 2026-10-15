@@ -1,8 +1,10 @@
 package com.kuaima.app.domain.boss.service;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -11,6 +13,7 @@ import java.util.List;
 import java.util.Optional;
 
 import org.junit.jupiter.api.Test;
+import org.springframework.dao.DataIntegrityViolationException;
 
 import com.kuaima.app.domain.boss.constant.BossStatus;
 import com.kuaima.app.domain.boss.entity.BaseOrderItem;
@@ -62,5 +65,33 @@ class BossOrderManualReviewNotificationTests {
         assertEquals(BossStatus.ITEM_APPLIED, result.getStatus());
         verify(messageService).sendToUser(eq(1L), eq(UserRole.BOSS), eq(MessageType.ORDER_APPLY),
                 eq("有新的报名待审核"), any(String.class), eq(BizType.ITEM), eq(31L));
+    }
+
+    @Test
+    void applyOrder_shouldTranslateDuplicateKeyConflict() {
+        BossOrderRespository orderRepository = mock(BossOrderRespository.class);
+        BaseOrderItemRespository itemRepository = mock(BaseOrderItemRespository.class);
+        UserRepository userRepository = mock(UserRepository.class);
+        BossOrderService service = new BossOrderService(orderRepository, itemRepository,
+                userRepository, mock(MessageService.class), mock(SettlementRespository.class));
+        BossOrder order = new BossOrder();
+        order.setId(22L);
+        order.setCreateBy(1L);
+        order.setOrderStatus(BossStatus.ORDER_RECRUITING);
+        order.setOrderNum(2);
+        order.setOrderTitle("仓库分拣员");
+        order.setPostion("分拣员");
+        when(orderRepository.findById(22L)).thenReturn(Optional.of(order));
+        when(userRepository.existsById(3L)).thenReturn(true);
+        when(itemRepository.existsByOrderIdAndUserId(22L, 3L)).thenReturn(false);
+        when(itemRepository.findByOrderId(22L)).thenReturn(List.of());
+        when(itemRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        doThrow(new DataIntegrityViolationException("uk_boss_order_item_order_user"))
+                .when(itemRepository).flush();
+
+        IllegalStateException exception = assertThrows(IllegalStateException.class,
+                () -> service.applyOrder(22L, 3L, null, false));
+
+        assertEquals("您已报名过该订单", exception.getMessage());
     }
 }

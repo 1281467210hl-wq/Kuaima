@@ -8,6 +8,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 
@@ -54,7 +55,8 @@ public class WorkerPointsWithdrawalService {
     @Transactional(readOnly = true)
     public Map<String, Object> config(Long userId) {
         User user = users.findById(userId).orElseThrow(() -> new EntityNotFoundException("用户不存在: " + userId));
-        int balance = accounts.findByUserIdAndRole(userId, USER).map(a -> value(a.getBalance())).orElse(0);
+        int balance = accounts.findFirstByUserIdAndRoleOrderByIdDesc(userId, USER)
+                .map(a -> value(a.getBalance())).orElse(0);
         LocalDate today = LocalDate.now(ZONE);
         boolean applied = withdrawals.countValidToday(userId, VALID_TODAY, today.atStartOfDay(), today.plusDays(1).atStartOfDay()) > 0;
         Map<String, Object> wechat = new LinkedHashMap<>();
@@ -82,7 +84,11 @@ public class WorkerPointsWithdrawalService {
         if (!"WECHAT".equals(channel)) throw new IllegalArgumentException("当前仅支持已绑定的微信零钱");
         User user = users.findById(userId).orElseThrow(() -> new EntityNotFoundException("用户不存在: " + userId));
         if (!StringUtils.hasText(user.getOpenid())) throw new IllegalArgumentException("请先绑定微信账户");
-        PointsAccount account = accounts.findByUserIdAndRoleForUpdate(userId, USER).orElseThrow(() -> new IllegalArgumentException("零工积分账户不存在"));
+        List<PointsAccount> accountsForUpdate = accounts.findAllByUserIdAndRoleForUpdate(userId, USER);
+        PointsAccount account = accountsForUpdate.isEmpty()
+                ? accounts.findFirstByUserIdAndRoleOrderByIdDesc(userId, USER)
+                        .orElseThrow(() -> new IllegalArgumentException("零工积分账户不存在"))
+                : accountsForUpdate.get(0);
         old = withdrawals.findByIdempotencyKey(key).orElse(null);
         if (old != null) return old;
         LocalDate today = LocalDate.now(ZONE);
@@ -129,7 +135,7 @@ public class WorkerPointsWithdrawalService {
     public PointsWithdrawal reject(Long id, Long adminId, String reason) {
         PointsWithdrawal w = locked(id); if (FAILED.equals(w.getStatus())) return w;
         if (SUCCESS.equals(w.getStatus()) || CANCELED.equals(w.getStatus())) throw new IllegalStateException("当前状态不能驳回");
-        PointsAccount account = accounts.findByUserIdAndRoleForUpdate(w.getUserId(), USER).orElseThrow(() -> new IllegalStateException("零工积分账户不存在"));
+        PointsAccount account = lockedAccount(w.getUserId()).orElseThrow(() -> new IllegalStateException("零工积分账户不存在"));
         int after = value(account.getBalance()) + w.getPoints(); account.setBalance(after); accounts.save(account);
         flow(w.getUserId(), w.getPoints(), after, "POINTS_WITHDRAW_REFUND", w.getWithdrawNo(), "积分提现失败退回");
         w.setStatus(FAILED); w.setFailureReason(StringUtils.hasText(reason) ? reason.trim() : "审核驳回"); w.setReviewedBy(adminId); w.setReviewedAt(LocalDateTime.now(ZONE)); return withdrawals.save(w);
@@ -138,7 +144,7 @@ public class WorkerPointsWithdrawalService {
     @Transactional
     public PointsWithdrawal retry(Long id, Long adminId) {
         PointsWithdrawal w = locked(id); if (!FAILED.equals(w.getStatus())) throw new IllegalStateException("仅失败记录可以重试");
-        PointsAccount account = accounts.findByUserIdAndRoleForUpdate(w.getUserId(), USER).orElseThrow(() -> new IllegalStateException("零工积分账户不存在"));
+        PointsAccount account = lockedAccount(w.getUserId()).orElseThrow(() -> new IllegalStateException("零工积分账户不存在"));
         int before = value(account.getBalance()); if (before < w.getPoints()) throw new IllegalStateException("用户当前积分不足，不能重试");
         int after = before - w.getPoints(); account.setBalance(after); accounts.save(account);
         flow(w.getUserId(), -w.getPoints(), after, "POINTS_WITHDRAW", w.getWithdrawNo(), "积分提现重新处理");
@@ -146,6 +152,10 @@ public class WorkerPointsWithdrawalService {
     }
 
     private PointsWithdrawal locked(Long id) { return withdrawals.findByIdForUpdate(id).orElseThrow(() -> new EntityNotFoundException("提现记录不存在: " + id)); }
+    private Optional<PointsAccount> lockedAccount(Long userId) {
+        List<PointsAccount> matches = accounts.findAllByUserIdAndRoleForUpdate(userId, USER);
+        return matches.isEmpty() ? accounts.findFirstByUserIdAndRoleOrderByIdDesc(userId, USER) : Optional.of(matches.get(0));
+    }
     private void flow(Long userId, int delta, int after, String type, String no, String remark) { PointsFlow f = new PointsFlow(); f.setUserId(userId); f.setRole(USER); f.setDelta(delta); f.setBalanceAfter(after); f.setBizType(type); f.setBizNo(no); f.setRemark(remark); flows.save(f); }
     private int value(Integer v) { return v == null ? 0 : v; }
 }

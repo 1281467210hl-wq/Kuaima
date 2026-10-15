@@ -451,7 +451,7 @@ public class SettlementService {
 
     private PointsCalculation calculatePoints(Long bossId, Integer requestedPoints, BigDecimal payableAmount) {
         int requested = normalizeRequestedPoints(requestedPoints);
-        int available = pointsAccounts == null ? 0 : pointsAccounts.findByUserIdAndRole(bossId, UserRole.BOSS)
+        int available = pointsAccounts == null ? 0 : pointsAccounts.findFirstByUserIdAndRoleOrderByIdDesc(bossId, UserRole.BOSS)
                 .map(account -> account.getBalance() == null ? 0 : account.getBalance()).orElse(0);
         int maxForPayment = payableAmount == null ? 0 : payableAmount
                 .movePointRight(2).setScale(0, RoundingMode.DOWN).intValueExact();
@@ -529,8 +529,12 @@ public class SettlementService {
         int pointsUsed = payment.getPointsUsed() == null ? 0 : payment.getPointsUsed();
         if (pointsUsed <= 0) return;
         if (pointsAccounts == null) throw new IllegalStateException("积分账户服务未配置");
-        PointsAccount account = pointsAccounts.findByUserIdAndRoleForUpdate(payment.getBossId(), UserRole.BOSS)
-                .orElseThrow(() -> new EntityNotFoundException("老板积分账户不存在"));
+        List<PointsAccount> lockedAccounts = pointsAccounts.findAllByUserIdAndRoleForUpdate(
+                payment.getBossId(), UserRole.BOSS);
+        PointsAccount account = lockedAccounts.isEmpty()
+                ? pointsAccounts.findFirstByUserIdAndRoleOrderByIdDesc(payment.getBossId(), UserRole.BOSS)
+                        .orElseThrow(() -> new EntityNotFoundException("老板积分账户不存在"))
+                : lockedAccounts.get(0);
         int balance = account.getBalance() == null ? 0 : account.getBalance();
         if (balance < pointsUsed) throw new IllegalStateException("积分余额不足，无法确认结算支付");
         account.setBalance(balance - pointsUsed);
@@ -584,7 +588,7 @@ public class SettlementService {
         orderAmount = orderAmount.setScale(2, RoundingMode.HALF_UP);
         serviceFee = serviceFee.setScale(2, RoundingMode.HALF_UP);
         Integer pointsAvailable = pointsAccounts == null ? 0 : pointsAccounts
-                .findByUserIdAndRole(payment.getBossId(), UserRole.BOSS)
+                .findFirstByUserIdAndRoleOrderByIdDesc(payment.getBossId(), UserRole.BOSS)
                 .map(a -> a.getBalance() == null ? 0 : a.getBalance()).orElse(0);
         BigDecimal total = orderAmount.add(serviceFee).setScale(2, RoundingMode.HALF_UP);
         String couponName = null;

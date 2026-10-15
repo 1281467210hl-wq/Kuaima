@@ -71,7 +71,7 @@ public class PointsController {
     }
 
     private PointsAccount getOrCreateAccount(Long userId, String role) {
-        return accountRepository.findByUserIdAndRole(userId, role).orElseGet(() -> {
+        return accountRepository.findFirstByUserIdAndRoleOrderByIdDesc(userId, role).orElseGet(() -> {
             PointsAccount account = new PointsAccount();
             account.setUserId(userId);
             account.setRole(role);

@@ -88,12 +88,6 @@ const routes = [
         component: () => import('@/views/user/InsuranceDetail.vue'),
         meta: { title: '保险产品详情', icon: 'fa-eye', hidden: true, permKey: 'permUser.insurance' }
       },
-      {
-        path: 'academy',
-        name: 'Academy',
-        component: () => import('@/views/content/Academy.vue'),
-        meta: { title: '学堂管理', icon: 'fa-graduation-cap', permKey: 'permMarketing.academy' }
-      },
       // 招工管理
       {
         path: 'jobs',
@@ -220,6 +214,12 @@ const routes = [
       //   meta: { title: 'Banner管理', icon: 'fa-image', permKey: 'permContent.c2' }
       // },
       {
+        path: 'academy',
+        name: 'Academy',
+        component: () => import('@/views/content/Academy.vue'),
+        meta: { title: '学堂管理', icon: 'fa-graduation-cap', permKey: 'permContent.academy' }
+      },
+      {
         path: 'notices',
         name: 'Notices',
         component: () => import('@/views/content/Notices.vue'),
@@ -236,6 +236,18 @@ const routes = [
         name: 'RulesEdit',
         component: () => import('@/views/content/RulesEdit.vue'),
         meta: { title: '编辑规则', icon: 'fa-edit', hidden: true, permKey: 'permContent.rules' }
+      },
+      {
+        path: 'agreements',
+        name: 'Agreements',
+        component: () => import('@/views/content/Agreements.vue'),
+        meta: { title: '协议管理', icon: 'fa-file-contract', permKey: 'permContent.agreements' }
+      },
+      {
+        path: 'agreements/edit/:id?',
+        name: 'AgreementEdit',
+        component: () => import('@/views/content/AgreementEdit.vue'),
+        meta: { title: '新建协议', icon: 'fa-plus-circle', hidden: true, permKey: 'permContent.agreements' }
       },
       // 消息客服
       {

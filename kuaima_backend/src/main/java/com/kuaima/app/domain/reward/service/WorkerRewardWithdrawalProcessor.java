@@ -7,13 +7,16 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
+import java.util.List;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import com.kuaima.app.common.ForbiddenBusinessException;
+import com.kuaima.app.alipay.service.AlipayFundTransferClient;
 import com.kuaima.app.domain.reward.entity.RewardAccount;
 import com.kuaima.app.domain.reward.entity.RewardFlow;
 import com.kuaima.app.domain.reward.entity.RewardWithdrawal;
@@ -66,20 +69,33 @@ public class WorkerRewardWithdrawalProcessor {
     @Transactional
     public RewardWithdrawal submit(Long userId, long amount, String channel, RewardWithdrawSettings settings,
             String normalizedKey, String role) {
+        return submit(userId, amount, channel, settings, normalizedKey, role, null);
+    }
+
+    @Transactional
+    public RewardWithdrawal submit(Long userId, long amount, String channel, RewardWithdrawSettings settings,
+            String normalizedKey, String role, String payeeAccount) {
         Optional<RewardWithdrawal> old = existing(userId, amount, channel, normalizedKey, role);
-        if (old.isPresent()) return old.get();
+        if (old.isPresent()) {
+            RewardWithdrawal withdrawal = old.get();
+            if (payeeAccount != null && !Objects.equals(withdrawal.getPayeeAccount(), payeeAccount.trim())) {
+                throw new ForbiddenBusinessException("幂等键对应的收款账户不一致");
+            }
+            return withdrawal;
+        }
 
         User user = users.findByIdForUpdate(userId)
                 .orElseThrow(() -> new EntityNotFoundException("用户不存在: " + userId));
-        if (!"WECHAT".equals(settings.channel()) || !"WECHAT".equals(channel)) {
-            throw new IllegalArgumentException("当前仅支持微信提现渠道");
+        if (!Set.of("WECHAT", "ALIPAY").contains(channel)) {
+            throw new IllegalArgumentException("不支持的奖励金提现渠道");
         }
         if (!settings.enabled()) {
             throw new IllegalArgumentException(StringUtils.hasText(settings.disabledReason())
                     ? settings.disabledReason() : "奖励金提现暂未开放");
         }
         requireRealname(user);
-        requireWechatBinding(user);
+        if ("WECHAT".equals(channel)) requireWechatBinding(user);
+        else if (!StringUtils.hasText(payeeAccount)) throw new IllegalArgumentException("支付宝账户不能为空");
         if (amount < settings.minimumAmount()) {
             throw new IllegalArgumentException("最低提现金额为" + settings.minimumAmount() + "分");
         }
@@ -97,6 +113,7 @@ public class WorkerRewardWithdrawalProcessor {
         withdrawal.setRole(role);
         withdrawal.setAmount(amountYuan);
         withdrawal.setChannel(channel);
+        withdrawal.setPayeeAccount(StringUtils.hasText(payeeAccount) ? payeeAccount.trim() : null);
         withdrawal.setStatus("PENDING");
         withdrawal.setIdempotencyKey(normalizedKey);
         String suffix = LocalDateTime.now(ZONE).format(ORDER_TIME)
@@ -108,21 +125,41 @@ public class WorkerRewardWithdrawalProcessor {
 
         account.setBalance(balance.subtract(amountYuan));
         accounts.saveAndFlush(account);
-        flow(withdrawal, amountYuan, account.getBalance(), "EXPENSE", "WECHAT_WITHDRAW",
-                "提现至微信零钱", "奖励金提现申请", "PENDING", normalizedKey);
+        String title = "WECHAT".equals(channel) ? "提现至微信零钱" : "提现至支付宝";
+        flow(withdrawal, amountYuan, account.getBalance(), "EXPENSE", withdrawBizType(channel),
+                title, "奖励金提现申请", "PENDING", normalizedKey);
         return withdrawal;
     }
 
     @Transactional
     public RewardWithdrawal transferAccepted(RewardWithdrawal withdrawal, MerchantTransferResult result) {
+        return transferAccepted(withdrawal, result.transferBillNo(), result.rawResponse());
+    }
+
+    @Transactional
+    public RewardWithdrawal transferAccepted(
+            RewardWithdrawal withdrawal, AlipayFundTransferClient.TransferResult result) {
+        return transferAccepted(withdrawal, result.orderId(), result.rawResponse());
+    }
+
+    private RewardWithdrawal transferAccepted(RewardWithdrawal withdrawal, String transferNo, String rawResponse) {
         RewardWithdrawal locked = lockedWithdrawal(withdrawal.getId());
-        locked.setWechatTransferNo(result.batchId());
-        locked.setTransferResponse(result.rawResponse());
+        locked.setWechatTransferNo(transferNo);
+        locked.setTransferResponse(rawResponse);
         locked.setUpdatedAt(LocalDateTime.now(ZONE));
         RewardWithdrawal saved = withdrawals.saveAndFlush(locked);
-        flows.findByUserIdAndRoleAndBizTypeAndBizId(saved.getUserId(), saved.getRole(), "WECHAT_WITHDRAW", saved.getId())
-                .ifPresent(flow -> flow.setStatus("PENDING"));
+        flow(saved).ifPresent(flow -> flow.setStatus("PENDING"));
         return saved;
+    }
+
+    private Optional<RewardFlow> flow(RewardWithdrawal withdrawal) {
+        return flows.findByUserIdAndRoleAndBizTypeAndBizId(
+                withdrawal.getUserId(), withdrawal.getRole(),
+                withdrawBizType(withdrawal.getChannel()), withdrawal.getId());
+    }
+
+    private String withdrawBizType(String channel) {
+        return ("ALIPAY".equals(channel) ? "ALIPAY" : "WECHAT") + "_WITHDRAW";
     }
 
     @Transactional
@@ -138,8 +175,7 @@ public class WorkerRewardWithdrawalProcessor {
         withdrawal.setPaidAt(LocalDateTime.now(ZONE));
         withdrawal.setUpdatedAt(LocalDateTime.now(ZONE));
         RewardWithdrawal saved = withdrawals.saveAndFlush(withdrawal);
-        flows.findByUserIdAndRoleAndBizTypeAndBizId(saved.getUserId(), saved.getRole(), "WECHAT_WITHDRAW", saved.getId())
-                .ifPresent(flow -> flow.setStatus("SUCCESS"));
+        flow(saved).ifPresent(item -> item.setStatus("SUCCESS"));
         return saved;
     }
 
@@ -155,15 +191,17 @@ public class WorkerRewardWithdrawalProcessor {
         if (!"PENDING".equals(withdrawal.getStatus())) {
             throw new IllegalStateException("当前提现单状态不能标记失败");
         }
-        RewardAccount account = accounts.findByUserIdAndRoleForUpdate(withdrawal.getUserId(), withdrawal.getRole())
-                .or(() -> "USER".equals(withdrawal.getRole()) ? accounts.findByUserIdForUpdate(withdrawal.getUserId()) : java.util.Optional.empty())
-                .orElseThrow(() -> new IllegalStateException("奖励金账户不存在"));
+        List<RewardAccount> lockedAccounts =
+                accounts.findAllByUserIdAndRoleForUpdate(withdrawal.getUserId(), withdrawal.getRole());
+        RewardAccount account = lockedAccounts.isEmpty()
+                ? accounts.findFirstByUserIdOrderByIdDesc(withdrawal.getUserId())
+                        .orElseThrow(() -> new IllegalStateException("奖励金账户不存在"))
+                : lockedAccounts.get(0);
         BigDecimal amount = withdrawal.getAmount();
         account.setBalance(value(account.getBalance()).add(amount));
         accounts.saveAndFlush(account);
 
-        RewardFlow withdrawFlow = flows.findByUserIdAndRoleAndBizTypeAndBizId(withdrawal.getUserId(), withdrawal.getRole(), "WECHAT_WITHDRAW", withdrawalId)
-                .orElse(null);
+        RewardFlow withdrawFlow = flow(withdrawal).orElse(null);
         if (withdrawFlow != null) withdrawFlow.setStatus("FAILED");
         RewardFlow refund = new RewardFlow();
         refund.setUserId(withdrawal.getUserId());
@@ -172,8 +210,11 @@ public class WorkerRewardWithdrawalProcessor {
         refund.setAmount(amount);
         refund.setBalanceAfter(account.getBalance());
         refund.setTitle("提现失败退回");
-        refund.setRemark("微信商家转账发起失败，奖励金已退回");
-        refund.setDescription("微信商家转账发起失败，奖励金已退回");
+        String refundDescription = "WECHAT".equals(withdrawal.getChannel())
+                ? "微信商家转账发起失败，奖励金已退回"
+                : "支付宝转账发起失败，奖励金已退回";
+        refund.setRemark(refundDescription);
+        refund.setDescription(refundDescription);
         refund.setBizType("WITHDRAW_REFUND");
         refund.setBizId(withdrawalId);
         refund.setSourceKey("REWARD_WITHDRAW_REFUND:" + withdrawalId);
@@ -196,15 +237,18 @@ public class WorkerRewardWithdrawalProcessor {
     }
 
     private RewardAccount lockedAccount(Long userId, String role) {
-        return accounts.findByUserIdAndRoleForUpdate(userId, role)
-                .or(() -> "USER".equals(role) ? accounts.findByUserIdForUpdate(userId) : java.util.Optional.empty()).orElseGet(() -> {
-            RewardAccount created = new RewardAccount();
-            created.setUserId(userId);
-            created.setRole(role);
-            created.setBalance(BigDecimal.ZERO);
-            created.setFrozenAmount(BigDecimal.ZERO);
-            return accounts.saveAndFlush(created);
-        });
+        List<RewardAccount> matches = accounts.findAllByUserIdAndRoleForUpdate(userId, role);
+        if (!matches.isEmpty()) return matches.get(0);
+        if ("USER".equals(role)
+                && accounts.findFirstByUserIdOrderByIdDesc(userId).isPresent()) {
+            return accounts.findFirstByUserIdOrderByIdDesc(userId).get();
+        }
+        RewardAccount created = new RewardAccount();
+        created.setUserId(userId);
+        created.setRole(role);
+        created.setBalance(BigDecimal.ZERO);
+        created.setFrozenAmount(BigDecimal.ZERO);
+        return accounts.saveAndFlush(created);
     }
 
     private void flow(RewardWithdrawal withdrawal, BigDecimal amount, BigDecimal balanceAfter, String type,

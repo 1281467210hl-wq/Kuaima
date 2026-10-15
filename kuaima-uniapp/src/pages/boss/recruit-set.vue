@@ -116,6 +116,7 @@
 <script>
 import {
   getBossRecruitSettings,
+  listBossContacts,
   updateBossRecruitSettings,
 } from "@/api/backend";
 import { handleTokenInvalid } from "@/api/auth";
@@ -146,6 +147,7 @@ export default {
       attendanceDraft: "按工作设定时间",
       phoneMode: "零工需打电话",
       backupPhone: "未设置",
+      contactsLoaded: false,
       stopTime: "开工后3小时",
       dndEnabled: false,
       startCodeEnabled: false,
@@ -208,13 +210,17 @@ export default {
     const info = typeof uni.getWindowInfo === "function" ? uni.getWindowInfo() : uni.getSystemInfoSync();
     this.statusBarHeight = Number(info.statusBarHeight || 0);
     await this.loadSettings();
+    this.contactsLoaded = true;
+  },
+  onShow() {
+    if (this.contactsLoaded) this.loadBackupContacts();
   },
   methods: {
     goBack() {
       uni.navigateBack();
     },
     applySettings(settings = {}) {
-      ["phoneMode", "backupPhone", "stopTime", "attendanceMode", "settleMode", "signMode"].forEach((key) => {
+      ["phoneMode", "stopTime", "attendanceMode", "settleMode", "signMode"].forEach((key) => {
         if (settings[key] !== undefined && settings[key] !== null) this[key] = settings[key];
       });
       ["dndEnabled", "startCodeEnabled", "earlyCodeEnabled", "faceClockEnabled", "phoneNotify", "signNotify", "startRemind", "settleNotify"].forEach((key) => {
@@ -225,13 +231,30 @@ export default {
     async loadSettings() {
       this.loading = true;
       try {
-        const settings = await getBossRecruitSettings();
+        const [settings] = await Promise.all([
+          getBossRecruitSettings(),
+          this.loadBackupContacts(true),
+        ]);
         this.applySettings(settings || {});
         uni.setStorageSync("recruitSettings", settings || {});
       } catch (error) {
         this.handleError(error, "招工设置加载失败");
       } finally {
         this.loading = false;
+      }
+    },
+    async loadBackupContacts(silent = false) {
+      try {
+        const userId = uni.getStorageSync("userId");
+        if (!userId) {
+          this.backupPhone = "未设置";
+          return;
+        }
+        const result = await listBossContacts(userId);
+        const contacts = (Array.isArray(result) ? result : []).filter((item) => !item.isDefault);
+        this.backupPhone = contacts[0]?.phone || "未设置";
+      } catch (error) {
+        if (!silent) this.handleError(error, "备用联系人加载失败");
       }
     },
     openSetting(key) {
@@ -316,7 +339,7 @@ export default {
       if (this.saving) return false;
       const data = {
         phoneMode: this.phoneMode,
-        backupPhone: this.backupPhone,
+        backupPhone: this.backupPhone === "未设置" ? "" : this.backupPhone,
         stopTime: this.stopTime,
         dndEnabled: this.dndEnabled,
         startCodeEnabled: this.startCodeEnabled,

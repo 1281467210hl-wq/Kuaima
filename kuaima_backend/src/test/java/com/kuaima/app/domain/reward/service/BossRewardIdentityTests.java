@@ -19,7 +19,7 @@ class BossRewardIdentityTests {
         User user = new User(); user.setId(7L); user.setRole("USER"); user.setCertType("ENTERPRISE"); user.setCertStatus("已通过");
         RewardAccount account = new RewardAccount(); account.setUserId(7L); account.setBalance(new BigDecimal("20.00"));
         when(users.findById(7L)).thenReturn(Optional.of(user));
-        when(accounts.findByUserIdAndRole(7L, "BOSS")).thenReturn(Optional.of(account));
+        when(accounts.findFirstByUserIdAndRoleOrderByIdDesc(7L, "BOSS")).thenReturn(Optional.of(account));
         when(flows.sumByUserIdAndRoleAndType(7L, "BOSS", "INCOME")).thenReturn(new BigDecimal("20.00"));
         when(flows.sumByUserIdAndRoleAndType(7L, "BOSS", "EXPENSE")).thenReturn(BigDecimal.ZERO);
         BossRewardService service = new BossRewardService(accounts, flows, mock(RewardWithdrawalRepository.class), users,

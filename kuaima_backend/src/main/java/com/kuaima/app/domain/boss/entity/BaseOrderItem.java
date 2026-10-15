@@ -9,11 +9,18 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Table;
 import jakarta.persistence.Transient;
+import jakarta.persistence.UniqueConstraint;
 import lombok.Getter;
 import lombok.Setter;
 
 @Entity
-@Table(name = "boss_order_item")
+@Table(
+        name = "boss_order_item",
+        uniqueConstraints = @UniqueConstraint(
+                name = "uk_boss_order_item_order_user",
+                columnNames = {"order_id", "user_id"}
+        )
+)
 @Getter
 @Setter
 public class BaseOrderItem extends BaseEntity {

@@ -18,6 +18,8 @@ import com.kuaima.app.domain.browsehistory.repository.BrowseHistoryRepository;
 import com.kuaima.app.domain.jobfavorite.repository.JobFavoriteRepository;
 import com.kuaima.app.domain.enterprise.entity.Enterprise;
 import com.kuaima.app.domain.enterprise.repository.EnterpriseRepository;
+import com.kuaima.app.domain.user.entity.User;
+import com.kuaima.app.domain.user.repository.UserRepository;
 
 class JobControllerTests {
 
@@ -42,23 +44,31 @@ class JobControllerTests {
     void publicJobDetail_shouldReturnEnterpriseCompanyName() {
         BossOrderRespository orders = mock(BossOrderRespository.class);
         EnterpriseRepository enterprises = mock(EnterpriseRepository.class);
-        JobController controller = new JobController(mock(JobFavoriteRepository.class),
-                mock(BrowseHistoryRepository.class), orders, mock(BossOrderService.class), enterprises);
         BossOrder order = new BossOrder();
         order.setId(9L);
         order.setOrderStatus("招工中");
         order.setEnterpriseId(3L);
+        order.setCreateBy(8L);
         order.setLongitude(new java.math.BigDecimal("121.473701"));
         order.setLatitude(new java.math.BigDecimal("31.230416"));
         Enterprise enterprise = new Enterprise();
         enterprise.setId(3L);
         enterprise.setCompanyName("快马科技");
+        User boss = new User();
+        boss.setId(8L);
+        boss.setContactPhone("13800138000");
+        UserRepository users = mock(UserRepository.class);
         when(orders.findById(9L)).thenReturn(java.util.Optional.of(order));
         when(enterprises.findById(3L)).thenReturn(java.util.Optional.of(enterprise));
+        when(users.findById(8L)).thenReturn(java.util.Optional.of(boss));
+        JobController controller = new JobController(mock(JobFavoriteRepository.class),
+                mock(BrowseHistoryRepository.class), orders, mock(BossOrderService.class),
+                enterprises, null, users);
 
         var result = controller.getPublicJob(9L);
 
         assertEquals("快马科技", result.getData().getCompanyName());
+        assertEquals("13800138000", result.getData().getContactPhone());
         assertEquals(new java.math.BigDecimal("121.473701"), result.getData().getLongitude());
         assertEquals(new java.math.BigDecimal("31.230416"), result.getData().getLatitude());
     }

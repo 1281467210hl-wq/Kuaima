@@ -186,6 +186,7 @@
                   class="media-video"
                   controls
                   object-fit="contain"
+                  @error="handleTaskVideoError"
                   @fullscreenchange="handleTaskVideoFullscreenChange"
                 />
                 <view class="media-play-overlay" @click="previewTaskVideo">
@@ -952,8 +953,12 @@ export default {
     previewTaskVideo() {
       if (!this.taskDraft.video?.url) return;
       const context = uni.createVideoContext("taskVideoPreview", this);
-      context.requestFullScreen(0);
       context.play();
+      context.requestFullScreen({ direction: 0 });
+    },
+    handleTaskVideoError(event) {
+      const message = event?.detail?.errMsg || "视频加载失败，请重新上传";
+      uni.showToast({ title: message, icon: "none" });
     },
     handleTaskVideoFullscreenChange(event) {
       this.videoFullscreen = Boolean(event?.fullScreen);

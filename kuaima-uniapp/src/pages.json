@@ -785,6 +785,12 @@
           }
         },
         {
+          "path": "reward-withdraw",
+          "style": {
+            "navigationStyle": "custom"
+          }
+        },
+        {
           "path": "schedule-stats",
           "style": {
             "navigationStyle": "custom"

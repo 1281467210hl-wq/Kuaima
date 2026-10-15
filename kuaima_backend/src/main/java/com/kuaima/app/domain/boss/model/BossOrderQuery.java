@@ -16,6 +16,7 @@ public class BossOrderQuery {
     private String type;
     private String status;
     private String title;
+    private String keyword;
     private String position;
 
     @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)

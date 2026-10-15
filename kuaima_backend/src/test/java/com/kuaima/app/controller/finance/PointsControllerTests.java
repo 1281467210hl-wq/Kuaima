@@ -35,7 +35,7 @@ class PointsControllerTests {
         worker.setUserId(7L);
         worker.setRole(UserRole.USER);
         worker.setBalance(0);
-        when(accounts.findByUserIdAndRole(7L, UserRole.USER)).thenReturn(Optional.of(worker));
+        when(accounts.findFirstByUserIdAndRoleOrderByIdDesc(7L, UserRole.USER)).thenReturn(Optional.of(worker));
 
         Result<Map<String, Object>> result = controller.getBalance(7L, authentication(7L, UserRole.USER));
 
