@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 import jakarta.persistence.EntityNotFoundException;
 
@@ -30,6 +31,14 @@ public class GlobalExceptionHandler {
                 .findFirst().map(error -> error.getDefaultMessage())
                 .orElse("请求参数校验失败");
         return Result.error(400, message);
+    }
+
+    /** 路径/查询参数类型不匹配（如 projectId=undefined），按 400 返回而非落入 500。 */
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public Result<Void> handleTypeMismatch(MethodArgumentTypeMismatchException e) {
+        log.warn("参数类型不匹配: {}={}", e.getName(), e.getValue());
+        return Result.error(400, "请求参数非法: " + e.getName());
     }
 
     @ExceptionHandler(ForbiddenBusinessException.class)

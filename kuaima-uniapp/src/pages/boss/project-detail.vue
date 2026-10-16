@@ -116,12 +116,20 @@ export default {
     };
   },
   onLoad(query) {
-    this.projectId = query.id;
+    const id = query && (query.id || query.projectId);
+    if (!id || id === "undefined" || id === "null") {
+      // 工作台「考勤打卡」入口不带项目 id：先让用户选择项目，避免请求 /projects/undefined
+      uni.showToast({ title: "请先选择要查看的项目", icon: "none" });
+      setTimeout(() => uni.redirectTo({ url: "/pages/boss/projects" }), 600);
+      return;
+    }
+    this.projectId = id;
     this.load();
   },
   methods: {
     formatCnDate,
     async load() {
+      if (!this.projectId || this.projectId === "undefined") return;
       try {
         const [project, stats] = await Promise.all([
           getProject(this.projectId).catch(() => ({})),

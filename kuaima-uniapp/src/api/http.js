@@ -89,6 +89,15 @@ export function request({
     }
   }
   return new Promise((resolve, reject) => {
+    // 防御：路径中出现 undefined/null 段（如 /projects/undefined）说明上游漏传参数，
+    // 直接在前端拦截，避免打到后端触发 Long 转换 500。
+    if (/\/(undefined|null)(\/|\?|$)/.test(realUrl)) {
+      const error = new Error(`请求地址缺少必要参数：${realUrl}`);
+      error.statusCode = 400;
+      console.error("[请求参数缺失]", { method, url: realUrl });
+      reject(error);
+      return;
+    }
     uni.request({
       url: `${BASE_URL}${realUrl}`,
       method,

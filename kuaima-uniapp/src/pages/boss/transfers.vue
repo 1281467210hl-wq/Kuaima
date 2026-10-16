@@ -92,7 +92,7 @@
             <image class="close-svg" src="/static/icons/boss-points/xmark-gray.svg" mode="aspectFit" />
           </view>
         </view>
-        <scroll-view scroll-y class="filter-sheet-body">
+        <view class="filter-sheet-body">
           <view class="f-item">
             <text class="f-label">项目名称</text>
             <input
@@ -131,7 +131,7 @@
               </picker>
             </view>
           </view>
-        </scroll-view>
+        </view>
         <view class="filter-sheet-footer">
           <view class="f-btn f-reset" @click="resetFilter">重置</view>
           <view class="f-btn f-confirm" @click="applyFilter">确认筛选</view>
@@ -423,7 +423,7 @@ export default {
   position: fixed;
   top: 0; left: 0; right: 0; bottom: 0;
   background: rgba(0, 0, 0, 0.5);
-  z-index: 80;
+  z-index: 999;
   display: flex;
   align-items: flex-end;
 }
@@ -448,14 +448,18 @@ export default {
 .filter-sheet-body {
   padding: 16px 18px;
   max-height: 60vh;
+  overflow-y: auto;
+  box-sizing: border-box;
 }
 .f-item { margin-bottom: 16px; }
 .f-label { font-size: 13px; color: #666; font-weight: 500; display: block; margin-bottom: 8px; }
 .f-input {
   width: 100%;
+  height: 42px;
+  line-height: 42px;
   border: 1px solid #e5e5e5;
   border-radius: 10px;
-  padding: 10px 12px;
+  padding: 0 12px;
   font-size: 14px;
   color: #333;
   box-sizing: border-box;
