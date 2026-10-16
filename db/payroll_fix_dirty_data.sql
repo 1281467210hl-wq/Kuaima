@@ -51,6 +51,6 @@ SELECT id, order_no, amount, people_count, submit_time, status FROM payroll_orde
 SELECT '=== 修复后 payroll_detail ===' AS info;
 SELECT id, payroll_id, name, daily_wage, attend_days, amount FROM payroll_detail ORDER BY id;
 SELECT '=== 校验 ===' AS info;
-SELECT 'order amount ok' AS check, COUNT(*) AS cnt FROM payroll_order WHERE amount = 0;
-SELECT 'detail amount ok' AS check, COUNT(*) AS cnt FROM payroll_detail WHERE amount != COALESCE(daily_wage,0)*COALESCE(attend_days,0);
-SELECT 'submit_time ok' AS check, COUNT(*) AS cnt FROM payroll_order WHERE submit_time IS NULL;
+SELECT 'order amount ok' AS check_ok, COUNT(*) AS cnt FROM payroll_order WHERE amount = 0;
+SELECT 'detail amount ok' AS check_ok, COUNT(*) AS cnt FROM payroll_detail WHERE amount != COALESCE(daily_wage,0)*COALESCE(attend_days,0);
+SELECT 'submit_time ok' AS check_ok, COUNT(*) AS cnt FROM payroll_order WHERE submit_time IS NULL;

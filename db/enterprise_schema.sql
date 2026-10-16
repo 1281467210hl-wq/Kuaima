@@ -105,8 +105,9 @@ BEGIN
 
     IF NOT EXISTS (SELECT 1 FROM `enterprise_member`
                    WHERE `enterprise_id` = 1 AND `user_id` = 1001 AND `member_role` = 'OWNER') THEN
-        INSERT INTO `enterprise_member` (`enterprise_id`, `user_id`, `member_role`, `title`, `status`)
-        VALUES (1, 1001, 'OWNER', '创始人', 'ACTIVE');
+        INSERT INTO `enterprise_member` (`enterprise_id`, `user_id`, `member_role`, `title`, `status`,
+                                         `portal_enabled`, `permission_version`)
+        VALUES (1, 1001, 'OWNER', '创始人', 'ACTIVE', 1, 1);
     END IF;
 
     IF NOT EXISTS (SELECT 1 FROM `enterprise_invite` WHERE `invite_code` = 'QSINV20260001') THEN
