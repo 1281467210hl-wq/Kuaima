@@ -1,5 +1,8 @@
 package com.kuaima.app.controller.boss;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.HashMap;
@@ -14,6 +17,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 
 import org.springframework.data.domain.Page;
 import org.springframework.security.core.Authentication;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.ModelAttribute;
@@ -51,6 +55,7 @@ import com.kuaima.app.domain.boss.constant.BossStatus;
 import com.kuaima.app.domain.enterprise.service.EnterpriseContextService;
 import com.kuaima.app.common.service.OssStorageService;
 import com.kuaima.app.common.service.OssUploadResult;
+import com.kuaima.app.common.service.FfmpegVideoTranscoder;
 
 @RestController
 @RequestMapping("/boss")
@@ -69,6 +74,7 @@ public class BossController {
     private final BossProfileService bossProfileService;
     private final EnterpriseContextService enterpriseContexts;
     private final OssStorageService ossStorageService;
+    private final FfmpegVideoTranscoder videoTranscoder;
 
     @Autowired
     public BossController(BossOrderService bossOrderService, JobCategoryService jobCategoryService,
@@ -76,7 +82,8 @@ public class BossController {
                           PointsAccountRepository pointsAccountRepository, UserCouponRepository userCouponRepository,
                           InviteRelationRepository inviteRelationRepository, BossOrderRespository orderRepository,
                           BaseOrderItemRespository itemRepository, BossProfileService bossProfileService,
-                          EnterpriseContextService enterpriseContexts, OssStorageService ossStorageService) {
+                          EnterpriseContextService enterpriseContexts, OssStorageService ossStorageService,
+                          FfmpegVideoTranscoder videoTranscoder) {
         this.bossOrderService = bossOrderService;
         this.jobCategoryService = jobCategoryService;
         this.certificationService = certificationService;
@@ -89,6 +96,19 @@ public class BossController {
         this.bossProfileService = bossProfileService;
         this.enterpriseContexts = enterpriseContexts;
         this.ossStorageService = ossStorageService;
+        this.videoTranscoder = videoTranscoder;
+    }
+
+    /** 兼容既有单元测试及其他直接构造调用。 */
+    public BossController(BossOrderService bossOrderService, JobCategoryService jobCategoryService,
+                          CertificationService certificationService, WalletService walletService,
+                          PointsAccountRepository pointsAccountRepository, UserCouponRepository userCouponRepository,
+                          InviteRelationRepository inviteRelationRepository, BossOrderRespository orderRepository,
+                          BaseOrderItemRespository itemRepository, BossProfileService bossProfileService,
+                          EnterpriseContextService enterpriseContexts, OssStorageService ossStorageService) {
+        this(bossOrderService, jobCategoryService, certificationService, walletService, pointsAccountRepository,
+                userCouponRepository, inviteRelationRepository, orderRepository, itemRepository, bossProfileService,
+                enterpriseContexts, ossStorageService, null);
     }
 
     /** 兼容既有单元测试及其他直接构造调用。 */
@@ -149,7 +169,9 @@ public class BossController {
     @GetMapping("/order/{id}")
     public Result<BossOrder> getOrder(@PathVariable Long id, Authentication authentication) {
         requireOwnedOrder(id, authentication);
-        return Result.success(bossOrderService.getOrder(id));
+        BossOrder order = bossOrderService.getOrder(id);
+        fillMediaPreview(order);
+        return Result.success(order);
     }
 
     /**
@@ -370,7 +392,7 @@ public class BossController {
         if (!current.equals(userId)) throw new ForbiddenBusinessException("只能查询当前老板账号资产");
         Map<String, Object> data = new HashMap<>();
         data.put("balance", walletService.getOrCreateWallet(userId, UserRole.BOSS).getBalance());
-        data.put("points", pointsAccountRepository.findByUserIdAndRole(userId, UserRole.BOSS)
+        data.put("points", pointsAccountRepository.findFirstByUserIdAndRoleOrderByIdDesc(userId, UserRole.BOSS)
                 .map(a -> a.getBalance() == null ? 0 : a.getBalance()).orElse(0));
         Date now = new Date(System.currentTimeMillis());
         long coupons = userCouponRepository.countByUserIdAndStatusAndExpireAtIsNull(userId, "UNUSED")
@@ -450,6 +472,87 @@ public class BossController {
         return Result.success(new com.kuaima.app.common.service.OssUploadResult(
                 uploaded.objectKey(), ossStorageService.playableUrl(uploaded.objectKey()),
                 uploaded.fileName()));
+    }
+
+    /** 上传招工详情媒体到私有 OSS：objectKey 随岗位落库，url 仅用于当前页面预览。 */
+    @Operation(summary = "上传招工详情图片/视频", description = "mediaType=image 支持 JPG、JPEG、PNG、WEBP 且不超过 10MB；mediaType=video 支持 MP4 且不超过 100MB")
+    @PostMapping("/order/media/upload")
+    public Result<OssUploadResult> uploadOrderMedia(@RequestParam("file") MultipartFile file,
+                                                     @RequestParam(defaultValue = "image") String mediaType,
+                                                     Authentication authentication) {
+        requireCurrentBossId(authentication);
+        if (ossStorageService == null) throw new IllegalStateException("OSS 上传服务未配置");
+        if (file == null || file.isEmpty()) throw new IllegalArgumentException("上传文件不能为空");
+        String extension = extension(file.getOriginalFilename() == null ? "" : file.getOriginalFilename());
+        String contentType = file.getContentType() == null ? "" : file.getContentType().toLowerCase(java.util.Locale.ROOT);
+        boolean unknownOrImageMime = contentType.isBlank() || "application/octet-stream".equals(contentType);
+        boolean image = !"video".equalsIgnoreCase(mediaType);
+        if (image) {
+            if (file.getSize() > 10L * 1024 * 1024) throw new IllegalArgumentException("图片不能超过10MB");
+            if (!java.util.Set.of("jpg", "jpeg", "png", "webp").contains(extension)
+                    || !(unknownOrImageMime || java.util.Set.of("image/jpeg", "image/png", "image/webp").contains(contentType))) {
+                throw new IllegalArgumentException("仅支持 JPG、JPEG、PNG、WEBP 图片");
+            }
+        } else {
+            if (file.getSize() > 100L * 1024 * 1024) throw new IllegalArgumentException("视频不能超过100MB");
+            if (!"mp4".equals(extension)
+                    || !(unknownOrImageMime || "video/mp4".equals(contentType))) {
+                throw new IllegalArgumentException("仅支持 MP4 视频");
+            }
+        }
+        OssUploadResult uploaded;
+        if ("video".equalsIgnoreCase(mediaType)) {
+            uploaded = uploadCompatibleVideo(file);
+        } else {
+            uploaded = ossStorageService.uploadResult(file, "insurance/recruitment", "." + extension);
+        }
+        return Result.success(new OssUploadResult(
+                uploaded.objectKey(), ossStorageService.playableUrl(uploaded.objectKey()), uploaded.fileName()));
+    }
+
+    private OssUploadResult uploadCompatibleVideo(MultipartFile file) {
+        if (videoTranscoder == null) {
+            return ossStorageService.uploadResult(file, "insurance/recruitment", ".mp4");
+        }
+        Path temporaryFile = null;
+        Path transcodedFile = null;
+        try {
+            temporaryFile = Files.createTempFile("kuaima-recruitment-", ".mp4");
+            try (var input = file.getInputStream()) {
+                Files.copy(input, temporaryFile, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            }
+            OssUploadResult uploaded;
+            if (videoTranscoder.isHevc(temporaryFile)) {
+                transcodedFile = videoTranscoder.transcodeToH264(temporaryFile);
+                uploaded = ossStorageService.uploadResult(
+                        transcodedFile, "video/mp4", "insurance/recruitment", ".mp4");
+            } else {
+                uploaded = ossStorageService.uploadResult(file, "insurance/recruitment", ".mp4");
+            }
+            return uploaded;
+        } catch (IOException e) {
+            throw new IllegalStateException("视频处理失败，请重新上传", e);
+        } finally {
+            try {
+                if (temporaryFile != null) Files.deleteIfExists(temporaryFile);
+                if (transcodedFile != null) Files.deleteIfExists(transcodedFile);
+            } catch (IOException ignored) {
+            }
+        }
+    }
+
+    private void fillMediaPreview(BossOrder order) {
+        if (order == null || ossStorageService == null) return;
+        if (StringUtils.hasText(order.getImageKeys())) {
+            order.setImageUrls(java.util.Arrays.stream(order.getImageKeys().split(","))
+                    .map(String::trim)
+                    .filter(StringUtils::hasText)
+                    .map(ossStorageService::playableUrl)
+                    .toList());
+        }
+        if (StringUtils.hasText(order.getVideoKey())) {
+            order.setVideoUrl(ossStorageService.playableUrl(order.getVideoKey()));
+        }
     }
 
     private String extension(String name) {

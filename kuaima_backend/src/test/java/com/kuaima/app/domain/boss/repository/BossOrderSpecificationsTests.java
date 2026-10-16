@@ -33,10 +33,14 @@ class BossOrderSpecificationsTests {
         Path<String> status = mock(Path.class);
         Path<java.util.Date> startTime = mock(Path.class);
         Path<Integer> salary = mock(Path.class);
+        Path<Integer> duration = mock(Path.class);
+        Path<String> position = mock(Path.class);
         when(root.<Long>get("createBy")).thenReturn(owner);
         when(root.<String>get("orderStatus")).thenReturn(status);
         when(root.<java.util.Date>get("startTime")).thenReturn(startTime);
         when(root.<Integer>get("salary")).thenReturn(salary);
+        when(root.<Integer>get("duration")).thenReturn(duration);
+        when(root.<String>get("postion")).thenReturn(position);
 
         BossOrderQuery filter = new BossOrderQuery();
         filter.setStatus("招工中");
@@ -44,6 +48,9 @@ class BossOrderSpecificationsTests {
         filter.setEndDate(LocalDate.of(2026, 9, 8));
         filter.setSalaryMin(100);
         filter.setSalaryMax(200);
+        filter.setPosition("仓储");
+        filter.setDurationMin(3);
+        filter.setDurationMax(6);
 
         BossOrderSpecifications.from(2L, filter).toPredicate(root, criteriaQuery, cb);
 
@@ -53,7 +60,39 @@ class BossOrderSpecificationsTests {
         verify(cb).lessThan(eq(startTime), any(java.util.Date.class));
         verify(cb).greaterThanOrEqualTo(salary, 100);
         verify(cb).lessThanOrEqualTo(salary, 200);
+        verify(cb).like(position, "%仓储%");
+        verify(cb).greaterThanOrEqualTo(duration, 3);
+        verify(cb).lessThanOrEqualTo(duration, 6);
         verify(cb, atLeastOnce()).and(any(Predicate[].class));
+    }
+
+    @Test
+    void from_shouldSearchKeywordByTitlePositionAndAddress() {
+        CriteriaBuilder cb = mock(CriteriaBuilder.class);
+        Root<BossOrder> root = mock(Root.class);
+        CriteriaQuery<?> criteriaQuery = mock(CriteriaQuery.class);
+        Path<String> orderTitle = mock(Path.class);
+        Path<String> position = mock(Path.class);
+        Path<String> address = mock(Path.class);
+        Predicate titleMatch = mock(Predicate.class);
+        Predicate positionMatch = mock(Predicate.class);
+        Predicate addressMatch = mock(Predicate.class);
+        when(root.<String>get("orderTitle")).thenReturn(orderTitle);
+        when(root.<String>get("postion")).thenReturn(position);
+        when(root.<String>get("address")).thenReturn(address);
+        when(cb.like(orderTitle, "%松江%")).thenReturn(titleMatch);
+        when(cb.like(position, "%松江%")).thenReturn(positionMatch);
+        when(cb.like(address, "%松江%")).thenReturn(addressMatch);
+
+        BossOrderQuery filter = new BossOrderQuery();
+        filter.setKeyword(" 松江 ");
+
+        BossOrderSpecifications.from(null, filter).toPredicate(root, criteriaQuery, cb);
+
+        verify(cb).like(orderTitle, "%松江%");
+        verify(cb).like(position, "%松江%");
+        verify(cb).like(address, "%松江%");
+        verify(cb).or(titleMatch, positionMatch, addressMatch);
     }
 
     @Test

@@ -65,7 +65,7 @@ public class WalletService {
         if (userId == null) {
             throw new IllegalArgumentException("userId 不能为空");
         }
-        return walletRepository.findByUserIdAndRole(userId, role).orElseGet(() -> {
+        return walletRepository.findFirstByUserIdAndRoleOrderByIdDesc(userId, role).orElseGet(() -> {
             Wallet wallet = new Wallet();
             wallet.setUserId(userId);
             wallet.setRole(role);
@@ -76,7 +76,7 @@ public class WalletService {
 
     /** 查询钱包（只读，不自动创建） */
     public Wallet getWallet(Long userId) {
-        return walletRepository.findByUserIdAndRole(userId, UserRole.USER)
+        return walletRepository.findFirstByUserIdAndRoleOrderByIdDesc(userId, UserRole.USER)
                 .orElseThrow(() -> new EntityNotFoundException("钱包不存在: " + userId));
     }
 
@@ -147,10 +147,12 @@ public class WalletService {
         Optional<WithDraw> old = withdrawRepository.findByIdempotencyKey(key);
         if (old.isPresent()) return old.get();
         amount = normalize(amount);
-        Wallet wallet = walletRepository.findByUserIdAndRoleForUpdate(userId, UserRole.USER).orElseGet(() -> {
+        List<Wallet> lockedWallets = walletRepository.findAllByUserIdAndRoleForUpdate(userId, UserRole.USER);
+        Wallet wallet = lockedWallets.isEmpty()
+                ? walletRepository.findFirstByUserIdAndRoleOrderByIdDesc(userId, UserRole.USER).orElseGet(() -> {
             Wallet created = new Wallet(); created.setUserId(userId); created.setRole(UserRole.USER); created.setBalance(BigDecimal.ZERO);
             return walletRepository.saveAndFlush(created);
-        });
+        }) : lockedWallets.get(0);
         if (value(wallet.getBalance()).compareTo(amount) < 0) throw new IllegalArgumentException("钱包可提现余额不足");
         wallet.setBalance(value(wallet.getBalance()).subtract(amount)); walletRepository.saveAndFlush(wallet);
         String suffix = System.currentTimeMillis() + UUID.randomUUID().toString().replace("-", "").substring(0, 8);
@@ -182,8 +184,11 @@ public class WalletService {
         WithDraw draw = lockedWithdraw(id);
         if (WithDrawStatus.FAILED.equals(draw.getStatus())) return draw;
         if (!WithDrawStatus.PENDING.equals(draw.getStatus())) throw new IllegalStateException("提现单状态不能标记失败");
-        Wallet wallet = walletRepository.findByUserIdAndRoleForUpdate(draw.getUserId(), draw.getRole())
-                .orElseThrow(() -> new IllegalStateException("钱包不存在"));
+        List<Wallet> lockedWallets = walletRepository.findAllByUserIdAndRoleForUpdate(draw.getUserId(), draw.getRole());
+        Wallet wallet = lockedWallets.isEmpty()
+                ? walletRepository.findFirstByUserIdAndRoleOrderByIdDesc(draw.getUserId(), draw.getRole())
+                        .orElseThrow(() -> new IllegalStateException("钱包不存在"))
+                : lockedWallets.get(0);
         wallet.setBalance(value(wallet.getBalance()).add(draw.getAmount())); walletRepository.saveAndFlush(wallet);
         draw.setStatus(WithDrawStatus.FAILED); draw.setRemark(reason); draw.setWechatTransferNo(transferNo);
         draw.setTransferResponse(response); withdrawRepository.saveAndFlush(draw);

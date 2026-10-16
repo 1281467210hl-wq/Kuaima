@@ -91,16 +91,17 @@ public class WechatPayService {
     /** 发起已签名的微信支付 v3 JSON POST 请求；错误信息不携带密钥和完整响应。 */
     public JSONObject signedPost(String path, JSONObject body, String wechatpaySerial) {
         requireEnabled();
-        if (!StringUtils.hasText(wechatpaySerial)) throw new IllegalArgumentException("微信支付平台公钥序列号未配置");
         String payload = body.toJSONString();
         try {
-            HttpRequest request = HttpRequest.newBuilder(URI.create("https://api.mch.weixin.qq.com" + path))
+            HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create("https://api.mch.weixin.qq.com" + path))
                     .header("Content-Type", "application/json").header("Accept", "application/json")
-                    .header("Wechatpay-Serial", wechatpaySerial)
-                    .header("Authorization", authorization("POST", path, payload))
-                    .POST(HttpRequest.BodyPublishers.ofString(payload)).build();
+                    .header("Authorization", authorization("POST", path, payload));
+            if (StringUtils.hasText(wechatpaySerial)) builder.header("Wechatpay-Serial", wechatpaySerial);
+            HttpRequest request = builder.POST(HttpRequest.BodyPublishers.ofString(payload)).build();
             HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
-            if (response.statusCode() / 100 != 2) throw new IllegalStateException("微信支付接口请求失败: HTTP " + response.statusCode());
+            if (response.statusCode() / 100 != 2) {
+                throw new IllegalStateException(errorSummary("微信支付接口请求失败", response.statusCode(), response.body()));
+            }
             return JSON.parseObject(response.body());
         } catch (IOException e) {
             throw new IllegalStateException("微信支付接口请求失败", e);
@@ -119,7 +120,9 @@ public class WechatPayService {
                     .header("Authorization", authorization("GET", path, ""))
                     .GET().build();
             HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
-            if (response.statusCode() / 100 != 2) throw new IllegalStateException("微信支付接口查询失败: HTTP " + response.statusCode());
+            if (response.statusCode() / 100 != 2) {
+                throw new IllegalStateException(errorSummary("微信支付接口查询失败", response.statusCode(), response.body()));
+            }
             return JSON.parseObject(response.body());
         } catch (IOException e) {
             throw new IllegalStateException("微信支付接口查询失败", e);
@@ -143,6 +146,29 @@ public class WechatPayService {
             Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding"); cipher.init(Cipher.DECRYPT_MODE, new SecretKeySpec(apiKey, "AES"), new GCMParameterSpec(128, iv.getBytes(StandardCharsets.UTF_8)));
             cipher.updateAAD(aad.getBytes(StandardCharsets.UTF_8)); return JSON.parseObject(new String(cipher.doFinal(ciphertext), StandardCharsets.UTF_8));
         } catch (Exception e) { throw new IllegalArgumentException("微信支付回调验签或解密失败", e); }
+    }
+
+    static String errorSummary(String action, int statusCode, String responseBody) {
+        String code = null;
+        String message = null;
+        try {
+            JSONObject error = JSON.parseObject(responseBody);
+            if (error != null) {
+                code = error.getString("code");
+                message = error.getString("message");
+            }
+        } catch (RuntimeException ignored) {
+            code = null;
+            message = null;
+        }
+        StringBuilder summary = new StringBuilder(action).append(": HTTP ").append(statusCode);
+        if (StringUtils.hasText(code)) summary.append(", code=").append(code.trim());
+        if (StringUtils.hasText(message)) {
+            String text = message.trim();
+            summary.append(", message=").append(text.length() > 240 ? text.substring(0, 240) : text);
+        }
+        if (!StringUtils.hasText(code) && !StringUtils.hasText(message)) summary.append(", 微信未返回业务错误信息");
+        return summary.toString();
     }
     public String appId() { return wechat.getAppid(); }
     public String merchantId() { return properties.getMchid(); }

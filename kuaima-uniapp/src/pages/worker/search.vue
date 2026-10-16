@@ -45,7 +45,7 @@ async function doSearch() {
     return uni.showToast({ title: "请输入搜索内容", icon: "none" });
   searched.value = true;
   try {
-    const r = await listPublicJobs({ title: keyword.value.trim(), page: 0, size: 20 });
+    const r = await listPublicJobs({ keyword: keyword.value.trim(), page: 0, size: 20 });
     results.value = (Array.isArray(r) ? r : r?.records || []).map((item) => ({
       ...item,
       title: item.orderTitle || item.title || item.postion,

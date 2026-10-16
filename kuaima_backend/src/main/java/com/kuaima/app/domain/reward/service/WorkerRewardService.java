@@ -14,6 +14,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import com.alibaba.fastjson2.JSONObject;
 import com.kuaima.app.domain.reward.entity.RewardAccount;
 import com.kuaima.app.domain.reward.entity.RewardEarningRule;
 import com.kuaima.app.domain.reward.entity.RewardFlow;
@@ -59,7 +60,8 @@ public class WorkerRewardService {
     public Map<String, Object> overview(Long userId) {
         User user = currentUser(userId);
         RewardWithdrawSettings settings = settingsService.settings();
-        RewardAccount account = accounts.findByUserIdAndRole(userId, "USER").orElseGet(() -> accounts.findByUserId(userId).orElse(null));
+        RewardAccount account = accounts.findFirstByUserIdAndRoleOrderByIdDesc(userId, "USER")
+                .or(() -> accounts.findFirstByUserIdOrderByIdDesc(userId)).orElse(null);
         long balance = fen(account == null ? null : account.getBalance());
         long frozen = fen(account == null ? null : account.getFrozenAmount());
         long withdrawable = Math.max(0, balance - frozen);
@@ -128,8 +130,9 @@ public class WorkerRewardService {
                     submitted.getMerchantBatchNo(), submitted.getMerchantDetailNo(), amount,
                     user.getOpenid(), "快马日结奖励金提现"));
         } catch (RuntimeException e) {
-            withdrawalProcessor.transferFailed(submitted.getId(), e.getMessage());
-            throw new WorkerRewardWithdrawalFailedException("微信商家转账发起失败，奖励金已退回");
+            String reason = transferFailureReason(e.getMessage());
+            withdrawalProcessor.transferFailed(submitted.getId(), reason);
+            throw new WorkerRewardWithdrawalFailedException("微信商家转账发起失败，奖励金已退回：" + reason);
         }
         RewardWithdrawal accepted = withdrawalProcessor.transferAccepted(submitted, result);
         return withdrawalView(accepted);
@@ -140,6 +143,11 @@ public class WorkerRewardService {
         String trimmed = key.trim();
         if (trimmed.length() > 100) throw new IllegalArgumentException("Idempotency-Key 长度不能超过100");
         return "worker-reward:" + userId + ":" + trimmed;
+    }
+
+    private String transferFailureReason(String reason) {
+        String text = StringUtils.hasText(reason) ? reason.trim() : "未知错误";
+        return text.length() > 300 ? text.substring(0, 300) : text;
     }
 
     private User currentUser(Long userId) {
@@ -194,13 +202,20 @@ public class WorkerRewardService {
     }
 
     private Map<String, Object> withdrawalView(RewardWithdrawal withdrawal) {
-        RewardAccount account = accounts.findByUserIdAndRole(withdrawal.getUserId(), "USER").orElseGet(() -> accounts.findByUserId(withdrawal.getUserId()).orElse(null));
+        RewardAccount account = accounts.findFirstByUserIdAndRoleOrderByIdDesc(withdrawal.getUserId(), "USER")
+                .or(() -> accounts.findFirstByUserIdOrderByIdDesc(withdrawal.getUserId())).orElse(null);
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("withdrawId", withdrawal.getId());
         result.put("amount", fen(withdrawal.getAmount()));
         result.put("status", withdrawal.getStatus());
         result.put("balance", fen(account == null ? null : account.getBalance()));
         result.put("createdAt", withdrawal.getCreatedAt() == null ? withdrawal.getAppliedAt() : withdrawal.getCreatedAt());
+        JSONObject rawResponse = StringUtils.hasText(withdrawal.getTransferResponse())
+                ? JSONObject.parseObject(withdrawal.getTransferResponse()) : null;
+        result.put("state", rawResponse == null ? null : rawResponse.getString("state"));
+        result.put("appId", rawResponse == null ? null : rawResponse.getString("app_id"));
+        result.put("mchId", rawResponse == null ? null : rawResponse.getString("mch_id"));
+        result.put("packageInfo", rawResponse == null ? null : rawResponse.getString("package_info"));
         return result;
     }
 

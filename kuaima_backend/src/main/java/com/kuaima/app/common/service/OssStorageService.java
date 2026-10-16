@@ -1,6 +1,7 @@
 package com.kuaima.app.common.service;
 
 import com.aliyun.oss.OSS;
+import com.aliyun.oss.ClientBuilderConfiguration;
 import com.aliyun.oss.OSSClientBuilder;
 import com.aliyun.oss.OSSException;
 import com.aliyun.oss.HttpMethod;
@@ -46,6 +47,7 @@ public class OssStorageService {
     @Value("${kuaima.upload.dir:./uploads/}") private String uploadDir;
     @Value("${kuaima.upload.public-base-url:}") private String uploadBaseUrl;
     private volatile OSS client;
+    private volatile OSS previewClient;
 
     /** OSS 四项必填配置齐全才走云端，否则本地磁盘兜底（开发/测试环境无 OSS 也能上传成功）。 */
     private boolean ossConfigured() {
@@ -185,7 +187,7 @@ public class OssStorageService {
         if (StringUtils.hasText(clientType) && !"application/octet-stream".equalsIgnoreCase(clientType)) {
             return clientType;
         }
-        switch (suffix == null ? "" : suffix) {
+        switch (suffix == null ? "" : suffix.toLowerCase(java.util.Locale.ROOT)) {
             case ".jpg":
             case ".jpeg":
             case ".jpe":
@@ -198,6 +200,8 @@ public class OssStorageService {
                 return "image/webp";
             case ".bmp":
                 return "image/bmp";
+            case ".mp4":
+                return "video/mp4";
             case ".pdf":
                 return "application/pdf";
             case ".doc":
@@ -237,7 +241,13 @@ public class OssStorageService {
         String objectKey = objectKey(value);
         if (!StringUtils.hasText(objectKey)) return value;
         Date expires = new Date(System.currentTimeMillis() + expirationMillis(expirationSeconds));
-        return getClient().generatePresignedUrl(bucketName, objectKey, expires).toString()
+        GeneratePresignedUrlRequest request =
+                new GeneratePresignedUrlRequest(bucketName, objectKey, HttpMethod.GET);
+        request.setExpiration(expires);
+        ResponseHeaderOverrides responseHeaders = new ResponseHeaderOverrides();
+        responseHeaders.setContentDisposition("inline");
+        request.setResponseHeaders(responseHeaders);
+        return getPreviewClient().generatePresignedUrl(request).toString()
                 .replaceFirst("^http://", "https://");
     }
 
@@ -246,26 +256,17 @@ public class OssStorageService {
      * 避免对象元数据为 octet-stream 时浏览器直接触发下载。
      */
     public String inlinePreviewUrl(String value) {
-        if (!StringUtils.hasText(value) || !StringUtils.hasText(endpoint)
-                || !StringUtils.hasText(bucketName) || !StringUtils.hasText(accessKeyId)
-                || !StringUtils.hasText(accessKeySecret)) {
-            return value;
-        }
-        String objectKey = objectKey(value);
-        if (!StringUtils.hasText(objectKey)) return value;
-        GeneratePresignedUrlRequest request =
-                new GeneratePresignedUrlRequest(bucketName, objectKey, HttpMethod.GET);
-        request.setExpiration(new Date(System.currentTimeMillis() + expirationMillis(signedUrlExpirationSeconds)));
-        ResponseHeaderOverrides overrides = new ResponseHeaderOverrides();
-        overrides.setContentDisposition("inline");
-        overrides.setContentType(previewContentType(objectKey));
-        request.setResponseHeaders(overrides);
-        return getClient().generatePresignedUrl(request).toString()
-                .replaceFirst("^http://", "https://");
+        return playableUrl(value);
     }
 
     private String previewContentType(String objectKey) {
         String lower = objectKey.toLowerCase();
+        if (lower.endsWith(".jpg") || lower.endsWith(".jpeg") || lower.endsWith(".jpe")) return "image/jpeg";
+        if (lower.endsWith(".png")) return "image/png";
+        if (lower.endsWith(".gif")) return "image/gif";
+        if (lower.endsWith(".webp")) return "image/webp";
+        if (lower.endsWith(".bmp")) return "image/bmp";
+        if (lower.endsWith(".mp4")) return "video/mp4";
         if (lower.endsWith(".pdf")) return "application/pdf";
         if (lower.endsWith(".doc")) return "application/msword";
         if (lower.endsWith(".docx")) return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
@@ -293,10 +294,29 @@ public class OssStorageService {
         return current;
     }
 
+    private OSS getPreviewClient() {
+        if (!StringUtils.hasText(domain)) return getClient();
+        OSS current = previewClient;
+        if (current == null) {
+            synchronized (this) {
+                current = previewClient;
+                if (current == null) {
+                    ClientBuilderConfiguration configuration = new ClientBuilderConfiguration();
+                    configuration.setSupportCname(true);
+                    previewClient = current = new OSSClientBuilder()
+                            .build(domain, accessKeyId, accessKeySecret, configuration);
+                }
+            }
+        }
+        return current;
+    }
+
     @PreDestroy
     void shutdown() {
         OSS current = client;
         if (current != null) current.shutdown();
+        OSS preview = previewClient;
+        if (preview != null) preview.shutdown();
     }
 
     private String objectKey(String value) {

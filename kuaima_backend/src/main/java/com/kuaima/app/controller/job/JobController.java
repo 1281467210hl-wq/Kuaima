@@ -32,12 +32,15 @@ import com.kuaima.app.domain.boss.model.BossOrderQuery;
 import com.kuaima.app.domain.boss.service.BossOrderService;
 import com.kuaima.app.domain.boss.entity.BaseOrderItem;
 import com.kuaima.app.domain.user.constant.UserRole;
+import com.kuaima.app.domain.user.repository.UserRepository;
 import com.kuaima.app.security.model.LoginUser;
 import com.kuaima.app.domain.browsehistory.entity.BrowseHistory;
 import com.kuaima.app.domain.browsehistory.repository.BrowseHistoryRepository;
 import com.kuaima.app.domain.jobfavorite.entity.JobFavorite;
 import com.kuaima.app.domain.jobfavorite.repository.JobFavoriteRepository;
 import com.kuaima.app.domain.enterprise.repository.EnterpriseRepository;
+import com.kuaima.app.common.service.OssStorageService;
+import org.springframework.util.StringUtils;
 
 /**
  * 零工端岗位收藏与浏览记录。
@@ -52,12 +55,33 @@ public class JobController {
     private final BossOrderRespository orderRepository;
     private final BossOrderService bossOrderService;
     private final EnterpriseRepository enterpriseRepository;
+    private final OssStorageService ossStorageService;
+    private final UserRepository userRepository;
 
     public JobController(JobFavoriteRepository favoriteRepository,
                          BrowseHistoryRepository browseHistoryRepository,
                          BossOrderRespository orderRepository,
                          BossOrderService bossOrderService) {
-        this(favoriteRepository, browseHistoryRepository, orderRepository, bossOrderService, null);
+        this(favoriteRepository, browseHistoryRepository, orderRepository, bossOrderService, null, null);
+    }
+
+    public JobController(JobFavoriteRepository favoriteRepository,
+                         BrowseHistoryRepository browseHistoryRepository,
+                         BossOrderRespository orderRepository,
+                         BossOrderService bossOrderService,
+                         EnterpriseRepository enterpriseRepository) {
+        this(favoriteRepository, browseHistoryRepository, orderRepository, bossOrderService,
+                enterpriseRepository, null, null);
+    }
+
+    public JobController(JobFavoriteRepository favoriteRepository,
+                         BrowseHistoryRepository browseHistoryRepository,
+                         BossOrderRespository orderRepository,
+                         BossOrderService bossOrderService,
+                         EnterpriseRepository enterpriseRepository,
+                         OssStorageService ossStorageService) {
+        this(favoriteRepository, browseHistoryRepository, orderRepository, bossOrderService,
+                enterpriseRepository, ossStorageService, null);
     }
 
     @org.springframework.beans.factory.annotation.Autowired
@@ -65,12 +89,16 @@ public class JobController {
                          BrowseHistoryRepository browseHistoryRepository,
                          BossOrderRespository orderRepository,
                          BossOrderService bossOrderService,
-                         EnterpriseRepository enterpriseRepository) {
+                         EnterpriseRepository enterpriseRepository,
+                         OssStorageService ossStorageService,
+                         UserRepository userRepository) {
         this.favoriteRepository = favoriteRepository;
         this.browseHistoryRepository = browseHistoryRepository;
         this.orderRepository = orderRepository;
         this.bossOrderService = bossOrderService;
         this.enterpriseRepository = enterpriseRepository;
+        this.ossStorageService = ossStorageService;
+        this.userRepository = userRepository;
     }
 
     /** 零工公开岗位列表：GET /jobs。仅返回招工中的岗位，不按老板归属过滤。 */
@@ -97,7 +125,27 @@ public class JobController {
                             enterprise.getCompanyName() == null ? "" : enterprise.getCompanyName()));
         }
         if (order.getCompanyName() == null) order.setCompanyName("");
+        if (userRepository != null && order.getCreateBy() != null) {
+            userRepository.findById(order.getCreateBy()).ifPresent(user -> order.setContactPhone(
+                    StringUtils.hasText(user.getContactPhone()) ? user.getContactPhone() : user.getPhone()));
+        }
+        if (order.getContactPhone() == null) order.setContactPhone("");
+        fillMediaPreview(order);
         return Result.success(order);
+    }
+
+    private void fillMediaPreview(BossOrder order) {
+        if (ossStorageService == null || order == null) return;
+        if (StringUtils.hasText(order.getImageKeys())) {
+            order.setImageUrls(java.util.Arrays.stream(order.getImageKeys().split(","))
+                    .map(String::trim)
+                    .filter(StringUtils::hasText)
+                    .map(ossStorageService::inlinePreviewUrl)
+                    .toList());
+        }
+        if (StringUtils.hasText(order.getVideoKey())) {
+            order.setVideoUrl(ossStorageService.playableUrl(order.getVideoKey()));
+        }
     }
 
     /** 零工报名：POST /jobs/{orderId}/apply。用户身份从 JWT 获取。 */

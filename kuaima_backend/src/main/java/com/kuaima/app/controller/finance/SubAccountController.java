@@ -133,8 +133,11 @@ public class SubAccountController {
         EnterpriseContextService.Context context = enterpriseContextService.require(authentication, "MEMBER_WRITE");
         EnterpriseMember member = enterpriseMemberRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("企业成员不存在"));
-        if (!context.enterprise().getId().equals(member.getEnterpriseId()) || bossId.equals(member.getUserId())) {
-            throw new ForbiddenBusinessException("无权修改该企业成员");
+        if (bossId.equals(member.getUserId())) {
+            throw new ForbiddenBusinessException("不能修改当前登录老板自己的权限");
+        }
+        if (!context.enterprise().getId().equals(member.getEnterpriseId())) {
+            throw new ForbiddenBusinessException("该成员不属于当前企业，请从当前企业成员列表中选择");
         }
         member.setPermissions(com.alibaba.fastjson2.JSON.toJSONString(permissionCodes(body.get("permissionCodes"), body.get("menuCodes"))));
         member.setPortalEnabled(true);
@@ -152,8 +155,11 @@ public class SubAccountController {
         EnterpriseContextService.Context context = enterpriseContextService.require(authentication, "MEMBER_WRITE");
         EnterpriseMember member = enterpriseMemberRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("企业成员不存在"));
-        if (!context.enterprise().getId().equals(member.getEnterpriseId()) || bossId.equals(member.getUserId())) {
-            throw new ForbiddenBusinessException("无权撤销该企业成员");
+        if (bossId.equals(member.getUserId())) {
+            throw new ForbiddenBusinessException("不能撤销当前登录老板自己的权限");
+        }
+        if (!context.enterprise().getId().equals(member.getEnterpriseId())) {
+            throw new ForbiddenBusinessException("该成员不属于当前企业，请从当前企业成员列表中选择");
         }
         member.setPortalEnabled(false);
         member.setPermissions("[]");

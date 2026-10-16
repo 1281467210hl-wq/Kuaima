@@ -85,6 +85,8 @@ public class AdminLogController {
                     ? log.getOperator() : operator.getName();
             view.put("operator", displayName == null || displayName.isBlank() ? "-" : displayName);
             view.put("operatorAccount", operator == null ? log.getOperator() : operator.getUsername());
+            view.put("type", normalizedType(log.getType()));
+            view.put("originalType", log.getType());
             return view;
         });
         return Result.success(views, page, result.getTotalElements());
@@ -98,5 +100,12 @@ public class AdminLogController {
         if (ids.isEmpty()) return Map.of();
         return adminUserRepository.findAllById(ids).stream()
                 .collect(Collectors.toMap(AdminUser::getId, Function.identity()));
+    }
+
+    private String normalizedType(String type) {
+        return switch (type == null ? "" : type) {
+            case "审核", "启用", "禁用", "启用/禁用", "重置密码" -> "编辑";
+            default -> type == null || type.isBlank() ? "-" : type;
+        };
     }
 }

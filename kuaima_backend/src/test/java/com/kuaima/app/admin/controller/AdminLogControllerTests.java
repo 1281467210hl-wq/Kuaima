@@ -78,6 +78,24 @@ class AdminLogControllerTests {
     }
 
     @Test
+    void list_shouldMapLegacyWriteTypesToEdit() {
+        AdminLogRepository logs = mock(AdminLogRepository.class);
+        AdminLog log = new AdminLog();
+        log.setId(3L);
+        log.setOperator("admin");
+        log.setType("审核");
+        loginAsSuperAdmin(1L);
+        when(logs.search(any(), any(), any(), any(), any(), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(log)));
+
+        var row = new AdminLogController(logs, mock(AdminUserRepository.class))
+                .list(null, null, null, null, 0, 20).getData().getContent().get(0);
+
+        assertEquals("编辑", row.getString("type"));
+        assertEquals("审核", row.getString("originalType"));
+    }
+
+    @Test
     void list_shouldPushKeywordAndFullDateRangeToDatabase() {
         AdminLogRepository logs = mock(AdminLogRepository.class);
         when(logs.search(any(), any(), any(), any(), any(), any(Pageable.class)))

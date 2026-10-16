@@ -269,12 +269,13 @@ const modules = reactive([
   makeGroup('permMarketing', '营销管理', [
     makePage('points', '积分管理', [makeBtn('detail', '详情'), makeBtn('pay', '支付')]),
     makePage('coupons', '优惠券管理', [makeBtn('edit', '编辑'), makeBtn('disable', '停用'), makeBtn('delete', '删除')]),
-    makePage('rewards', '奖励金管理'),
-    makePage('academy', '学堂管理', [makeBtn('create', '新增课程'), makeBtn('edit', '编辑课程'), makeBtn('delete', '删除课程')])
+    makePage('rewards', '奖励金管理')
   ]),
   makeGroup('permContent', '内容管理', [
+    makePage('academy', '学堂管理', [makeBtn('create', '新增课程'), makeBtn('edit', '编辑课程'), makeBtn('delete', '删除课程')]),
     makePage('notices', '公告管理'),
-    makePage('rules', '规则管理')
+    makePage('rules', '规则管理'),
+    makePage('agreements', '协议管理')
   ]),
   makeGroup('permService', '消息客服', [
     makePage('messages', '消息管理'),

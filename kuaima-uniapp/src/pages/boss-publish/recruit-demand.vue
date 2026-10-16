@@ -766,6 +766,10 @@ export default {
           longitude: location.longitude,
           latitude: location.latitude,
           tags: payTags,
+          imageKeys: Array.isArray(taskContent.images)
+            ? taskContent.images.map((item) => item?.objectKey).filter(Boolean).join(",")
+            : taskContent.imageKeys || "",
+          videoKey: taskContent.video?.objectKey || taskContent.videoKey || "",
           startTime: `${dateText} ${workTime.startTime || "08:00"}:00`,
           endTime: `${dateText} ${workTime.endTime || "18:00"}:00`,
           salary,
@@ -808,7 +812,7 @@ export default {
           () =>
             editing
               ? uni.redirectTo({ url: "/pages/boss/order" })
-              : uni.navigateTo({ url: "/pages/boss/publish-success" }),
+              : uni.navigateTo({ url: "/pages/boss-publish/publish-success" }),
           800,
         );
       } catch (error) {

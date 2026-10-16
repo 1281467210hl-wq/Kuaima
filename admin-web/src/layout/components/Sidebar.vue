@@ -112,8 +112,7 @@ const menuGroups = [
     items: [
       { path: '/admin/point-purchase', name: '积分管理', icon: 'fa-coins', permKey: 'permMarketing.points' },
       { path: '/admin/coupon-manage', name: '优惠券管理', icon: 'fa-ticket-alt', permKey: 'permMarketing.coupons' },
-      { path: '/admin/reward-manage', name: '奖励金管理', icon: 'fa-gift', permKey: 'permMarketing.rewards' },
-      { path: '/admin/academy', name: '学堂管理', icon: 'fa-graduation-cap', permKey: 'permMarketing.academy' }
+      { path: '/admin/reward-manage', name: '奖励金管理', icon: 'fa-gift', permKey: 'permMarketing.rewards' }
     ]
   },
   {
@@ -121,8 +120,10 @@ const menuGroups = [
     name: '内容管理',
     icon: 'fa-file-lines',
     items: [
+      { path: '/admin/academy', name: '学堂管理', icon: 'fa-graduation-cap', permKey: 'permContent.academy' },
       { path: '/admin/notices', name: '公告管理', icon: 'fa-bullhorn', permKey: 'permContent.notices' },
-      { path: '/admin/rules', name: '规则管理', icon: 'fa-book', permKey: 'permContent.rules' }
+      { path: '/admin/rules', name: '规则管理', icon: 'fa-book', permKey: 'permContent.rules' },
+      { path: '/admin/agreements', name: '协议管理', icon: 'fa-file-contract', permKey: 'permContent.agreements' }
     ]
   },
   {

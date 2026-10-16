@@ -238,7 +238,8 @@ public class RewardRechargeService {
 
     private BigDecimal ledgerAccount(Long userId) {
         if (accounts == null) return BigDecimal.ZERO.setScale(2);
-        return accounts.findByUserIdAndRole(userId, UserRole.BOSS).map(a -> value(a.getBalance())).orElse(BigDecimal.ZERO.setScale(2));
+        return accounts.findFirstByUserIdAndRoleOrderByIdDesc(userId, UserRole.BOSS)
+                .map(a -> value(a.getBalance())).orElse(BigDecimal.ZERO.setScale(2));
     }
 
     private BigDecimal value(BigDecimal value) { return value == null ? BigDecimal.ZERO.setScale(2) : value.setScale(2); }

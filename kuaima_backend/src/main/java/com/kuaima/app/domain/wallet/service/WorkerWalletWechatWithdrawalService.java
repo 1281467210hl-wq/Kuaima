@@ -9,6 +9,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
+import com.alibaba.fastjson2.JSONObject;
 import com.kuaima.app.domain.reward.service.WechatMerchantTransferClient;
 import com.kuaima.app.domain.user.entity.User;
 import com.kuaima.app.domain.user.repository.UserRepository;
@@ -50,10 +51,11 @@ public class WorkerWalletWechatWithdrawalService {
                     draw.getMerchantBatchNo(), draw.getMerchantDetailNo(), amount.movePointRight(2).longValueExact(),
                     user.getOpenid(), "快马日结钱包提现"));
         } catch (RuntimeException e) {
-            wallets.failWechatWithdraw(draw.getId(), "微信商家转账发起失败", null, null);
-            throw new IllegalStateException("微信商家转账发起失败，余额已退回");
+            String reason = e.getMessage();
+            wallets.failWechatWithdraw(draw.getId(), reason, null, null);
+            throw new IllegalStateException("微信商家转账发起失败，余额已退回：" + reason);
         }
-        return view(wallets.acceptWechatWithdraw(draw.getId(), result.batchId(), result.rawResponse()));
+        return view(wallets.acceptWechatWithdraw(draw.getId(), result.transferBillNo(), result.rawResponse()));
     }
 
     private String key(Long userId, String key) {
@@ -69,6 +71,13 @@ public class WorkerWalletWechatWithdrawalService {
     private Map<String, Object> view(WithDraw draw) {
         Map<String, Object> m = new LinkedHashMap<>(); m.put("id", draw.getId()); m.put("amount", draw.getAmount());
         m.put("channel", draw.getChannel()); m.put("status", draw.getStatus()); m.put("appliedAt", draw.getApplyTime());
-        m.put("paidAt", draw.getPayTime()); m.put("failureReason", draw.getRemark()); return m;
+        m.put("paidAt", draw.getPayTime()); m.put("failureReason", draw.getRemark());
+        JSONObject rawResponse = StringUtils.hasText(draw.getTransferResponse())
+                ? JSONObject.parseObject(draw.getTransferResponse()) : null;
+        m.put("state", rawResponse == null ? null : rawResponse.getString("state"));
+        m.put("appId", rawResponse == null ? null : rawResponse.getString("app_id"));
+        m.put("mchId", rawResponse == null ? null : rawResponse.getString("mch_id"));
+        m.put("packageInfo", rawResponse == null ? null : rawResponse.getString("package_info"));
+        return m;
     }
 }

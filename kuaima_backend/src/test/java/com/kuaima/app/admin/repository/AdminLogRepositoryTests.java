@@ -46,6 +46,18 @@ class AdminLogRepositoryTests {
         assertEquals("登录", result.getContent().get(0).getType());
     }
 
+    @Test
+    void searchEditTypeShouldIncludeLegacyWriteTypes() {
+        repository.save(log(null, "审核", "招工审核", LocalDateTime.of(2026, 10, 14, 10, 0)));
+        repository.save(log(null, "删除", "公告管理", LocalDateTime.of(2026, 10, 14, 9, 0)));
+        repository.flush();
+
+        var result = repository.search(null, "编辑", null, null, null, PageRequest.of(0, 20));
+
+        assertEquals(1, result.getTotalElements());
+        assertEquals("审核", result.getContent().get(0).getType());
+    }
+
     private AdminLog log(Long operatorId, String type, String target, LocalDateTime createTime) {
         AdminLog log = new AdminLog();
         log.setOperator("admin");

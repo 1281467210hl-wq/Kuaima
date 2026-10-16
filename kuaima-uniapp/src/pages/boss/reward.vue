@@ -29,7 +29,11 @@
             <view v-for="item in records" :key="item.id" class="income-item">
               <view class="income-info">
                 <view class="income-icon"><image :src="recordIcon(item.icon)" mode="aspectFit" /></view>
-                <view><text class="income-name">{{ item.name }}</text><text class="income-date">{{ item.date }}</text></view>
+                <view>
+                  <text class="income-name">{{ item.name }}</text>
+                  <text class="income-date">{{ item.date }}</text>
+                  <text v-if="item.statusText" :class="['income-status', item.statusClass]">{{ item.statusText }}</text>
+                </view>
               </view>
               <text :class="['income-amount', item.type]">{{ item.type === 'income' ? '+' : '-' }}¥{{ formatMoney(item.amount) }}</text>
             </view>
@@ -43,7 +47,7 @@
         <view class="rules-card">
           <view class="rules-title"><image :src="infoIcon" mode="aspectFit" /><text>奖励金说明</text></view>
           <text class="rules-item">1. 奖励金可用于发布订单、购买积分等</text>
-          <text class="rules-item">2. 1元奖励金 = 1元现金，可提现至微信</text>
+          <text class="rules-item">2. 1元奖励金 = 1元现金，可提现至微信或支付宝</text>
           <text class="rules-item">3. 提现最低金额10元，T+1到账</text>
           <text class="rules-item">4. 奖励金有效期永久有效</text>
         </view>
@@ -61,16 +65,6 @@
         <button class="sheet-confirm" :disabled="rechargeSubmitting" @click="submitRecharge">{{ rechargeSubmitting ? '处理中...' : '微信支付' }}</button>
       </view>
     </view>
-
-    <view v-if="withdrawVisible" class="sheet-mask" @click="closeWithdraw">
-      <view class="action-sheet" @click.stop>
-        <view class="sheet-handle" />
-        <text class="sheet-title">奖励金提现</text>
-        <text class="sheet-tip">可提现 ¥{{ formatMoney(withdrawableAmount) }}，提现至当前微信实名账户</text>
-        <view class="amount-input-wrap"><text>¥</text><input v-model="withdrawAmount" type="digit" placeholder="请输入提现金额" @input="onWithdrawInput" /><text class="all-btn" @click="withdrawAll">全部</text></view>
-        <button class="sheet-confirm" :disabled="withdrawSubmitting" @click="submitWithdraw">{{ withdrawSubmitting ? '提交中...' : '确认提现' }}</button>
-      </view>
-    </view>
   </view>
 </template>
 
@@ -79,7 +73,6 @@ import { ref } from "vue";
 import { onShow, onUnload } from "@dcloudio/uni-app";
 import {
   createBossRewardRecharge,
-  createBossRewardWithdrawal,
   getBossRewardOverview,
   getBossRewardRecharge,
   listBossRewardRecords,
@@ -112,10 +105,6 @@ const rechargeAmount = ref("");
 const rechargeSubmitting = ref(false);
 const rechargeIdempotencyKey = ref("");
 const rechargeQuickAmounts = [0.01, 10, 50, 100];
-const withdrawVisible = ref(false);
-const withdrawAmount = ref("");
-const withdrawSubmitting = ref(false);
-const withdrawIdempotencyKey = ref("");
 let paymentTimer = null;
 let paymentPolling = false;
 
@@ -177,7 +166,19 @@ function normalizeRecord(item, index) {
     date: formatTime(item.createdAt || item.date || item.time || item.createTime),
     amount: safeNumber(item.amount ?? item.value),
     icon: item.icon || iconByName(item.name || item.title || item.remark),
+    statusText: formatRecordStatus(item.status, item.type),
+    statusClass: String(item.status || "").toLowerCase(),
   };
+}
+function formatRecordStatus(status, type) {
+  if (!status || String(type).toUpperCase() !== "EXPENSE") return "";
+  return {
+    PENDING: "处理中",
+    PROCESSING: "处理中",
+    SUCCESS: "已到账",
+    FAILED: "提现失败",
+    CANCELED: "已取消",
+  }[String(status).toUpperCase()] || "";
 }
 function iconByName(name = "") {
   if (name.includes("邀请")) return "gift";
@@ -279,34 +280,9 @@ function startPaymentPolling(orderNo) {
 function stopPaymentPolling() { paymentPolling = false; if (paymentTimer) clearTimeout(paymentTimer); paymentTimer = null; }
 
 function withdraw() {
-  withdrawVisible.value = true;
-  withdrawAmount.value = "";
-  withdrawIdempotencyKey.value = "";
-}
-function closeWithdraw() { if (!withdrawSubmitting.value) withdrawVisible.value = false; }
-function withdrawAll() { withdrawAmount.value = withdrawableAmount.value.toFixed(2); withdrawIdempotencyKey.value = ""; }
-function onWithdrawInput(event) { withdrawAmount.value = sanitizeMoney(event?.detail?.value); withdrawIdempotencyKey.value = ""; }
-
-async function submitWithdraw() {
-  if (withdrawSubmitting.value) return;
-  const amount = validateMoney(withdrawAmount.value, 0.01, "请输入正确的提现金额");
-  if (amount === null) return;
-  if (amount > withdrawableAmount.value) return uni.showToast({ title: "奖励金余额不足", icon: "none" });
-  if (!withdrawIdempotencyKey.value) withdrawIdempotencyKey.value = createIdempotencyKey("boss-reward-withdraw");
-  withdrawSubmitting.value = true;
-  try {
-    await createBossRewardWithdrawal(amount, withdrawIdempotencyKey.value);
-    withdrawVisible.value = false;
-    withdrawAmount.value = "";
-    withdrawIdempotencyKey.value = "";
-    uni.showToast({ title: "提现申请已提交", icon: "success" });
-    await Promise.all([loadOverview(), loadRecords(true)]);
-  } catch (error) {
-    uni.showToast({ title: error?.message || "提现失败", icon: "none" });
-    if (error?.statusCode === 502 || error?.code === 502 || error?.code === "502") await Promise.all([loadOverview(), loadRecords(true)]);
-  } finally {
-    withdrawSubmitting.value = false;
-  }
+  uni.navigateTo({
+    url: `/pages/boss/reward-withdraw?balance=${encodeURIComponent(withdrawableAmount.value.toFixed(2))}`,
+  });
 }
 
 function sanitizeMoney(value) {
@@ -332,6 +308,7 @@ function createIdempotencyKey(prefix) { return `${prefix}-${Date.now()}-${Math.r
 .balance-actions { display:flex; gap:24rpx; margin-top:32rpx; }.balance-btn { display:flex; align-items:center; justify-content:center; flex:1; gap:8rpx; padding:20rpx; border-radius:16rpx; background:rgba(255,255,255,.2); font-size:26rpx; }.balance-btn:active { background:rgba(255,255,255,.3); }.balance-btn image { width:26rpx; height:26rpx; }
 .tab-switch { display:flex; margin-bottom:24rpx; padding:8rpx; border-radius:20rpx; background:#fff; }.tab-switch-item { flex:1; padding:16rpx; border-radius:16rpx; color:#666; font-size:28rpx; text-align:center; }.tab-switch-item.active { color:#fff; font-weight:600; background:#ff6b35; }
 .income-section { margin-bottom:32rpx; padding:32rpx; border-radius:24rpx; background:#fff; }.income-title { display:block; margin-bottom:24rpx; color:#333; font-size:30rpx; font-weight:600; }.income-list { display:flex; flex-direction:column; gap:24rpx; }.income-item { display:flex; align-items:center; justify-content:space-between; padding:20rpx 0; border-bottom:1rpx solid #f5f5f5; }.income-item:last-child { border-bottom:0; }.income-info { display:flex; align-items:center; gap:20rpx; min-width:0; }.income-icon { display:flex; align-items:center; justify-content:center; width:72rpx; height:72rpx; flex-shrink:0; border-radius:16rpx; background:#fff3e0; }.income-icon image { width:32rpx; height:32rpx; }.income-name,.income-date { display:block; }.income-name { color:#333; font-size:28rpx; font-weight:500; }.income-date { margin-top:4rpx; color:#999; font-size:24rpx; }.income-amount { flex-shrink:0; margin-left:16rpx; font-size:32rpx; font-weight:600; }.income-amount.income { color:#ff6b35; }.income-amount.expense { color:#999; }
+.income-status { display:inline-block; margin-top:8rpx; padding:4rpx 12rpx; border-radius:18rpx; font-size:19rpx; }.income-status.pending,.income-status.processing { color:#f59e0b; background:#fff7e6; }.income-status.success { color:#10b981; background:#ecfdf5; }.income-status.failed { color:#e64340; background:#fff1f0; }.income-status.canceled { color:#888; background:#f2f2f2; }
 .empty-state,.load-more { padding:60rpx 0 48rpx; color:#bbb; font-size:26rpx; text-align:center; }.empty-state.retry,.load-more { color:#ff6b35; }
 .rules-card { padding:32rpx; border-radius:24rpx; background:#fff; }.rules-title { display:flex; align-items:center; gap:8rpx; margin-bottom:20rpx; color:#333; font-size:28rpx; font-weight:600; }.rules-title image { width:28rpx; height:28rpx; }.rules-item { display:block; color:#666; font-size:24rpx; line-height:1.8; }
 .safe-space { height:calc(32rpx + env(safe-area-inset-bottom)); }

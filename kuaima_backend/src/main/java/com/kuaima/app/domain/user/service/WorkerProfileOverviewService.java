@@ -44,16 +44,17 @@ public class WorkerProfileOverviewService {
         long totalWorkDays = nullableLong(settlements.sumWorkDaysByWorkerId(userId));
         long earlyLeaveWorkDays = nullableLong(settlements.sumEarlyLeaveWorkDaysByWorkerId(userId));
 
-        int level = starLevels.findByUserId(userId).map(v -> value(v.getLevel(), 1)).orElse(1);
+        int level = starLevels.findFirstByUserIdOrderByIdDesc(userId)
+                .map(v -> value(v.getLevel(), 1))
+                .orElse(1);
         int creditScore = clamp(value(user.getCreditScore(), 0));
-        int pointBalance = points.findByUserIdAndRole(userId, UserRole.USER)
+        int pointBalance = points.findFirstByUserIdAndRoleOrderByIdDesc(userId, UserRole.USER)
                 .map(v -> value(v.getBalance(), 0))
                 .orElse(0);
         long totalIncome = nullableLong(settlements.sumPaidWageByWorkerId(userId));
-        // 奖励账户按 user_id + role 唯一；零工个人页必须优先读取 USER 账户，
-        // 否则同一用户同时拥有老板账户时，findByUserId() 会因多行结果报错。
-        long rewardAmount = rewardAccounts.findByUserIdAndRole(userId, UserRole.USER)
-                .or(() -> rewardAccounts.findByUserId(userId))
+        // 零工个人页优先读取 USER 账户，并兼容历史重复账户数据。
+        long rewardAmount = rewardAccounts.findFirstByUserIdAndRoleOrderByIdDesc(userId, UserRole.USER)
+                .or(() -> rewardAccounts.findFirstByUserIdOrderByIdDesc(userId))
                 .map(account -> account.getBalance() == null
                         ? 0L : account.getBalance().movePointRight(2).longValue())
                 .orElse(0L);

@@ -72,7 +72,7 @@ class WorkerRewardServiceTests {
         RewardAccount account = new RewardAccount();
         account.setBalance(new BigDecimal("20.00"));
         account.setFrozenAmount(new BigDecimal("5.00"));
-        when(accounts.findByUserId(30L)).thenReturn(Optional.of(account));
+        when(accounts.findFirstByUserIdAndRoleOrderByIdDesc(30L, "USER")).thenReturn(Optional.of(account));
 
         var result = service.overview(30L);
 
@@ -88,7 +88,7 @@ class WorkerRewardServiceTests {
         worker.setRealnameStatus("UNVERIFIED");
         RewardAccount account = new RewardAccount();
         account.setBalance(new BigDecimal("20.00"));
-        when(accounts.findByUserId(30L)).thenReturn(Optional.of(account));
+        when(accounts.findFirstByUserIdAndRoleOrderByIdDesc(30L, "USER")).thenReturn(Optional.of(account));
 
         var result = service.overview(30L);
 
@@ -145,7 +145,7 @@ class WorkerRewardServiceTests {
         when(processor.transferAccepted(eq(withdrawal), eq(accepted))).thenReturn(withdrawal);
         RewardAccount account = new RewardAccount();
         account.setBalance(new BigDecimal("10.00"));
-        when(accounts.findByUserId(30L)).thenReturn(Optional.of(account));
+        when(accounts.findFirstByUserIdAndRoleOrderByIdDesc(30L, "USER")).thenReturn(Optional.of(account));
 
         var result = service.withdraw(30L, 1000L, "WECHAT", "request-1");
 
@@ -162,7 +162,7 @@ class WorkerRewardServiceTests {
         when(processor.existing(eq(30L), eq(1000L), eq("WECHAT"), any())).thenReturn(Optional.of(existing));
         RewardAccount account = new RewardAccount();
         account.setBalance(new BigDecimal("10.00"));
-        when(accounts.findByUserId(30L)).thenReturn(Optional.of(account));
+        when(accounts.findFirstByUserIdAndRoleOrderByIdDesc(30L, "USER")).thenReturn(Optional.of(account));
 
         var result = service.withdraw(30L, 1000L, "WECHAT", "request-1");
 
@@ -181,7 +181,7 @@ class WorkerRewardServiceTests {
                 .thenThrow(new DataIntegrityViolationException("duplicate key"));
         RewardAccount account = new RewardAccount();
         account.setBalance(new BigDecimal("10.00"));
-        when(accounts.findByUserId(30L)).thenReturn(Optional.of(account));
+        when(accounts.findFirstByUserIdAndRoleOrderByIdDesc(30L, "USER")).thenReturn(Optional.of(account));
 
         var result = service.withdraw(30L, 1000L, "WECHAT", "request-1");
 
@@ -193,15 +193,17 @@ class WorkerRewardServiceTests {
     void wechatFailureRefundsAndThrowsExplicitError() {
         RewardWithdrawal submitted = withdrawal("PENDING");
         when(processor.existing(eq(30L), eq(1000L), eq("WECHAT"), any())).thenReturn(Optional.empty());
-        when(processor.submit(eq(30L), eq(1000L), eq("WECHAT"), eq(settings), any())).thenReturn(submitted);
-        when(transferClient.transfer(any())).thenThrow(new IllegalStateException("微信支付接口请求失败"));
+        when(processor.submit(eq(30L), eq(1000L), eq("WECHAT"), eq(settings), any(), eq("USER"))).thenReturn(submitted);
+        String reason = "微信支付接口请求失败: HTTP 403, code=NO_AUTH, message=商户无权限";
+        when(transferClient.transfer(any())).thenThrow(new IllegalStateException(reason));
         RewardWithdrawal failed = withdrawal("FAILED");
-        when(processor.transferFailed(90001L, "微信支付接口请求失败")).thenReturn(failed);
+        when(processor.transferFailed(90001L, reason)).thenReturn(failed);
 
-        assertThrows(WorkerRewardWithdrawalFailedException.class,
+        WorkerRewardWithdrawalFailedException error = assertThrows(WorkerRewardWithdrawalFailedException.class,
                 () -> service.withdraw(30L, 1000L, "WECHAT", "request-1"));
 
-        verify(processor).transferFailed(90001L, "微信支付接口请求失败");
+        assertEquals("微信商家转账发起失败，奖励金已退回：" + reason, error.getMessage());
+        verify(processor).transferFailed(90001L, reason);
     }
 
     @Test

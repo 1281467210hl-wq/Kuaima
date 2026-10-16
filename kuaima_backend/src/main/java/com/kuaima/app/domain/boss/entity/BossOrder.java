@@ -35,6 +35,10 @@ public class BossOrder extends BaseEntity {
     @Transient
     private String companyName;
 
+    /** 公开岗位详情展示用联系电话，不落库。 */
+    @Transient
+    private String contactPhone;
+
     @Column(comment = "订单标题")
     private String orderTitle;
 
@@ -68,6 +72,14 @@ public class BossOrder extends BaseEntity {
 
     @Column(comment = "标签")
     private String tags;
+
+    /** 招工详情图片 OSS objectKey，多个用英文逗号分隔；数据库不保存签名 URL。 */
+    @Column(name = "image_keys", length = 1000)
+    private String imageKeys;
+
+    /** 招工详情视频 OSS objectKey；数据库不保存签名 URL。 */
+    @Column(name = "video_key", length = 500)
+    private String videoKey;
 
     @Column(comment = "开始时间")
     private Date startTime;
@@ -132,5 +144,13 @@ public class BossOrder extends BaseEntity {
     /** 创建/编辑岗位时引用的企业常用地址 ID，不落库。 */
     @Transient
     private Long addressId;
+
+    /** 展示用图片签名 URL，不落库。 */
+    @Transient
+    private java.util.List<String> imageUrls;
+
+    /** 展示用视频签名 URL，不落库。 */
+    @Transient
+    private String videoUrl;
 
 }

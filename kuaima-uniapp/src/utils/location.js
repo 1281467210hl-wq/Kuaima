@@ -7,7 +7,13 @@ function normalizeLocation(location) {
   if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
   if (longitude < -180 || longitude > 180 || latitude < -90 || latitude > 90) return null;
   if (longitude === 0 && latitude === 0) return null;
-  return { latitude, longitude, updatedAt: Date.now() };
+  const displayName = location.address || location.name || location.title;
+  return {
+    latitude,
+    longitude,
+    updatedAt: Date.now(),
+    ...(displayName ? { name: String(displayName) } : {}),
+  };
 }
 
 export function getCachedLocation() {

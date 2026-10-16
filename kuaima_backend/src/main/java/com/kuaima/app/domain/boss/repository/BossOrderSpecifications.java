@@ -13,7 +13,10 @@ import com.kuaima.app.domain.boss.entity.BossOrder;
 import com.kuaima.app.domain.boss.model.BossOrderQuery;
 
 import jakarta.persistence.criteria.Expression;
+import jakarta.persistence.criteria.CriteriaBuilder;
+import jakarta.persistence.criteria.CriteriaQuery;
 import jakarta.persistence.criteria.Predicate;
+import jakarta.persistence.criteria.Root;
 
 /** BossOrder 动态查询条件，所有非空条件按 AND 组合。 */
 public final class BossOrderSpecifications {
@@ -49,6 +52,16 @@ public final class BossOrderSpecifications {
             if (StringUtils.hasText(filter.getTitle())) {
                 predicates.add(cb.like(root.get("orderTitle"), "%" + filter.getTitle().trim() + "%"));
             }
+            if (StringUtils.hasText(filter.getKeyword())) {
+                String keyword = filter.getKeyword().trim();
+                predicates.add(cb.or(
+                        cb.like(root.get("orderTitle"), "%" + keyword + "%"),
+                        cb.like(root.get("postion"), "%" + keyword + "%"),
+                        cb.like(root.get("address"), "%" + keyword + "%")));
+            }
+            if (StringUtils.hasText(filter.getPosition())) {
+                predicates.add(cb.like(root.get("postion"), "%" + filter.getPosition().trim() + "%"));
+            }
             if (filter.getStartDate() != null) {
                 Date start = Timestamp.valueOf(filter.getStartDate().atStartOfDay());
                 predicates.add(cb.greaterThanOrEqualTo(root.get("startTime"), start));
@@ -72,12 +85,55 @@ public final class BossOrderSpecifications {
             if (StringUtils.hasText(filter.getGender())) {
                 predicates.add(cb.equal(root.get("gender"), filter.getGender().trim()));
             }
+            if (filter.getDurationMin() != null) {
+                predicates.add(cb.greaterThanOrEqualTo(root.get("duration"), filter.getDurationMin()));
+            }
+            if (filter.getDurationMax() != null) {
+                predicates.add(cb.lessThanOrEqualTo(root.get("duration"), filter.getDurationMax()));
+            }
+            if (Boolean.TRUE.equals(filter.getSameDay())) {
+                predicates.add(cb.equal(
+                        cb.function("date", java.sql.Date.class, root.get("endTime")),
+                        cb.function("date", java.sql.Date.class, root.get("startTime"))));
+            } else if (Boolean.FALSE.equals(filter.getSameDay())) {
+                predicates.add(cb.notEqual(
+                        cb.function("date", java.sql.Date.class, root.get("endTime")),
+                        cb.function("date", java.sql.Date.class, root.get("startTime"))));
+            }
             addTags(predicates, root.get("tags"), filter, cb);
             if (filter.getDistanceKm() != null) {
                 addDistance(predicates, root.get("longitude"), root.get("latitude"), filter, cb);
             }
-            return cb.and(predicates.toArray(Predicate[]::new));
+            Predicate predicate = cb.and(predicates.toArray(Predicate[]::new));
+            applySort(root, query, cb, filter);
+            return predicate;
         };
+    }
+
+    private static void applySort(Root<BossOrder> root,
+                                  CriteriaQuery<?> query,
+                                  CriteriaBuilder cb,
+                                  BossOrderQuery filter) {
+        if (!StringUtils.hasText(filter.getSort())) return;
+        switch (filter.getSort()) {
+            case "NEARBY" -> {
+                if (filter.getLatitude() != null && filter.getLongitude() != null) {
+                    query.orderBy(cb.asc(distanceExpression(
+                            root.get("longitude"), root.get("latitude"), filter, cb)));
+                }
+            }
+            case "TIME" -> query.orderBy(cb.asc(root.get("startTime")));
+            case "SENIOR_EMPLOYER" -> {
+                var historyCount = query.subquery(Long.class);
+                Root<BossOrder> history = historyCount.from(BossOrder.class);
+                historyCount.select(cb.count(history))
+                        .where(cb.equal(history.get("createBy"), root.get("createBy")),
+                                cb.lessThan(history.get("id"), root.get("id")));
+                query.orderBy(cb.desc(historyCount), cb.desc(root.get("id")));
+            }
+            default -> {
+            }
+        }
     }
 
     private static void addTags(List<Predicate> predicates,
@@ -110,6 +166,14 @@ public final class BossOrderSpecifications {
         predicates.add(cb.isNotNull(longitude));
         predicates.add(cb.isNotNull(latitude));
 
+        Expression<Double> distance = distanceExpression(longitude, latitude, filter, cb);
+        predicates.add(cb.le(distance, filter.getDistanceKm()));
+    }
+
+    private static Expression<Double> distanceExpression(Expression<Number> longitude,
+                                                         Expression<Number> latitude,
+                                                         BossOrderQuery filter,
+                                                         jakarta.persistence.criteria.CriteriaBuilder cb) {
         double requestLatitudeRadians = Math.toRadians(filter.getLatitude().doubleValue());
         double requestLongitudeRadians = Math.toRadians(filter.getLongitude().doubleValue());
         Expression<Double> latitudeRadians = cb.function("radians", Double.class, latitude);
@@ -127,9 +191,6 @@ public final class BossOrderSpecifications {
         Expression<Double> clampedCosine = cb.function(
                 "least", Double.class, cb.literal(1.0),
                 cb.function("greatest", Double.class, cb.literal(-1.0), cosine));
-        Expression<Double> distance = cb.prod(
-                EARTH_RADIUS_KM,
-                cb.function("acos", Double.class, clampedCosine));
-        predicates.add(cb.le(distance, filter.getDistanceKm()));
+        return cb.prod(EARTH_RADIUS_KM, cb.function("acos", Double.class, clampedCosine));
     }
 }

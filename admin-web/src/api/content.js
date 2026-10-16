@@ -27,6 +27,23 @@ export function createRules(data) { return request.post('/admin/rules', data) }
 export function updateRules(id, data) { return request.put(`/admin/rules/${id}`, data) }
 export function deleteRules(id) { return request.delete(`/admin/rules/${id}`) }
 
+// ============ Agreements ============
+export function listAgreements({ type, keyword, page = 0, size = 10 } = {}) {
+  return request.get('/admin/agreements', { params: { type, keyword, page, size } })
+}
+export function getAgreement(id) { return request.get(`/admin/agreements/${id}`) }
+export function createAgreement(data) { return request.post('/admin/agreements', data) }
+export function updateAgreement(id, data) { return request.put(`/admin/agreements/${id}`, data) }
+export function toggleAgreement(id) { return request.put(`/admin/agreements/${id}/toggle`) }
+export function getAgreementDownloadUrl(id) { return request.get(`/admin/agreements/${id}/download-url`) }
+export function uploadAgreementFile(file) {
+  const formData = new FormData()
+  formData.append('file', file)
+  return request.post('/admin/agreements/upload', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  })
+}
+
 // ============ Certification ============
 export function listCertifications({ type, status, page = 0, size = 10 } = {}) {
   return request.get('/admin/certifications', { params: { type, status, page, size } })

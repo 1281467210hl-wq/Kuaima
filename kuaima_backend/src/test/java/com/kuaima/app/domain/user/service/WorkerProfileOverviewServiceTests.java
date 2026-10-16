@@ -43,12 +43,12 @@ class WorkerProfileOverviewServiceTests {
         when(settlements.sumWorkDaysByWorkerId(30L)).thenReturn(20L);
         when(settlements.sumEarlyLeaveWorkDaysByWorkerId(30L)).thenReturn(2L);
         when(settlements.sumPaidWageByWorkerId(30L)).thenReturn(123400L);
-        when(points.findByUserIdAndRole(30L, com.kuaima.app.domain.user.constant.UserRole.USER))
+        when(points.findFirstByUserIdAndRoleOrderByIdDesc(30L, com.kuaima.app.domain.user.constant.UserRole.USER))
                 .thenReturn(Optional.of(account));
-        when(levels.findByUserId(30L)).thenReturn(Optional.of(level));
+        when(levels.findFirstByUserIdOrderByIdDesc(30L)).thenReturn(Optional.of(level));
         RewardAccount rewardAccount = new RewardAccount();
         rewardAccount.setBalance(new java.math.BigDecimal("50.00"));
-        when(rewardAccounts.findByUserId(30L)).thenReturn(Optional.of(rewardAccount));
+        when(rewardAccounts.findFirstByUserIdOrderByIdDesc(30L)).thenReturn(Optional.of(rewardAccount));
 
         var result = service.overview(30L);
 
@@ -92,12 +92,13 @@ class WorkerProfileOverviewServiceTests {
         User user = new User(); user.setId(30L);
         when(users.findById(30L)).thenReturn(Optional.of(user));
         RewardAccount worker = new RewardAccount(); worker.setBalance(new BigDecimal("12.34"));
-        when(rewardAccounts.findByUserIdAndRole(30L, UserRole.USER)).thenReturn(Optional.of(worker));
+        when(rewardAccounts.findFirstByUserIdAndRoleOrderByIdDesc(30L, UserRole.USER))
+                .thenReturn(Optional.of(worker));
 
         var result = service.overview(30L);
 
         assertEquals(1234L, result.rewardAmount());
-        verify(rewardAccounts, never()).findByUserId(30L);
+        verify(rewardAccounts, never()).findFirstByUserIdOrderByIdDesc(30L);
     }
 
     @Test
@@ -113,8 +114,40 @@ class WorkerProfileOverviewServiceTests {
         User user = new User(); user.setId(30L);
         when(users.findById(30L)).thenReturn(Optional.of(user));
         RewardAccount account = new RewardAccount(); account.setBalance((BigDecimal) null);
-        when(rewardAccounts.findByUserIdAndRole(30L, UserRole.USER)).thenReturn(Optional.of(account));
+        when(rewardAccounts.findFirstByUserIdAndRoleOrderByIdDesc(30L, UserRole.USER))
+                .thenReturn(Optional.of(account));
 
         assertEquals(0L, service.overview(30L).rewardAmount());
+    }
+
+    @Test
+    void overviewUsesLatestRecordsWhenHistoricalAccountRowsAreDuplicated() {
+        UserRepository users = mock(UserRepository.class);
+        BaseOrderItemRespository items = mock(BaseOrderItemRespository.class);
+        SettlementRespository settlements = mock(SettlementRespository.class);
+        PointsAccountRepository points = mock(PointsAccountRepository.class);
+        UserStarLevelRepository levels = mock(UserStarLevelRepository.class);
+        RewardAccountRepository rewardAccounts = mock(RewardAccountRepository.class);
+        WorkerProfileOverviewService service = new WorkerProfileOverviewService(
+                users, items, settlements, points, levels, rewardAccounts);
+        User user = new User(); user.setId(30L);
+        when(users.findById(30L)).thenReturn(Optional.of(user));
+        UserStarLevel level = new UserStarLevel(); level.setLevel(4);
+        PointsAccount pointAccount = new PointsAccount(); pointAccount.setBalance(120);
+        RewardAccount rewardAccount = new RewardAccount(); rewardAccount.setBalance(new BigDecimal("8.00"));
+        when(levels.findFirstByUserIdOrderByIdDesc(30L)).thenReturn(Optional.of(level));
+        when(points.findFirstByUserIdAndRoleOrderByIdDesc(30L, UserRole.USER))
+                .thenReturn(Optional.of(pointAccount));
+        when(rewardAccounts.findFirstByUserIdAndRoleOrderByIdDesc(30L, UserRole.USER))
+                .thenReturn(Optional.of(rewardAccount));
+
+        var result = service.overview(30L);
+
+        assertEquals(4, result.level());
+        assertEquals(120, result.points());
+        assertEquals(800L, result.rewardAmount());
+        verify(points, never()).findByUserIdAndRole(30L, UserRole.USER);
+        verify(rewardAccounts, never()).findByUserIdAndRole(30L, UserRole.USER);
+        verify(levels, never()).findByUserId(30L);
     }
 }

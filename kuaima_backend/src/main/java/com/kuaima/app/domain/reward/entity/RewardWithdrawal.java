@@ -19,6 +19,7 @@ public class RewardWithdrawal {
     @Column(nullable = false, length = 20) private String role = "USER";
     @Column(nullable = false, precision = 18, scale = 2) private BigDecimal amount;
     @Column(nullable = false, length = 20) private String channel = "WECHAT";
+    @Column(name = "payee_account", length = 128) private String payeeAccount;
     @Column(nullable = false, length = 20) private String status;
     @Column(name = "idempotency_key", nullable = false, length = 128) private String idempotencyKey;
     @Column(name = "merchant_batch_no", length = 64) private String merchantBatchNo;

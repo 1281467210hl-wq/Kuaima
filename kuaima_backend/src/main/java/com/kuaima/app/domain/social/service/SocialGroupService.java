@@ -11,6 +11,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import com.kuaima.app.common.ForbiddenBusinessException;
+import com.kuaima.app.common.service.OssStorageService;
 import com.kuaima.app.domain.social.dto.SocialGroupJoinRequest;
 import com.kuaima.app.domain.social.dto.SocialGroupCreateRequest;
 import com.kuaima.app.domain.social.dto.SocialGroupView;
@@ -36,13 +37,16 @@ public class SocialGroupService {
     private final SocialGroupRepository groups;
     private final SocialGroupMemberRepository members;
     private final UserRepository users;
+    private final OssStorageService ossStorageService;
 
     public SocialGroupService(SocialGroupRepository groups,
                               SocialGroupMemberRepository members,
-                              UserRepository users) {
+                              UserRepository users,
+                              OssStorageService ossStorageService) {
         this.groups = groups;
         this.members = members;
         this.users = users;
+        this.ossStorageService = ossStorageService;
     }
 
     @Transactional(readOnly = true)
@@ -113,7 +117,8 @@ public class SocialGroupService {
         if (request == null || !StringUtils.hasText(request.name())) throw new IllegalArgumentException("群名称不能为空");
         String name = request.name().trim();
         if (name.length() > 100) throw new IllegalArgumentException("群名称不能超过100个字符");
-        String qrcodeUrl = StringUtils.hasText(request.qrcodeUrl()) ? request.qrcodeUrl().trim() : null;
+        String qrcodeUrl = StringUtils.hasText(request.qrcodeUrl())
+                ? storedQrObjectKey(request.qrcodeUrl().trim()) : null;
         if (qrcodeUrl != null && qrcodeUrl.length() > 500) throw new IllegalArgumentException("群二维码地址过长");
         SocialGroup group = new SocialGroup();
         group.setName(name); group.setCategory("找活交流"); group.setQrcodeUrl(qrcodeUrl);
@@ -150,8 +155,25 @@ public class SocialGroupService {
             createdAt = group.getDate().atStartOfDay();
         }
         return new SocialGroupView(group.getId(), group.getName(), group.getCategory(), group.getDescription(),
-                group.getQrcodeUrl(), count, limit, createdAt, normalize(group.getStatus(), ACTIVE), joined,
+                qrPreviewUrl(group.getQrcodeUrl()), count, limit, createdAt, normalize(group.getStatus(), ACTIVE), joined,
                 count >= limit, avatars, Objects.requireNonNullElse(group.getSort(), 0));
+    }
+
+    private String storedQrObjectKey(String value) {
+        if (value.startsWith("insurance/") || value.startsWith("expenses/")) {
+            return value.split("\\?", 2)[0];
+        }
+        int marker = value.indexOf("/insurance/files/");
+        if (marker < 0) marker = value.indexOf("/insurance/");
+        if (marker < 0) marker = value.indexOf("/expenses/");
+        return marker >= 0 ? value.substring(marker + 1).split("\\?", 2)[0] : value;
+    }
+
+    private String qrPreviewUrl(String value) {
+        if (!StringUtils.hasText(value) || ossStorageService == null) return value;
+        boolean ownObject = value.startsWith("insurance/") || value.startsWith("expenses/")
+                || value.contains(".aliyuncs.com/insurance/") || value.contains(".aliyuncs.com/expenses/");
+        return ownObject ? ossStorageService.inlinePreviewUrl(value) : value;
     }
 
     private User currentWorker(LoginUser login) {

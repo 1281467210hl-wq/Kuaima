@@ -31,9 +31,11 @@ class WorkerWalletWechatWithdrawalServiceTests {
         when(transfers.transfer(any())).thenThrow(new IllegalStateException("wechat error"));
         WorkerWalletWechatWithdrawalService service = new WorkerWalletWechatWithdrawalService(wallets, users, transfers);
 
-        assertThrows(IllegalStateException.class, () -> service.withdraw(3L, new BigDecimal("10.00"), "key1"));
+        IllegalStateException exception = assertThrows(IllegalStateException.class,
+                () -> service.withdraw(3L, new BigDecimal("10.00"), "key1"));
 
-        verify(wallets).failWechatWithdraw(88L, "微信商家转账发起失败", null, null);
+        assertEquals("微信商家转账发起失败，余额已退回：wechat error", exception.getMessage());
+        verify(wallets).failWechatWithdraw(88L, "wechat error", null, null);
     }
 
     private WithDraw draw() {

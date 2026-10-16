@@ -24,4 +24,11 @@ public interface PointsAccountRepository extends JpaRepository<PointsAccount, Lo
     Optional<PointsAccount> findByUserIdAndRoleForUpdate(
             @org.springframework.data.repository.query.Param("userId") Long userId,
             @org.springframework.data.repository.query.Param("role") String role);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @org.springframework.data.jpa.repository.Query(
+            "select a from PointsAccount a where a.userId = :userId and a.role = :role order by a.id desc")
+    List<PointsAccount> findAllByUserIdAndRoleForUpdate(
+            @org.springframework.data.repository.query.Param("userId") Long userId,
+            @org.springframework.data.repository.query.Param("role") String role);
 }

@@ -24,6 +24,10 @@ import com.kuaima.app.domain.boss.entity.BossOrder;
 import com.kuaima.app.domain.boss.repository.BaseOrderItemRespository;
 import com.kuaima.app.domain.boss.repository.BossOrderRespository;
 import com.kuaima.app.domain.message.service.MessageService;
+import com.kuaima.app.domain.points.entity.PointsAccount;
+import com.kuaima.app.domain.points.entity.PointsFlow;
+import com.kuaima.app.domain.points.repository.PointsAccountRepository;
+import com.kuaima.app.domain.points.repository.PointsFlowRepository;
 import com.kuaima.app.domain.user.entity.User;
 import com.kuaima.app.domain.user.repository.UserRepository;
 import com.kuaima.app.domain.wallet.constant.SettlementStatus;
@@ -42,6 +46,8 @@ class SettlementWechatPaymentTests {
     private WalletService wallets;
     private MessageService messages;
     private WechatPayService wechat;
+    private PointsAccountRepository pointAccounts;
+    private PointsFlowRepository pointFlows;
     private SettlementService service;
 
     @BeforeEach
@@ -54,6 +60,8 @@ class SettlementWechatPaymentTests {
         wallets = mock(WalletService.class);
         messages = mock(MessageService.class);
         wechat = mock(WechatPayService.class);
+        pointAccounts = mock(PointsAccountRepository.class);
+        pointFlows = mock(PointsFlowRepository.class);
         service = new SettlementService(settlements, orders, items, wallets, messages, users,
                 null, null, payments, wechat);
         when(payments.save(any(SettlementPaymentOrder.class))).thenAnswer(invocation -> invocation.getArgument(0));
@@ -90,6 +98,39 @@ class SettlementWechatPaymentTests {
         assertThrows(ForbiddenBusinessException.class,
                 () -> service.createWechatPayment(7L, List.of(10L), "settle-pay-2"));
         verify(wechat, times(0)).prepay(anyString(), anyString(), any(), anyString());
+    }
+
+    @Test
+    void fullPointsDeductionShouldCompleteSettlementWithoutWechatPrepay() {
+        Settlement settlement = settlement(11L, 102L, new BigDecimal("10.50"));
+        settlement.setWorkerId(21L);
+        settlement.setWage(new BigDecimal("10.00"));
+        settlement.setWorkDays(1);
+        BossOrder order = order(102L, 7L);
+        PointsAccount account = new PointsAccount();
+        account.setUserId(7L);
+        account.setRole("BOSS");
+        account.setBalance(1100);
+        SettlementService pointService = new SettlementService(settlements, orders, items, wallets, messages, users,
+                null, null, payments, wechat, pointAccounts, null, null, pointFlows);
+        when(settlements.findByIdForUpdate(11L)).thenReturn(Optional.of(settlement));
+        when(orders.findById(102L)).thenReturn(Optional.of(order));
+        when(pointAccounts.findFirstByUserIdAndRoleOrderByIdDesc(7L, "BOSS")).thenReturn(Optional.of(account));
+        when(pointAccounts.findAllByUserIdAndRoleForUpdate(7L, "BOSS")).thenReturn(List.of(account));
+        when(pointFlows.save(any(PointsFlow.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(items.findById(1L)).thenReturn(Optional.empty());
+
+        var result = pointService.createWechatPayment(7L, List.of(11L), null, 1050, "settle-points-1");
+
+        assertEquals(new BigDecimal("0.00"), result.amount());
+        assertEquals(1050, result.pointsUsed());
+        assertEquals(new BigDecimal("10.50"), result.pointsDeductAmount());
+        assertEquals(SettlementService.PAYMENT_PAID, result.status());
+        assertEquals(50, account.getBalance());
+        assertEquals(SettlementStatus.PAID, settlement.getStatus());
+        verify(wechat, times(0)).prepay(anyString(), anyString(), any(), anyString());
+        verify(wallets).credit(21L, new BigDecimal("10.00"), WalletService.BIZ_WAGE, 11L,
+                "工资结算 orderId=102 天数=1");
     }
 
     @Test

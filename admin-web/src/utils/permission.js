@@ -41,6 +41,7 @@ const LEGACY_PAGE_KEYS = {
   'permMarketing.coupons': [],
   'permMarketing.rewards': [],
   'permMarketing.academy': [],
+  'permContent.academy': ['permMarketing.academy'],
   'permContent.notices': ['permContent.c3'],
   'permContent.rules': ['permContent.c4'],
   'permService.messages': ['permService.s1'],

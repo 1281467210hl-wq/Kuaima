@@ -13,10 +13,7 @@
           <el-option label="新建" value="新建" />
           <el-option label="编辑" value="编辑" />
           <el-option label="删除" value="删除" />
-          <el-option label="审核" value="审核" />
-          <el-option label="启用" value="启用" />
-          <el-option label="禁用" value="禁用" />
-          <el-option label="重置密码" value="重置密码" />
+          <el-option label="查看" value="查看" />
         </el-select>
         <div class="date-picker-wrap" style="width: 240px;">
           <el-date-picker v-model="dateRange" type="daterange" range-separator="至" start-placeholder="开始日期" end-placeholder="结束日期" value-format="YYYY-MM-DD" style="width: 100%;" />

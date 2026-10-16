@@ -47,6 +47,7 @@ public class BossSettlementController {
     @GetMapping("/payments/preview")
     public Result<SettlementFeePreview> preview(@RequestParam String settlementIds,
                                                 @RequestParam(required = false) Long userCouponId,
+                                                @RequestParam(required = false, defaultValue = "0") Integer pointsToUse,
                                                 Authentication authentication) {
         List<Long> ids;
         try {
@@ -55,7 +56,8 @@ public class BossSettlementController {
         } catch (RuntimeException e) {
             throw new IllegalArgumentException("settlementIds 必须是逗号分隔的整数");
         }
-        return Result.success(settlementService.previewWechatPayment(requireBossId(authentication), ids, userCouponId));
+        return Result.success(settlementService.previewWechatPayment(requireBossId(authentication), ids,
+                userCouponId, pointsToUse));
     }
 
     @Operation(summary = "创建订单结算微信支付", description = "校验结算单归属当前老板并创建微信 JSAPI 预支付单；金额由后端按结算单汇总，不信任前端金额")
@@ -65,7 +67,8 @@ public class BossSettlementController {
             @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
             Authentication authentication) {
         return Result.success(settlementService.createWechatPayment(requireBossId(authentication),
-                body == null ? null : body.settlementIds(), body == null ? null : body.userCouponId(), idempotencyKey));
+                body == null ? null : body.settlementIds(), body == null ? null : body.userCouponId(),
+                body == null ? 0 : body.pointsToUse(), idempotencyKey));
     }
 
     @Operation(summary = "查询订单结算微信支付状态")

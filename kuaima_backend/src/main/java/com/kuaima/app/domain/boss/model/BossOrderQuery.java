@@ -16,6 +16,8 @@ public class BossOrderQuery {
     private String type;
     private String status;
     private String title;
+    private String keyword;
+    private String position;
 
     @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
     private LocalDate startDate;
@@ -33,6 +35,10 @@ public class BossOrderQuery {
     private String gender;
     private String tags;
     private String tagMode = "ALL";
+    private Integer durationMin;
+    private Integer durationMax;
+    private Boolean sameDay;
+    private String sort;
     private int page = 0;
     private int size = 10;
 }

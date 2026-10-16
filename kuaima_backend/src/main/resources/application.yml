@@ -45,6 +45,23 @@ aliyun:
     access-key-id: ${ALIYUN_FACE_ACCESS_KEY_ID:}
     access-key-secret: ${ALIYUN_FACE_ACCESS_KEY_SECRET:}
 
+location:
+  amap:
+    web-service-key: ${AMAP_WEB_SERVICE_KEY:}
+
+alipay:
+  enabled: ${ALIPAY_ENABLED:false}
+  withdraw-enabled: ${ALIPAY_WITHDRAW_ENABLED:false}
+  app-id: ${ALIPAY_APP_ID:}
+  gateway-url: ${ALIPAY_GATEWAY_URL:https://openapi.alipay.com/gateway.do}
+  private-key: ${ALIPAY_APP_PRIVATE_KEY:}
+  private-key-path: ${ALIPAY_APP_PRIVATE_KEY_PATH:}
+  alipay-public-key: ${ALIPAY_PUBLIC_KEY:}
+  app-cert-path: ${ALIPAY_APP_CERT_PATH:}
+  alipay-public-cert-path: ${ALIPAY_ALIPAY_CERT_PATH:}
+  root-cert-path: ${ALIPAY_ROOT_CERT_PATH:}
+  sign-type: ${ALIPAY_SIGN_TYPE:RSA2}
+
 wechat:
   appid: ${WECHAT_APPID:}
   secret: ${WECHAT_APP_SECRET:}
@@ -58,6 +75,12 @@ wechat:
     platform-public-key-path: ${WECHAT_PAY_PLATFORM_PUBLIC_KEY_PATH:}
     platform-public-key-id: ${WECHAT_PAY_PLATFORM_PUBLIC_KEY_ID:}
     notify-url: ${WECHAT_PAY_NOTIFY_URL:https://ke.taifang.xyz/api/pay/wechat/notify}
+    transfer-scene-id: ${WECHAT_PAY_TRANSFER_SCENE_ID:1000}
+    transfer-scene-report-infos[0].info-type: ${WECHAT_PAY_TRANSFER_SCENE_INFO_TYPE_0:活动名称}
+    transfer-scene-report-infos[0].info-content: ${WECHAT_PAY_TRANSFER_SCENE_INFO_CONTENT_0:快马日结奖励活动}
+    transfer-scene-report-infos[1].info-type: ${WECHAT_PAY_TRANSFER_SCENE_INFO_TYPE_1:奖励说明}
+    transfer-scene-report-infos[1].info-content: ${WECHAT_PAY_TRANSFER_SCENE_INFO_CONTENT_1:平台奖励提现}
+    transfer-notify-url: ${WECHAT_PAY_TRANSFER_NOTIFY_URL:}
 
 jobs:
   message:

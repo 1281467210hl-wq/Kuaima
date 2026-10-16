@@ -34,7 +34,9 @@ import com.kuaima.app.domain.user.constant.UserRole;
 import com.kuaima.app.domain.user.entity.User;
 import com.kuaima.app.domain.user.repository.UserRepository;
 import com.kuaima.app.domain.points.entity.PointsAccount;
+import com.kuaima.app.domain.points.entity.PointsFlow;
 import com.kuaima.app.domain.points.repository.PointsAccountRepository;
+import com.kuaima.app.domain.points.repository.PointsFlowRepository;
 import com.kuaima.app.domain.coupon.entity.Coupon;
 import com.kuaima.app.domain.coupon.entity.UserCoupon;
 import com.kuaima.app.domain.coupon.repository.CouponRepository;
@@ -76,6 +78,7 @@ public class SettlementService {
     private final SettlementPaymentOrderRepository paymentOrders;
     private final WechatPayService wechatPay;
     private final PointsAccountRepository pointsAccounts;
+    private final PointsFlowRepository pointsFlows;
     private final UserCouponRepository userCoupons;
     private final CouponRepository coupons;
 
@@ -144,7 +147,6 @@ public class SettlementService {
                 adminSettingRepository, creditScoreService, paymentOrders, wechatPay, pointsAccounts, null, null);
     }
 
-    @org.springframework.beans.factory.annotation.Autowired
     public SettlementService(SettlementRespository settlementRepository, BossOrderRespository orderRepository,
                              BaseOrderItemRespository itemRepository, WalletService walletService,
                              MessageService messageService, UserRepository userRepository,
@@ -152,6 +154,19 @@ public class SettlementService {
                              SettlementPaymentOrderRepository paymentOrders, WechatPayService wechatPay,
                              PointsAccountRepository pointsAccounts, UserCouponRepository userCoupons,
                              CouponRepository coupons) {
+        this(settlementRepository, orderRepository, itemRepository, walletService, messageService, userRepository,
+                adminSettingRepository, creditScoreService, paymentOrders, wechatPay, pointsAccounts,
+                userCoupons, coupons, null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public SettlementService(SettlementRespository settlementRepository, BossOrderRespository orderRepository,
+                             BaseOrderItemRespository itemRepository, WalletService walletService,
+                             MessageService messageService, UserRepository userRepository,
+                             AdminSettingRepository adminSettingRepository, CreditScoreService creditScoreService,
+                             SettlementPaymentOrderRepository paymentOrders, WechatPayService wechatPay,
+                             PointsAccountRepository pointsAccounts, UserCouponRepository userCoupons,
+                             CouponRepository coupons, PointsFlowRepository pointsFlows) {
         this.settlementRepository = settlementRepository;
         this.orderRepository = orderRepository;
         this.itemRepository = itemRepository;
@@ -163,6 +178,7 @@ public class SettlementService {
         this.paymentOrders = paymentOrders;
         this.wechatPay = wechatPay;
         this.pointsAccounts = pointsAccounts;
+        this.pointsFlows = pointsFlows;
         this.userCoupons = userCoupons;
         this.coupons = coupons;
     }
@@ -249,6 +265,12 @@ public class SettlementService {
     @Transactional
     public com.kuaima.app.domain.wallet.model.SettlementPaymentModels.WechatPayView createWechatPayment(
             Long bossId, List<Long> settlementIds, Long userCouponId, String idempotencyKey) {
+        return createWechatPayment(bossId, settlementIds, userCouponId, 0, idempotencyKey);
+    }
+
+    @Transactional
+    public com.kuaima.app.domain.wallet.model.SettlementPaymentModels.WechatPayView createWechatPayment(
+            Long bossId, List<Long> settlementIds, Long userCouponId, Integer pointsToUse, String idempotencyKey) {
         if (paymentOrders == null || wechatPay == null) throw new IllegalStateException("微信结算支付服务未配置");
         if (bossId == null) throw new IllegalArgumentException("老板用户ID不能为空");
         if (!org.springframework.util.StringUtils.hasText(idempotencyKey)) {
@@ -260,6 +282,9 @@ public class SettlementService {
             if (!bossId.equals(old.getBossId())) throw new com.kuaima.app.common.ForbiddenBusinessException("幂等键已被其他用户使用");
             if (!Objects.equals(old.getUserCouponId(), userCouponId)) {
                 throw new IllegalArgumentException("幂等键已绑定其他优惠券");
+            }
+            if (!Objects.equals(old.getPointsUsed(), normalizeRequestedPoints(pointsToUse))) {
+                throw new IllegalArgumentException("幂等键已绑定其他积分抵扣数量");
             }
             return paymentView(old);
         }
@@ -283,24 +308,37 @@ public class SettlementService {
             settlements.add(settlement);
             amount = amount.add(settlement.getTotalAmount());
         }
-        User payer = userRepository.findById(bossId)
-                .orElseThrow(() -> new EntityNotFoundException("老板用户不存在: " + bossId));
-        if (!org.springframework.util.StringUtils.hasText(payer.getOpenid())) throw new IllegalArgumentException("当前老板未绑定微信 openid");
-
         SettlementPaymentOrder payment = new SettlementPaymentOrder();
         payment.setPaymentNo("SP" + LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMddHHmmss"))
                 + UUID.randomUUID().toString().substring(0, 6).toUpperCase());
         payment.setIdempotencyKey(key);
         payment.setBossId(bossId);
         payment.setSettlementIds(ids.stream().map(String::valueOf).collect(Collectors.joining(",")));
-        payment.setAmount(amount.setScale(2, RoundingMode.HALF_UP));
         CouponCalculation coupon = calculateCoupon(bossId, userCouponId, amount);
+        PointsCalculation points = calculatePoints(bossId, pointsToUse,
+                amount.subtract(coupon.deductAmount()).max(BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP));
+        BigDecimal payableAmount = amount
+                .subtract(coupon.deductAmount())
+                .subtract(points.deductAmount())
+                .max(BigDecimal.ZERO)
+                .setScale(2, RoundingMode.HALF_UP);
         payment.setUserCouponId(userCouponId);
         payment.setCouponDeductAmount(coupon.deductAmount());
-        payment.setAmount(amount.subtract(coupon.deductAmount()).max(BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP));
+        payment.setPointsUsed(points.used());
+        payment.setPointsDeductAmount(points.deductAmount());
+        payment.setAmount(payableAmount);
         payment.setStatus(PAYMENT_PENDING);
         payment.setCreatedAt(LocalDateTime.now());
         payment = paymentOrders.save(payment);
+
+        if (payableAmount.signum() == 0) {
+            payment = finalizePaidPayment(payment, "POINTS-" + payment.getPaymentNo());
+            return paymentView(payment);
+        }
+
+        User payer = userRepository.findById(bossId)
+                .orElseThrow(() -> new EntityNotFoundException("老板用户不存在: " + bossId));
+        if (!org.springframework.util.StringUtils.hasText(payer.getOpenid())) throw new IllegalArgumentException("当前老板未绑定微信 openid");
 
         JSONObject payParams = wechatPay.prepay("快马日结订单结算", payment.getPaymentNo(), payment.getAmount(), payer.getOpenid());
         payment.setPayParams(payParams.toJSONString());
@@ -317,6 +355,12 @@ public class SettlementService {
     @Transactional(readOnly = true)
     public com.kuaima.app.domain.wallet.model.SettlementPaymentModels.SettlementFeePreview previewWechatPayment(
             Long bossId, List<Long> settlementIds, Long userCouponId) {
+        return previewWechatPayment(bossId, settlementIds, userCouponId, 0);
+    }
+
+    @Transactional(readOnly = true)
+    public com.kuaima.app.domain.wallet.model.SettlementPaymentModels.SettlementFeePreview previewWechatPayment(
+            Long bossId, List<Long> settlementIds, Long userCouponId, Integer pointsToUse) {
         List<Long> ids = settlementIds == null ? List.of() : settlementIds.stream()
                 .filter(Objects::nonNull).distinct().sorted().toList();
         if (ids.isEmpty()) throw new IllegalArgumentException("settlementIds 不能为空");
@@ -335,13 +379,17 @@ public class SettlementService {
         }
         BigDecimal total = orderAmount.add(serviceFee).setScale(2, RoundingMode.HALF_UP);
         CouponCalculation coupon = calculateCoupon(bossId, userCouponId, total);
-        BigDecimal payable = total.subtract(coupon.deductAmount()).max(BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP);
-        Integer points = pointsAccounts == null ? 0 : pointsAccounts.findByUserIdAndRole(bossId, UserRole.BOSS)
-                .map(a -> a.getBalance() == null ? 0 : a.getBalance()).orElse(0);
-        BigDecimal zero = BigDecimal.ZERO.setScale(2);
+        PointsCalculation pointCalculation = calculatePoints(bossId, pointsToUse,
+                total.subtract(coupon.deductAmount()).max(BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP));
+        BigDecimal payable = total
+                .subtract(coupon.deductAmount())
+                .subtract(pointCalculation.deductAmount())
+                .max(BigDecimal.ZERO)
+                .setScale(2, RoundingMode.HALF_UP);
         return new com.kuaima.app.domain.wallet.model.SettlementPaymentModels.SettlementFeePreview(
                 ids, payable, orderAmount.setScale(2, RoundingMode.HALF_UP), serviceFee.setScale(2, RoundingMode.HALF_UP),
-                points, 100, zero, coupon.available(), coupon.name(), coupon.options(), coupon.deductAmount(), payable);
+                pointCalculation.available(), 100, pointCalculation.deductAmount(), coupon.available(),
+                coupon.name(), coupon.options(), pointCalculation.used(), coupon.deductAmount(), payable);
     }
 
     private CouponCalculation calculateCoupon(Long bossId, Long userCouponId, BigDecimal total) {
@@ -399,6 +447,24 @@ public class SettlementService {
         }
     }
 
+    private record PointsCalculation(int available, int used, BigDecimal deductAmount) {}
+
+    private PointsCalculation calculatePoints(Long bossId, Integer requestedPoints, BigDecimal payableAmount) {
+        int requested = normalizeRequestedPoints(requestedPoints);
+        int available = pointsAccounts == null ? 0 : pointsAccounts.findFirstByUserIdAndRoleOrderByIdDesc(bossId, UserRole.BOSS)
+                .map(account -> account.getBalance() == null ? 0 : account.getBalance()).orElse(0);
+        int maxForPayment = payableAmount == null ? 0 : payableAmount
+                .movePointRight(2).setScale(0, RoundingMode.DOWN).intValueExact();
+        int used = Math.min(requested, Math.min(available, maxForPayment));
+        return new PointsCalculation(available, used, BigDecimal.valueOf(used, 2));
+    }
+
+    private Integer normalizeRequestedPoints(Integer points) {
+        if (points == null) return 0;
+        if (points < 0) throw new IllegalArgumentException("积分抵扣数量不能小于0");
+        return points;
+    }
+
     @Transactional(readOnly = true)
     public com.kuaima.app.domain.wallet.model.SettlementPaymentModels.WechatPayView getWechatPayment(Long bossId, String paymentNo) {
         if (paymentOrders == null) throw new IllegalStateException("微信结算支付服务未配置");
@@ -420,6 +486,10 @@ public class SettlementService {
                 .orElseThrow(() -> new EntityNotFoundException("结算支付单不存在"));
         if (PAYMENT_PAID.equals(payment.getStatus())) return payment;
         if (!PAYMENT_PENDING.equals(payment.getStatus())) throw new IllegalStateException("当前结算支付单状态不能确认支付");
+        return finalizePaidPayment(payment, transactionId);
+    }
+
+    private SettlementPaymentOrder finalizePaidPayment(SettlementPaymentOrder payment, String transactionId) {
         for (Long settlementId : parseSettlementIds(payment.getSettlementIds())) {
             Settlement settlement = settlementRepository.findByIdForUpdate(settlementId)
                     .orElseThrow(() -> new EntityNotFoundException("结算单不存在: " + settlementId));
@@ -430,6 +500,7 @@ public class SettlementService {
         }
         payment.setStatus(PAYMENT_PAID);
         redeemCoupon(payment);
+        deductPoints(payment);
         payment.setWechatTransactionId(transactionId);
         payment.setPaidAt(LocalDateTime.now());
         return paymentOrders.save(payment);
@@ -452,6 +523,32 @@ public class SettlementService {
         userCoupons.save(record);
         coupon.setUsed((coupon.getUsed() == null ? 0 : coupon.getUsed()) + 1);
         coupons.save(coupon);
+    }
+
+    private void deductPoints(SettlementPaymentOrder payment) {
+        int pointsUsed = payment.getPointsUsed() == null ? 0 : payment.getPointsUsed();
+        if (pointsUsed <= 0) return;
+        if (pointsAccounts == null) throw new IllegalStateException("积分账户服务未配置");
+        List<PointsAccount> lockedAccounts = pointsAccounts.findAllByUserIdAndRoleForUpdate(
+                payment.getBossId(), UserRole.BOSS);
+        PointsAccount account = lockedAccounts.isEmpty()
+                ? pointsAccounts.findFirstByUserIdAndRoleOrderByIdDesc(payment.getBossId(), UserRole.BOSS)
+                        .orElseThrow(() -> new EntityNotFoundException("老板积分账户不存在"))
+                : lockedAccounts.get(0);
+        int balance = account.getBalance() == null ? 0 : account.getBalance();
+        if (balance < pointsUsed) throw new IllegalStateException("积分余额不足，无法确认结算支付");
+        account.setBalance(balance - pointsUsed);
+        pointsAccounts.save(account);
+        if (pointsFlows == null) throw new IllegalStateException("积分流水服务未配置");
+        PointsFlow flow = new PointsFlow();
+        flow.setUserId(payment.getBossId());
+        flow.setRole(UserRole.BOSS);
+        flow.setDelta(-pointsUsed);
+        flow.setBizType("SETTLEMENT_DEDUCT");
+        flow.setBalanceAfter(balance - pointsUsed);
+        flow.setBizNo(payment.getPaymentNo());
+        flow.setRemark("结算支付积分抵扣");
+        pointsFlows.save(flow);
     }
 
     public int expectedWechatPaymentFen(SettlementPaymentOrder payment) {
@@ -491,9 +588,8 @@ public class SettlementService {
         orderAmount = orderAmount.setScale(2, RoundingMode.HALF_UP);
         serviceFee = serviceFee.setScale(2, RoundingMode.HALF_UP);
         Integer pointsAvailable = pointsAccounts == null ? 0 : pointsAccounts
-                .findByUserIdAndRole(payment.getBossId(), UserRole.BOSS)
+                .findFirstByUserIdAndRoleOrderByIdDesc(payment.getBossId(), UserRole.BOSS)
                 .map(a -> a.getBalance() == null ? 0 : a.getBalance()).orElse(0);
-        BigDecimal zero = BigDecimal.ZERO.setScale(2);
         BigDecimal total = orderAmount.add(serviceFee).setScale(2, RoundingMode.HALF_UP);
         String couponName = null;
         boolean couponAvailable = false;
@@ -510,7 +606,9 @@ public class SettlementService {
         }
         return new com.kuaima.app.domain.wallet.model.SettlementPaymentModels.WechatPayView(
                 payment.getPaymentNo(), ids, payment.getAmount(), orderAmount, serviceFee,
-                pointsAvailable, 100, zero, couponAvailable, couponName, couponDeductAmount, payment.getAmount(),
+                pointsAvailable, 100, value(payment.getPointsDeductAmount()).setScale(2, RoundingMode.HALF_UP),
+                couponAvailable, couponName, payment.getPointsUsed() == null ? 0 : payment.getPointsUsed(),
+                couponDeductAmount, payment.getAmount(),
                 payment.getStatus(), params, payment.getCreatedAt(), payment.getPaidAt());
     }
 

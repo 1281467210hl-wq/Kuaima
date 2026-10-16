@@ -571,6 +571,7 @@ export default {
       authRedirecting: false,
       page: 0,
       pageSize: 20,
+      orderRequestSequence: 0,
       total: 0,
       hasMore: true,
       operating: false,
@@ -784,7 +785,8 @@ export default {
       uni.navigateTo({ url: query ? `${url}?${query}` : url });
     },
     async loadOrders(reset = true) {
-      if (this.loading || this.loadingMore) return;
+      if (!reset && (this.loading || this.loadingMore || !this.hasMore)) return;
+      const requestSequence = ++this.orderRequestSequence;
       if (reset) {
         this.loading = true;
         this.page = 0;
@@ -802,17 +804,21 @@ export default {
           ...(await this.getOrderFilterParams()),
         });
         const pageData = unpackOrderPage(result, requestedPage, this.pageSize);
+        if (requestSequence !== this.orderRequestSequence) return;
         const normalized = pageData.records.map((order) => normalizeOrder(order));
         this.jobList = reset ? normalized : [...this.jobList, ...normalized];
         this.total = pageData.total ?? this.jobList.length;
         this.hasMore = pageData.hasMore;
         this.page = requestedPage + 1;
       } catch (error) {
+        if (requestSequence !== this.orderRequestSequence) return;
         if (reset) this.jobList = [];
         this.handleRequestError(error, "招工列表加载失败");
       } finally {
-        this.loading = false;
-        this.loadingMore = false;
+        if (requestSequence === this.orderRequestSequence) {
+          this.loading = false;
+          this.loadingMore = false;
+        }
       }
     },
     loadMoreOrders() {

@@ -80,13 +80,17 @@ public class RewardController {
             throw new IllegalStateException("奖品库存不足");
         }
         // 扣减积分
-        PointsAccount account = pointsAccountRepository.findByUserIdAndRoleForUpdate(userId, UserRole.USER).orElseGet(() -> {
-            PointsAccount a = new PointsAccount();
-            a.setUserId(userId);
-            a.setRole(UserRole.USER);
-            a.setBalance(0);
-            return pointsAccountRepository.saveAndFlush(a);
-        });
+        java.util.List<PointsAccount> lockedAccounts =
+                pointsAccountRepository.findAllByUserIdAndRoleForUpdate(userId, UserRole.USER);
+        PointsAccount account = lockedAccounts.isEmpty()
+                ? pointsAccountRepository.findFirstByUserIdAndRoleOrderByIdDesc(userId, UserRole.USER).orElseGet(() -> {
+                    PointsAccount a = new PointsAccount();
+                    a.setUserId(userId);
+                    a.setRole(UserRole.USER);
+                    a.setBalance(0);
+                    return pointsAccountRepository.saveAndFlush(a);
+                })
+                : lockedAccounts.get(0);
         int cost = reward.getPointsCost() != null ? reward.getPointsCost() : 0;
         int before = account.getBalance() == null ? 0 : account.getBalance();
         if (before < cost) {
