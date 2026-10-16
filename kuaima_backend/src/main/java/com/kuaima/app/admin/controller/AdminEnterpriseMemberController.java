@@ -160,6 +160,21 @@ public class AdminEnterpriseMemberController {
             member.setTitle(string(body.get("title")).trim());
             touched = true;
         }
+        if (body.containsKey("gender")) {
+            String g = string(body.get("gender"));
+            member.setGender(StringUtils.hasText(g) ? g.trim() : null);
+            touched = true;
+        }
+        if (body.containsKey("idCard")) {
+            String idc = string(body.get("idCard"));
+            member.setIdCard(StringUtils.hasText(idc) ? idc.trim() : null);
+            touched = true;
+        }
+        if (body.containsKey("age")) {
+            Long ageVal = toLong(body.get("age"));
+            member.setAge(ageVal == null ? null : ageVal.intValue());
+            touched = true;
+        }
         EnterpriseMember saved = StringUtils.hasText(normalizedRole)
                 ? memberService.updateRole(member, normalizedRole)
                 : (touched ? memberRepository.save(member) : member);
@@ -331,6 +346,11 @@ public class AdminEnterpriseMemberController {
         row.put("wbPerms", codes.stream().map(WorkbenchPermCodes::label).collect(Collectors.toList()));
         row.put("portalEnabled", "OWNER".equals(m.getMemberRole())
                 || !Boolean.FALSE.equals(m.getPortalEnabled()));
+        row.put("gender", m.getGender() != null ? m.getGender()
+                : com.kuaima.app.common.util.IdCardUtils.gender(m.getIdCard()));
+        row.put("idCard", com.kuaima.app.common.util.IdCardUtils.mask(m.getIdCard()));
+        Integer computedAge = com.kuaima.app.common.util.IdCardUtils.age(m.getIdCard());
+        row.put("age", computedAge != null ? computedAge : m.getAge());
         return row;
     }
 

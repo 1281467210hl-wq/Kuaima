@@ -49,33 +49,17 @@
       <text class="wechat-ico">💬</text>
       <text>{{ qrTip }}</text>
     </view>
-
-    <view class="expire-tip">
-      <text v-if="currentCodeExpire">{{ signLabel }}有效期至 {{ currentCodeExpire }}</text>
-      <text v-else>{{ signLabel }}有效期：{{ expireMinutes }}分钟</text>
-    </view>
-
-    <!-- 刷新按钮 -->
-    <view class="refresh-btn" @click="refreshQR">
-      <text>刷新{{ signLabel }}</text>
-    </view>
   </view>
 </template>
 
 <script>
-import {
-  getProject,
-  getAttendanceCodes,
-  refreshWorkAttendanceCode,
-  refreshLeaveAttendanceCode,
-} from "@/api/project";
+import { getProject, getAttendanceCodes } from "@/api/project";
 
 export default {
   data() {
     return {
       projectId: "",
       project: {},
-      expireMinutes: 60,
       signType: "in", // in=签到码 out=签退码
       codes: {}, // 后端当日两码 {workCode, workCodeExpiresAt, leaveCode, leaveCodeExpiresAt}
       qrContent: "",
@@ -91,13 +75,6 @@ export default {
     },
     currentCode() {
       return this.signType === "in" ? this.codes.workCode : this.codes.leaveCode;
-    },
-    currentCodeExpire() {
-      const v = this.signType === "in" ? this.codes.workCodeExpiresAt : this.codes.leaveCodeExpiresAt;
-      if (!v) return "";
-      const s = String(v).replace("T", " ");
-      const m = s.match(/\d{4}-\d{2}-\d{2} (\d{2}:\d{2})/);
-      return m ? m[1] : "";
     },
   },
   onLoad(options) {
@@ -115,7 +92,6 @@ export default {
         const res = await getProject(id);
         // request 已解包 Result.data，直接就是项目对象；兜底兼容未解包场景
         this.project = (res && res.id) ? res : (res && res.data) || {};
-        this.expireMinutes = this.project.signCodeExpire || 60;
       } catch (e) {
         console.warn("加载项目失败", e);
       }
@@ -151,19 +127,6 @@ export default {
       const content = encodeURIComponent(this.qrContent);
       const size = 300;
       this.qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&data=${content}`;
-    },
-    async refreshQR() {
-      // 调后端刷新接口重新生成对应码（签到/签退分别刷新，均记录数据）
-      const refresh = this.signType === "in" ? refreshWorkAttendanceCode : refreshLeaveAttendanceCode;
-      try {
-        const res = await refresh();
-        const body = (res && res.workCode !== undefined) ? res : (res && res.data) || {};
-        if (body && body.workCode !== undefined) this.codes = body;
-      } catch (e) {
-        console.warn("考勤码刷新失败，使用本地刷新兜底", e);
-      }
-      this.generateQR();
-      uni.showToast({ title: `${this.signLabel}已刷新`, icon: "success" });
     },
     goBack() {
       uni.navigateBack();
@@ -348,25 +311,5 @@ export default {
 
 .wechat-ico {
   font-size: 16px;
-}
-
-.expire-tip {
-  font-size: 12px;
-  color: rgba(74, 53, 0, 0.6);
-  margin-top: 16px;
-}
-
-.refresh-btn {
-  margin-top: 20px;
-  padding: 10px 24px;
-  background: rgba(255, 255, 255, 0.3);
-  border-radius: 20px;
-  font-size: 13px;
-  color: #4a3500;
-  border: 1px solid rgba(74, 53, 0, 0.2);
-}
-
-.refresh-btn:active {
-  background: rgba(255, 255, 255, 0.5);
 }
 </style>

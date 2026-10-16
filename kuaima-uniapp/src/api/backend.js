@@ -1086,12 +1086,50 @@ export function listBossPayrollOrders(params = {}) {
   });
 }
 
-/** 创建发薪单：{ title, projectId, projectName, type, details[] } */
+/** 创建发薪单：{ title, projectId, projectName, type, details?[] }。
+ *  不传 details 时创建为「草稿」单，后续走添加人员 / 设置薪资 / 提交审核流程。 */
 export function createBossPayrollOrder(data = {}) {
   return request({
     url: "/boss/payroll/orders",
     method: "POST",
     data,
+    skipUserIdHeader: true,
+  });
+}
+
+/** 发薪单详情（含人员明细）：返回 { order, details:[{userId,name,phone,job,dailyWage,attendDays,amount,status}] } */
+export function getBossPayrollOrder(orderId) {
+  return request({
+    url: `/boss/payroll/orders/${normalizeId(orderId, "orderId")}`,
+    skipUserIdHeader: true,
+  });
+}
+
+/** 草稿-添加/替换发薪人员：members[{userId,name,phone,job,dailyWage?,attendDays?}]（仅草稿态） */
+export function setBossPayrollMembers(orderId, members = []) {
+  return request({
+    url: `/boss/payroll/orders/${normalizeId(orderId, "orderId")}/members`,
+    method: "PUT",
+    data: { members },
+    skipUserIdHeader: true,
+  });
+}
+
+/** 草稿-设置薪资：salaries[{userId,phone,dailyWage(分),attendDays}]（仅草稿态） */
+export function setBossPayrollSalary(orderId, salaries = []) {
+  return request({
+    url: `/boss/payroll/orders/${normalizeId(orderId, "orderId")}/salary`,
+    method: "PUT",
+    data: { salaries },
+    skipUserIdHeader: true,
+  });
+}
+
+/** 草稿-提交审核：校验已有人员且金额>0，草稿转待审批 */
+export function submitBossPayrollOrder(orderId) {
+  return request({
+    url: `/boss/payroll/orders/${normalizeId(orderId, "orderId")}/submit`,
+    method: "POST",
     skipUserIdHeader: true,
   });
 }

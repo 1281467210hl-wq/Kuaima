@@ -22,6 +22,7 @@ import org.springframework.web.bind.annotation.RestController;
 import com.kuaima.app.common.ForbiddenBusinessException;
 import com.kuaima.app.common.Result;
 import com.kuaima.app.domain.payroll.constant.PayrollConstants;
+import com.kuaima.app.domain.payroll.entity.PayrollDetail;
 import com.kuaima.app.domain.payroll.entity.PayrollEmployee;
 import com.kuaima.app.domain.payroll.entity.PayrollOrder;
 import com.kuaima.app.domain.payroll.model.BossPayrollCreateRequest;
@@ -79,13 +80,16 @@ public class BossPayrollController {
         return Result.success(filtered);
     }
 
-    @Operation(summary = "创建发薪单", description = "body：{title, projectId, projectName, type, details[]}；details 含 name/phone/job/userId/dailyWage(分)/attendDays，金额自动汇总")
+    @Operation(summary = "创建发薪单", description = "body：{title, projectId, projectName, type, details?[]}；details 为空则创建为「待提交审核」草稿，后续再添加人员与设置薪资；details 非空则直接创建为待审批")
     @PostMapping("/orders")
     public Result<PayrollOrder> createOrder(@RequestBody BossPayrollCreateRequest request,
                                             Authentication authentication) {
         Long bossId = requireBossId(authentication);
-        if (request.getDetails() == null || request.getDetails().isEmpty()) {
-            throw new IllegalArgumentException("请至少添加一名发薪人员");
+        if (!StringUtils.hasText(request.getTitle())) {
+            throw new IllegalArgumentException("转账标题不能为空");
+        }
+        if (request.getProjectId() == null) {
+            throw new IllegalArgumentException("请选择关联项目");
         }
         User boss = userRepository.findById(bossId).orElse(null);
         String creator = boss != null && StringUtils.hasText(boss.getCompanyName())
@@ -93,18 +97,68 @@ public class BossPayrollController {
                 : (boss != null && StringUtils.hasText(boss.getNickname()) ? boss.getNickname() : "老板");
         PayrollOrder order = new PayrollOrder();
         order.setTitle(request.getTitle());
-        if (!StringUtils.hasText(order.getTitle())) {
-            throw new IllegalArgumentException("转账标题不能为空");
-        }
         order.setProjectId(request.getProjectId());
-        if (order.getProjectId() == null) {
-            throw new IllegalArgumentException("请选择关联项目");
-        }
         order.setProjectName(request.getProjectName());
         String type = request.getType();
         order.setType(StringUtils.hasText(type) ? type : "wage");
+        boolean draft = request.getDetails() == null || request.getDetails().isEmpty();
+        if (draft) {
+            return Result.success(payrollService.createDraft(order, bossId, creator));
+        }
         order.setSubmitTime(new Date());
         return Result.success(payrollService.createOrder(order, request.getDetails(), bossId, creator));
+    }
+
+    @Operation(summary = "发薪单详情（含人员明细）", description = "草稿/待审批单的人员与薪资回显")
+    @GetMapping("/orders/{orderId}")
+    public Result<Map<String, Object>> orderDetail(@PathVariable Long orderId,
+                                                   Authentication authentication) {
+        Long bossId = requireBossId(authentication);
+        PayrollOrder order = ownedOrder(orderId, bossId);
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("order", order);
+        data.put("details", detailRepository.findByPayrollId(orderId));
+        return Result.success(data);
+    }
+
+    @Operation(summary = "草稿-添加/替换发薪人员", description = "body：{members:[{userId,name,phone,job,dailyWage?,attendDays?}]}；整体替换草稿人员明细，保留已设置薪资。仅草稿态可用")
+    @PutMapping("/orders/{orderId}/members")
+    public Result<PayrollOrder> setOrderMembers(@PathVariable Long orderId,
+                                                @RequestBody Map<String, List<PayrollDetail>> body,
+                                                Authentication authentication) {
+        Long bossId = requireBossId(authentication);
+        ownedOrder(orderId, bossId);
+        List<PayrollDetail> members = body == null ? List.of() : body.getOrDefault("members", List.of());
+        return Result.success(payrollService.replaceMembers(orderId, members));
+    }
+
+    @Operation(summary = "草稿-设置薪资", description = "body：{salaries:[{userId,phone,dailyWage(分),attendDays}]}；按人回填日薪与出勤天数并重算金额。仅草稿态可用")
+    @PutMapping("/orders/{orderId}/salary")
+    public Result<PayrollOrder> setOrderSalary(@PathVariable Long orderId,
+                                               @RequestBody Map<String, List<PayrollDetail>> body,
+                                               Authentication authentication) {
+        Long bossId = requireBossId(authentication);
+        ownedOrder(orderId, bossId);
+        List<PayrollDetail> salaries = body == null ? List.of() : body.getOrDefault("salaries", List.of());
+        return Result.success(payrollService.setSalaries(orderId, salaries));
+    }
+
+    @Operation(summary = "草稿-提交审核", description = "校验已有人员且金额>0，草稿转待审批")
+    @PostMapping("/orders/{orderId}/submit")
+    public Result<PayrollOrder> submitOrder(@PathVariable Long orderId,
+                                            Authentication authentication) {
+        Long bossId = requireBossId(authentication);
+        ownedOrder(orderId, bossId);
+        return Result.success(payrollService.submitDraft(orderId));
+    }
+
+    private PayrollOrder ownedOrder(Long orderId, Long bossId) {
+        PayrollOrder order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new jakarta.persistence.EntityNotFoundException("发薪单不存在: " + orderId));
+        if (order.getCreatorId() == null || !order.getCreatorId().equals(bossId)) {
+            throw new ForbiddenBusinessException("无权操作其他老板的发薪单");
+        }
+        return order;
     }
 
     @Operation(summary = "项目在职成员（批量发薪用）", description = "返回该项目在职/临时成员，含姓名/手机号/岗位/userId/日薪（从发薪员工库匹配，未匹配为 0 由老板填）")

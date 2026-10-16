@@ -15,7 +15,7 @@
       <!-- 搜索 -->
       <view class="search-bar">
         <image class="search-svg" src="/static/icons/boss-points/search-gray.svg" mode="aspectFit" />
-        <input class="search-input" v-model="keyword" placeholder="请输入员工姓名" @confirm="search" @input="onInput" />
+        <input class="search-input" v-model="keyword" placeholder="请输入员工姓名" />
       </view>
 
       <!-- 员工统计 -->
@@ -44,15 +44,13 @@
         </view>
         <text class="empty-text">暂无员工数据</text>
       </view>
-      <view class="emp-card" v-for="emp in employees" :key="emp.id" @click="goDetail(emp)">
+      <view class="emp-card" v-for="emp in employees" :key="emp.key" @click="goDetail(emp)">
         <view class="emp-avatar" :style="{ background: emp.avatarBg }">{{ emp.initial }}</view>
         <view class="emp-main">
           <view class="emp-name">{{ emp.name }}</view>
-          <view class="emp-info">{{ emp.gender || '—' }} | {{ emp.age || '—' }}岁 | {{ maskPhone(emp.phone) }}</view>
-          <view class="emp-time">添加时间：{{ formatDateTime(emp.addTime) }}</view>
+          <view class="emp-info">{{ emp.gender || '—' }} | {{ emp.age || '—' }}岁 | {{ emp.phone || '—' }}</view>
+          <view class="emp-time">加入时间：{{ formatJoinTime(emp.joinTime) }}</view>
         </view>
-        <text class="emp-status" :class="emp.status">{{ getStatusText(emp.status) }}</text>
-        <image class="row-arrow-svg" src="/static/icons/boss-points/chevron-right-gray.svg" mode="aspectFit" />
       </view>
       <view class="bottom-space" />
     </scroll-view>
@@ -70,10 +68,36 @@
 </template>
 
 <script>
-import { listPayrollEmployees } from "@/api/backend";
+import { listBossEnterpriseMembers } from "@/api/backend";
+import { listBossApplications } from "@/api/candidate";
 
-function parsePayload(data) {
-  return data?.data ?? data ?? {};
+function extractRows(result) {
+  const body = result?.data ?? result ?? [];
+  if (Array.isArray(body)) return body;
+  return body.members || body.records || body.content || body.list || body.employees || [];
+}
+
+/** 加入时间字段兼容：企业成员 joinDate / 候选人 applyTime / 兜底创建时间。 */
+function joinTimeOf(item) {
+  return item.joinTime || item.joinDate || item.applyTime || item.addTime
+    || item.timestamp || item.createTime || "";
+}
+
+/** 取可比较的时间键 yyyy-MM-dd HH:mm（无时间部分则 yyyy-MM-dd）；无法解析返回空串。 */
+function timeKey(value) {
+  const m = String(value || "").replace("T", " ").match(/(\d{4})-(\d{1,2})-(\d{1,2})(?:\s+(\d{1,2}):(\d{2}))?/);
+  if (!m) return "";
+  const date = `${m[1]}-${m[2].padStart(2, "0")}-${m[3].padStart(2, "0")}`;
+  return m[4] ? `${date} ${m[4].padStart(2, "0")}:${m[5]}` : date;
+}
+
+function genderText(value) {
+  const text = String(value || "").trim();
+  if (!text) return "";
+  const upper = text.toUpperCase();
+  if (upper === "MALE") return "男";
+  if (upper === "FEMALE") return "女";
+  return text;
 }
 
 export default {
@@ -81,9 +105,8 @@ export default {
     return {
       statusBarHeight: 0,
       keyword: "",
-      searchTimer: null,
       loading: false,
-      employees: [],
+      rows: [],
       stats: { total: 0, monthNew: 0, todayNew: 0 },
       avatarColors: [
         "linear-gradient(135deg, #FF6B35, #FF8C5A)",
@@ -96,14 +119,19 @@ export default {
       ],
     };
   },
+  computed: {
+    // 原型为纯列表：姓名/手机号在前端本地过滤，不再回源请求
+    employees() {
+      const kw = this.keyword.trim();
+      if (!kw) return this.rows;
+      return this.rows.filter((emp) => (emp.name || "").includes(kw) || (emp.phone || "").includes(kw));
+    },
+  },
   onLoad() {
     const info = typeof uni.getWindowInfo === "function"
       ? uni.getWindowInfo() : uni.getSystemInfoSync();
     this.statusBarHeight = Number(info.statusBarHeight || 0);
     this.loadEmployees();
-  },
-  onUnload() {
-    if (this.searchTimer) clearTimeout(this.searchTimer);
   },
   methods: {
     goBack() {
@@ -121,49 +149,76 @@ export default {
     async loadEmployees() {
       this.loading = true;
       try {
-        const data = await listPayrollEmployees({ keyword: this.keyword.trim() || undefined });
-        const body = parsePayload(data);
-        const list = Array.isArray(body) ? body : (body.employees || []);
-        this.stats = {
-          total: body.total ?? (Array.isArray(body) ? body.length : 0),
-          monthNew: body.monthNew ?? 0,
-          todayNew: body.todayNew ?? 0,
-        };
-        this.employees = list.map((emp, idx) => {
-          const initial = (emp.name || "?").slice(0, 1);
-          let avatarBg = this.avatarColors[idx % this.avatarColors.length];
-          if (emp.status === "temp") {
-            avatarBg = "linear-gradient(135deg, #FFA94D, #FF8C42)";
-          } else if (emp.status === "left") {
-            avatarBg = "linear-gradient(135deg, #BFBFBF, #8C8C8C)";
-          }
-          return { ...emp, initial, avatarBg };
-        });
+        // 员工来源=企业成员（内部员工）+ 候选人（外部零工），不再取发薪员工接口
+        const [memberRes, applicationRes] = await Promise.all([
+          listBossEnterpriseMembers({ page: 0, size: 100 }).catch(() => null),
+          listBossApplications({ status: "all", page: 0, size: 100 }).catch(() => null),
+        ]);
+        const members = this.buildRows(extractRows(memberRes), "member");
+        const candidates = this.buildRows(extractRows(applicationRes), "candidate");
+        this.rows = this.mergeRows(members, candidates);
+        this.stats = this.buildStats(this.rows);
       } catch (error) {
-        this.employees = [];
+        this.rows = [];
+        this.stats = { total: 0, monthNew: 0, todayNew: 0 };
       } finally {
         this.loading = false;
       }
     },
-    search() {
-      this.loadEmployees();
+    buildRows(list, source) {
+      return (Array.isArray(list) ? list : []).map((item, idx) => {
+        const name = item.name || item.nickname || item.realName
+          || `${source === "member" ? "成员" : "零工"}${item.userId ?? idx + 1}`;
+        const timeKeyText = timeKey(joinTimeOf(item));
+        return {
+          ...item,
+          key: `${source}-${item.id ?? item.memberId ?? idx}`,
+          id: item.id ?? item.memberId ?? item.userId ?? `${source}${idx}`,
+          userId: item.userId ?? "",
+          name,
+          initial: name.slice(0, 1),
+          gender: genderText(item.gender),
+          age: item.age ?? "",
+          phone: String(item.phone || item.mobile || "").trim(),
+          joinTime: timeKeyText || String(joinTimeOf(item) || ""),
+          timeKey: timeKeyText,
+          avatarBg: this.avatarColors[idx % this.avatarColors.length],
+        };
+      });
     },
-    onInput() {
-      if (this.searchTimer) clearTimeout(this.searchTimer);
-      this.searchTimer = setTimeout(() => this.loadEmployees(), 350);
+    /** 企业成员优先合并候选人；按 userId 去重，无 userId 时按完整手机号去重（脱敏号不参与匹配）。 */
+    mergeRows(members, candidates) {
+      const byUserId = new Set();
+      const byPhone = new Set();
+      const merged = [];
+      [...members, ...candidates].forEach((row) => {
+        const userKey = row.userId === "" || row.userId == null ? "" : String(row.userId);
+        const phoneKey = /^\d{11}$/.test(row.phone) ? row.phone : "";
+        if ((userKey && byUserId.has(userKey)) || (phoneKey && byPhone.has(phoneKey))) return;
+        if (userKey) byUserId.add(userKey);
+        if (phoneKey) byPhone.add(phoneKey);
+        merged.push(row);
+      });
+      return merged.sort((a, b) => String(b.timeKey).localeCompare(String(a.timeKey)));
     },
-    maskPhone(phone) {
-      if (!phone || phone.length < 7) return phone || "—";
-      return `${phone.substring(0, 3)}****${phone.substring(phone.length - 4)}`;
+    buildStats(rows) {
+      const now = new Date();
+      const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+      const dayKey = `${monthKey}-${String(now.getDate()).padStart(2, "0")}`;
+      return {
+        total: rows.length,
+        monthNew: rows.filter((row) => row.timeKey.startsWith(monthKey)).length,
+        todayNew: rows.filter((row) => row.timeKey.startsWith(dayKey)).length,
+      };
     },
-    formatDateTime(value) {
-      if (!value) return "—";
-      const s = String(value).replace("T", " ").substring(0, 16);
-      return s;
-    },
-    getStatusText(s) {
-      const map = { active: "在职", temp: "临时", left: "离职" };
-      return map[s] || "在职";
+    /** 原型文案：YYYY年M月D日 HH:mm（接口只有日期时省略时分）。 */
+    formatJoinTime(value) {
+      const text = String(value || "").replace("T", " ").trim();
+      const m = text.match(/(\d{4})-(\d{1,2})-(\d{1,2})(?:\s+(\d{1,2}):(\d{2}))?/);
+      if (!m) return text || "—";
+      const date = `${m[1]}年${Number(m[2])}月${Number(m[3])}日`;
+      if (!m[4]) return date;
+      return `${date} ${m[4].padStart(2, "0")}:${m[5]}`;
     },
   },
 };
@@ -233,29 +288,21 @@ export default {
 
 .emp-card {
   background: #fff; border-radius: 14px; padding: 13px 14px; margin-bottom: 10px;
-  display: flex; align-items: center; gap: 12px;
+  display: flex; align-items: center; gap: 10px;
   box-shadow: 0 1px 6px rgba(0,0,0,0.04);
   width: 100%;
   box-sizing: border-box;
 }
 .emp-avatar {
-  width: 44px; height: 44px; border-radius: 12px; flex-shrink: 0;
+  width: 42px; height: 42px; border-radius: 50%; flex-shrink: 0;
   display: flex; align-items: center; justify-content: center;
-  color: #fff; font-size: 18px; font-weight: 700;
+  color: #fff; font-size: 15px; font-weight: 600;
 }
 .emp-main { flex: 1; min-width: 0; }
 .emp-name { font-size: 15px; font-weight: 600; color: #333; }
 .emp-info { font-size: 12px; color: #888; margin-top: 4px; }
 .emp-time { font-size: 11px; color: #B0B0B0; margin-top: 4px; }
 
-.emp-status {
-  font-size: 11px; padding: 2px 8px; border-radius: 10px; font-weight: 500; flex-shrink: 0;
-}
-.emp-status.active { background: #E8F7EF; color: #16A34A; }
-.emp-status.temp { background: #FFF1DB; color: #B45309; }
-.emp-status.left { background: #F5F5F5; color: #8C8C8C; }
-
-.row-arrow-svg { width: 13px; height: 13px; flex-shrink: 0; }
 .bottom-space { height: 20px; }
 
 .module-tabs {

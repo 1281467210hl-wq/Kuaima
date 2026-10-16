@@ -1067,6 +1067,18 @@
           }
         },
         {
+          "path": "payroll-picker",
+          "style": {
+            "navigationStyle": "custom"
+          }
+        },
+        {
+          "path": "payroll-set-salary",
+          "style": {
+            "navigationStyle": "custom"
+          }
+        },
+        {
           "path": "payroll-employees",
           "style": {
             "navigationStyle": "custom"

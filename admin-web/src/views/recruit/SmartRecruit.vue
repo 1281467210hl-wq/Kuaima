@@ -69,10 +69,11 @@
           <el-table-column prop="exp" label="工作经验" min-width="100" />
           <el-table-column prop="edu" label="学历" min-width="90" />
           <el-table-column prop="uploadTime" label="简历上传时间" min-width="170" />
-          <el-table-column label="操作" width="230" align="right" fixed="right">
+          <el-table-column label="操作" width="320" align="right" fixed="right">
             <template #default="{ row }">
               <div class="action-btns">
                 <button class="btn btn-outline btn-sm" @click="openResumeDoc(row)"><i class="fas fa-file-lines"></i> 查看附件简历</button>
+                <button class="btn btn-outline btn-sm" :disabled="joiningResumeId === row.id" @click="joinCandidate(row)"><i class="fas fa-user-plus"></i> 加入候选人</button>
                 <button class="btn btn-outline btn-sm danger-text" @click="confirmDeleteResume(row)"><i class="fas fa-trash"></i> 删除</button>
               </div>
             </template>
@@ -104,15 +105,6 @@
               <el-option label="制造业" value="manufacture" />
               <el-option label="汽车" value="auto" />
               <el-option label="服务业" value="service" />
-            </el-select>
-          </div>
-          <div class="filter-item">
-            <span class="filter-label">招聘状态</span>
-            <el-select v-model="posInput.status" style="width: 160px;">
-              <el-option label="全部状态" value="all" />
-              <el-option label="招聘中" value="recruiting" />
-              <el-option label="已暂停" value="paused" />
-              <el-option label="已满编" value="filled" />
             </el-select>
           </div>
           <button class="btn btn-primary btn-sm" @click="searchPositions"><i class="fas fa-search"></i> 查询</button>
@@ -179,16 +171,6 @@
             <span class="filter-label">应聘时间</span>
             <el-date-picker v-model="candInput.date" type="date" placeholder="请选择日期" value-format="YYYY-MM-DD" style="width: 150px;" />
           </div>
-          <div class="filter-item">
-            <span class="filter-label">状态</span>
-            <el-select v-model="candInput.status" style="width: 160px;">
-              <el-option label="全部状态" value="" />
-              <el-option label="待筛选" value="PENDING" />
-              <el-option label="面试中" value="INTERVIEWING" />
-              <el-option label="已录用" value="HIRED" />
-              <el-option label="已拒绝" value="REJECTED" />
-            </el-select>
-          </div>
           <button class="btn btn-primary btn-sm" @click="searchCandidates"><i class="fas fa-search"></i> 查询</button>
           <button class="btn btn-outline btn-sm" @click="resetCandidateFilters"><i class="fas fa-arrow-rotate-left"></i> 重置</button>
           <div style="margin-left: auto;"></div>
@@ -203,9 +185,10 @@
               <span class="status-badge" :class="candStatusCls(row.statusName)">{{ row.statusName }}</span>
             </template>
           </el-table-column>
-          <el-table-column label="操作" width="280" align="right" fixed="right">
+          <el-table-column label="操作" width="330" align="right" fixed="right">
             <template #default="{ row }">
               <span class="op-link" @click="openCandDetail(row)">详情</span>
+              <span class="op-link" @click="openJoinProject(row)">加入项目</span>
               <span v-for="act in candidateActions[row.statusName] || []" :key="act.act" class="op-link" @click="doCandAction(act.act, row)">
                 {{ act.label }}
               </span>
@@ -447,6 +430,54 @@
       </div>
     </div>
 
+    <!-- ===== 候选人加入项目弹窗（原型 joinProjectOverlay：单个「关联项目」下拉） ===== -->
+    <div class="resume-doc-overlay" v-show="joinProjectVisible" @click.self="joinProjectVisible = false">
+      <div class="resume-doc-panel join-project-panel" @click.stop>
+        <div class="resume-doc-header">
+          <div class="title"><i class="fas fa-diagram-project"></i>加入项目</div>
+          <button class="resume-doc-close" @click="joinProjectVisible = false"><i class="fas fa-xmark"></i></button>
+        </div>
+        <div class="resume-doc-body join-project-body">
+          <div class="join-hint">为候选人「<span class="join-target">{{ joinProjectRow ? joinProjectRow.name : '' }}</span>」选择需要加入的项目</div>
+          <div class="form-group">
+            <label class="form-label">关联项目</label>
+            <el-select v-model="joinProjectId" placeholder="请选择关联项目" filterable clearable style="width: 100%;" :loading="projectLoading">
+              <el-option v-for="p in projectOptions" :key="p.id" :label="p.label" :value="p.id" />
+            </el-select>
+          </div>
+          <div style="margin-top: 20px; display: flex; gap: 10px; justify-content: flex-end;">
+            <button class="btn btn-outline" @click="joinProjectVisible = false">取消</button>
+            <button class="btn btn-primary" :disabled="joiningProject" @click="confirmJoinProject">确认加入</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== 简历库加入候选人：意向岗位未匹配到岗位时的岗位回退选择 ===== -->
+    <div class="resume-doc-overlay" v-show="joinPosVisible" @click.self="joinPosVisible = false">
+      <div class="resume-doc-panel join-project-panel" @click.stop>
+        <div class="resume-doc-header">
+          <div class="title"><i class="fas fa-user-plus"></i>选择应聘岗位</div>
+          <button class="resume-doc-close" @click="joinPosVisible = false"><i class="fas fa-xmark"></i></button>
+        </div>
+        <div class="resume-doc-body join-project-body">
+          <div class="join-hint">
+            简历「<span class="join-target">{{ joinResumeRow ? joinResumeRow.name : '' }}</span>」的意向岗位「{{ joinResumeRow ? joinResumeRow.job || '—' : '—' }}」未匹配到岗位，请手动选择应聘岗位
+          </div>
+          <div class="form-group">
+            <label class="form-label">应聘岗位</label>
+            <el-select v-model="joinPositionId" placeholder="请选择应聘岗位" filterable clearable style="width: 100%;">
+              <el-option v-for="p in positionOptions" :key="p.id" :label="p.name" :value="p.id" />
+            </el-select>
+          </div>
+          <div style="margin-top: 20px; display: flex; gap: 10px; justify-content: flex-end;">
+            <button class="btn btn-outline" @click="joinPosVisible = false">取消</button>
+            <button class="btn btn-primary" :disabled="joiningResume" @click="confirmJoinCandidate">确认加入</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- ===== 新建直播橱窗弹窗 ===== -->
     <div class="resume-doc-overlay" v-show="liveCreateVisible" @click.self="liveCreateVisible = false">
       <div class="resume-doc-panel live-create-panel" @click.stop>
@@ -620,16 +651,19 @@ import {
   listPositions, positionStats, getPosition, mapPosition, mapPositionDetail,
   createPosition, updatePosition, deletePosition,
   listResumes, resumeStats, getResume, deleteResume, importResume, mapResume, mapResumeDetail,
-  listCandidates, getCandidate, updateCandidateStatus, createCandidate, deleteCandidate,
+  listCandidates, getCandidate, updateCandidateStatus, createCandidate, addCandidateFromResume, deleteCandidate,
   mapCandidate, mapCandidateDetail,
   listShowcases, createShowcase, updateShowcaseStatus, deleteShowcase, mapShowcase,
   listBossOptions, listEnterpriseOptions,
 } from '@/api/recruit'
+import { listProjects, addProjectMember } from '@/api/project'
 
 /* ============================================================
  * 智能招聘：四个 tab 全部走后台接口
  *   岗位 /admin/positions · 简历 /admin/resumes · 候选人 /admin/candidates
  *   直播橱窗 /admin/live-showcases
+ *   简历库「加入候选人」POST /admin/candidates/from-resume
+ *   候选人「加入项目」POST /admin/projects/{id}/members（project api）
  * 分页为服务端分页（后端 page 从 0 开始，页面页码从 1 开始）。
  * ============================================================ */
 const RESUME_PAGE_SIZE = 5
@@ -689,14 +723,12 @@ const positionLoading = ref(false)
 const positionPage = ref(1)
 const positionOptions = ref([])
 const selectedPositions = ref([])
-const posInput = reactive({ keyword: '', type: 'all', status: 'all' })
-const posApplied = reactive({ keyword: '', type: 'all', status: 'all' })
+const posInput = reactive({ keyword: '', type: 'all' })
+const posApplied = reactive({ keyword: '', type: 'all' })
 
-// 后端仅支持 keyword/status（recruiting+filled 同为 on），岗位类型与满编状态在当前页内二次过滤
+// 后端仅支持 keyword，岗位类型在当前页内二次过滤（招聘状态按原型已取消筛选）
 const positionPageData = computed(() => positions.value.filter((p) => {
-  const typeMatch = posApplied.type === 'all' || p.typeClass === 'type-' + posApplied.type
-  const statusMatch = posApplied.status === 'all' || p.status === posApplied.status
-  return typeMatch && statusMatch
+  return posApplied.type === 'all' || p.typeClass === 'type-' + posApplied.type
 }))
 
 const mapPositionRow = (row) => ({ ...mapPosition(row), typeClass: JOB_TYPE_CLASS[row.type] || '' })
@@ -706,7 +738,6 @@ const loadPositions = async () => {
   try {
     const res = await listPositions({
       keyword: posApplied.keyword.trim() || undefined,
-      status: posApplied.status === 'all' ? undefined : posApplied.status,
       page: positionPage.value - 1,
       size: POSITION_PAGE_SIZE,
     })
@@ -735,12 +766,11 @@ const loadPositionOptions = async () => {
 const searchPositions = () => {
   posApplied.keyword = posInput.keyword
   posApplied.type = posInput.type
-  posApplied.status = posInput.status
   positionPage.value = 1
   loadPositions()
 }
 const resetPositionFilters = () => {
-  posInput.keyword = ''; posInput.type = 'all'; posInput.status = 'all'
+  posInput.keyword = ''; posInput.type = 'all'
   searchPositions()
 }
 const onPosSelect = (rows) => { selectedPositions.value = rows }
@@ -1047,13 +1077,63 @@ const confirmDeleteResume = async (row) => {
   }
 }
 
+/* 简历库「加入候选人」（原型 joinCandidate）：后端按意向岗位匹配岗位，
+ * 匹配不到（400）时回退到岗位下拉手选，改走 POST /admin/candidates */
+const joiningResumeId = ref(null)
+const joinPosVisible = ref(false)
+const joinResumeRow = ref(null)
+const joinPositionId = ref(undefined)
+const joiningResume = ref(false)
+
+const joinCandidate = async (row) => {
+  if (joiningResumeId.value !== null) return
+  joiningResumeId.value = row.id
+  try {
+    const res = await addCandidateFromResume(row.id)
+    if (res?.data?.created === false) {
+      showToast(`${row.name} 已在候选人列表中`)
+    } else {
+      showToast(`已加入候选人：${row.name}`)
+      candidatePage.value = 1
+    }
+    await Promise.all([loadCandidates(), loadStats()])
+  } catch (err) {
+    console.warn('[SmartRecruit] 加入候选人失败:', err?.message)
+    // 常见为后端 400「意向岗位匹配不到岗位」，此处回退到岗位下拉，让运营手选岗位完成加入
+    joinResumeRow.value = row
+    joinPositionId.value = undefined
+    joinPosVisible.value = true
+    if (!positionOptions.value.length) loadPositionOptions()
+  } finally {
+    joiningResumeId.value = null
+  }
+}
+
+const confirmJoinCandidate = async () => {
+  const row = joinResumeRow.value
+  if (!row) { joinPosVisible.value = false; return }
+  if (!joinPositionId.value) { showToast('请选择应聘岗位'); return }
+  joiningResume.value = true
+  try {
+    await createCandidate({ positionId: joinPositionId.value, resumeId: row.id })
+    joinPosVisible.value = false
+    showToast(`已加入候选人：${row.name}`)
+    candidatePage.value = 1
+    await Promise.all([loadCandidates(), loadStats()])
+  } catch (err) {
+    console.warn('[SmartRecruit] 手动选择岗位加入候选人失败:', err?.message)
+  } finally {
+    joiningResume.value = false
+  }
+}
+
 /* ---------- 候选人 ---------- */
 const candidates = ref([])
 const candidateTotal = ref(0)
 const candidateLoading = ref(false)
 const candidatePage = ref(1)
-const candInput = reactive({ name: '', positionId: undefined, date: '', status: '' })
-const candApplied = reactive({ name: '', positionId: undefined, date: '', status: '' })
+const candInput = reactive({ name: '', positionId: undefined, date: '' })
+const candApplied = reactive({ name: '', positionId: undefined, date: '' })
 
 // 后端 4 态：PENDING 待筛选 / INTERVIEWING 面试中 / HIRED 已录用 / REJECTED 已拒绝（无「待面试」）
 const candidateActions = {
@@ -1074,7 +1154,6 @@ const loadCandidates = async () => {
   candidateLoading.value = true
   try {
     const res = await listCandidates({
-      status: candApplied.status || undefined,
       keyword: (candApplied.name || '').trim() || undefined,
       positionId: candApplied.positionId || undefined,
       startDate: candApplied.date || undefined,
@@ -1098,12 +1177,11 @@ const searchCandidates = () => {
   candApplied.name = candInput.name
   candApplied.positionId = candInput.positionId
   candApplied.date = candInput.date
-  candApplied.status = candInput.status
   candidatePage.value = 1
   loadCandidates()
 }
 const resetCandidateFilters = () => {
-  candInput.name = ''; candInput.positionId = undefined; candInput.date = ''; candInput.status = ''
+  candInput.name = ''; candInput.positionId = undefined; candInput.date = ''
   searchCandidates()
 }
 
@@ -1151,6 +1229,70 @@ const openCandDetail = async (row) => {
     candDetail.value = mapCandidateDetail(res.data || {})
   } catch (err) {
     console.warn('[SmartRecruit] 候选人详情加载失败:', err?.message)
+  }
+}
+
+/* 候选人「加入项目」（原型 openJoinProject/confirmJoinProject）：
+ * 弹层单选关联项目 → POST /admin/projects/{id}/members，成员岗位取应聘岗位、日薪由后端按岗位补齐 */
+const pad = (n) => (n < 10 ? '0' + n : '' + n)
+const todayISO = () => {
+  const d = new Date()
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+}
+const projectOptions = ref([])
+const projectLoading = ref(false)
+const joinProjectVisible = ref(false)
+const joinProjectRow = ref(null)
+const joinProjectId = ref(undefined)
+const joiningProject = ref(false)
+
+const loadProjectOptions = async () => {
+  projectLoading.value = true
+  try {
+    const res = await listProjects({ page: 0, size: 100 })
+    projectOptions.value = (Array.isArray(res?.data) ? res.data : [])
+      .filter((p) => p.id != null)
+      .map((p) => ({
+        id: p.id,
+        label: p.status === 'archived' ? `${p.name}（已归档）` : p.name,
+      }))
+  } catch (err) {
+    console.warn('[SmartRecruit] 项目列表加载失败:', err?.message)
+    projectOptions.value = []
+  } finally {
+    projectLoading.value = false
+  }
+}
+
+const openJoinProject = async (row) => {
+  joinProjectRow.value = row
+  joinProjectId.value = undefined
+  joinProjectVisible.value = true
+  if (!projectOptions.value.length) await loadProjectOptions()
+}
+
+const confirmJoinProject = async () => {
+  const row = joinProjectRow.value
+  if (!row) { joinProjectVisible.value = false; return }
+  if (!joinProjectId.value) { showToast('请选择项目'); return }
+  joiningProject.value = true
+  try {
+    await addProjectMember(joinProjectId.value, {
+      name: row.name,
+      phone: row.phone,
+      userId: row.userId,
+      role: row.job,
+      status: 'active',
+      employmentType: 'fulltime',
+      joinDate: todayISO(),
+    })
+    const label = projectOptions.value.find((p) => p.id === joinProjectId.value)?.label || joinProjectId.value
+    joinProjectVisible.value = false
+    showToast(`已将 ${row.name} 加入项目「${label}」`)
+  } catch (err) {
+    console.warn('[SmartRecruit] 候选人加入项目失败:', err?.message)
+  } finally {
+    joiningProject.value = false
   }
 }
 
@@ -1468,6 +1610,12 @@ onMounted(() => {
 .add-cand-name .add-cand-job { font-weight: 400; color: #999; font-size: 12px; }
 .add-cand-sub { font-size: 12px; color: #999; }
 .add-cand-empty { text-align: center; padding: 30px; color: #BBB; }
+
+/* ===== 加入项目 / 岗位回退弹窗（原型 joinProjectOverlay：400px 单下拉） ===== */
+.join-project-panel { width: 400px; }
+.join-project-body { padding: 20px; }
+.join-hint { font-size: 13px; color: #6B7280; line-height: 1.6; margin-bottom: 14px; }
+.join-target { color: var(--primary, #FF6B35); font-weight: 600; }
 
 /* ===== 新建直播橱窗弹窗 ===== */
 .live-create-panel { width: 460px; }

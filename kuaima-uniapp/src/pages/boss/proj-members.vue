@@ -71,6 +71,13 @@
       <view class="bottom-space" />
     </scroll-view>
 
+    <!-- 底部操作：新增项目成员（原型 boss/boss-proj-members.html:178） -->
+    <view class="footer">
+      <view class="primary-btn" @click="openAdd">
+        <image class="primary-btn-svg" src="/static/icons/boss-reward/plus-white.svg" mode="aspectFit" />新增项目成员
+      </view>
+    </view>
+
     <!-- 编辑成员状态弹层 -->
     <view v-if="editing" class="mask" @click="closeEditStatus">
       <view class="edit-modal" @click.stop>
@@ -109,6 +116,41 @@
         </view>
       </view>
     </view>
+
+    <!-- 新增项目成员：候选人选择弹窗（原型 boss/boss-proj-members.html:181-198，可选项来源=候选人列表） -->
+    <view v-if="showAdd" class="mask" @click="closeAdd">
+      <view class="add-modal" @click.stop>
+        <view class="modal-header">
+          <text class="modal-title">新增项目成员</text>
+          <text class="modal-close" @click="closeAdd">✕</text>
+        </view>
+        <view class="ap-search">
+          <input class="ap-search-input" v-model="apKeyword" placeholder="搜索候选人姓名" />
+        </view>
+        <scroll-view scroll-y class="ap-list">
+          <view v-if="apLoading" class="ap-empty">加载中…</view>
+          <view v-else-if="!filteredCandidates.length" class="ap-empty">暂无匹配候选人</view>
+          <view
+            v-for="c in filteredCandidates"
+            :key="c.id"
+            class="ap-item"
+            :class="{ selected: apSelectedId === c.id }"
+            @click="selectCandidate(c)"
+          >
+            <view class="ap-avatar" :style="{ background: avatarColor(c.name) }">{{ (c.name || "?").charAt(0) }}</view>
+            <view class="ap-info">
+              <view class="ap-name">{{ c.name }}</view>
+              <view class="ap-sub">{{ c.job || "候选人" }}{{ c.exp ? " · " + c.exp : "" }}</view>
+            </view>
+            <view class="ap-check">{{ apSelectedId === c.id ? "✓" : "" }}</view>
+          </view>
+        </scroll-view>
+        <view class="modal-footer">
+          <view class="sheet-btn cancel" @click="closeAdd">取消</view>
+          <view class="sheet-btn confirm" :class="{ disabled: apSubmitting }" @click="confirmAdd">{{ apSubmitting ? "添加中…" : "确认添加" }}</view>
+        </view>
+      </view>
+    </view>
   </view>
 </template>
 
@@ -118,10 +160,12 @@ import {
   getProject,
   getMemberStats,
   listMembers,
+  addMember,
   updateMemberStatus,
   avatarColor,
   MEMBER_STATUS_TEXT,
 } from "@/api/project";
+import { listBossApplications } from "@/api/candidate";
 
 export default {
   components: { BossPageHeader },
@@ -147,11 +191,25 @@ export default {
         { key: "left", label: "离职" },
         { key: "temp", label: "临时" },
       ],
+      // 新增项目成员：候选人选择
+      showAdd: false,
+      apKeyword: "",
+      apCandidates: [],
+      apSelectedId: null,
+      apLoading: false,
+      apSubmitting: false,
     };
   },
   onLoad(query) {
     this.projectId = query.id;
     this.load();
+  },
+  computed: {
+    filteredCandidates() {
+      const kw = (this.apKeyword || "").trim();
+      if (!kw) return this.apCandidates;
+      return this.apCandidates.filter((c) => (c.name || "").includes(kw));
+    },
   },
   methods: {
     avatarColor,
@@ -205,6 +263,72 @@ export default {
         this.load();
       } catch (e) {
         uni.showToast({ title: "保存失败，请重试", icon: "none" });
+      }
+    },
+    openAdd() {
+      this.apSelectedId = null;
+      this.apKeyword = "";
+      this.showAdd = true;
+      this.loadCandidates();
+    },
+    closeAdd() {
+      if (this.apSubmitting) return;
+      this.showAdd = false;
+    },
+    async loadCandidates() {
+      this.apLoading = true;
+      try {
+        // 可选项来源=候选人列表：GET /boss/applications（当前老板的岗位投递）
+        const res = await listBossApplications({ status: "all", page: 0, size: 100 });
+        const rows = Array.isArray(res) ? res : res?.records || res?.content || [];
+        this.apCandidates = rows.map((item) => ({
+          id: item.id,
+          userId: item.userId,
+          name: item.name || item.resumeName || "零工",
+          job: item.job || item.positionName || "",
+          phone: item.phone || "",
+          exp: item.expLabel || "",
+          salary: item.salary || item.salaryRange || "",
+        }));
+      } catch (e) {
+        console.warn("候选人列表加载失败", e);
+        this.apCandidates = [];
+      } finally {
+        this.apLoading = false;
+      }
+    },
+    selectCandidate(c) {
+      this.apSelectedId = c.id;
+    },
+    async confirmAdd() {
+      if (this.apSubmitting) return;
+      const c = this.apCandidates.find((x) => x.id === this.apSelectedId);
+      if (!c) {
+        uni.showToast({ title: "请选择要新增的候选人", icon: "none" });
+        return;
+      }
+      if (!this.projectId) {
+        uni.showToast({ title: "缺少项目 id", icon: "none" });
+        return;
+      }
+      this.apSubmitting = true;
+      try {
+        // 沿用现有新增成员接口 POST /boss/projects/{id}/members；
+        // salary 优先取候选人携带值，缺省时由后端按岗位薪资范围回填。
+        await addMember(this.projectId, {
+          userId: c.userId,
+          name: c.name,
+          phone: c.phone,
+          role: c.job,
+          salary: c.salary || undefined,
+        });
+        uni.showToast({ title: `已将 ${c.name} 新增为项目成员`, icon: "success" });
+        this.showAdd = false;
+        this.load();
+      } catch (e) {
+        uni.showToast({ title: "新增失败，请重试", icon: "none" });
+      } finally {
+        this.apSubmitting = false;
       }
     },
   },
@@ -393,4 +517,74 @@ export default {
 .sheet-btn { flex: 1; text-align: center; padding: 11px 0; border-radius: 10px; font-size: 14px; font-weight: 500; }
 .sheet-btn.cancel { background: #f5f5f5; color: #666; }
 .sheet-btn.confirm { background: linear-gradient(135deg, #ff6b35, #ff8c5a); color: #fff; font-weight: 600; }
+.sheet-btn.confirm.disabled { opacity: 0.6; }
+
+/* 底部操作按钮 */
+.footer {
+  flex-shrink: 0;
+  padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
+  background: #fff;
+  border-top: 0.5px solid #f0f0f0;
+}
+.primary-btn {
+  background: linear-gradient(135deg, #ff6b35, #ff8c5a);
+  color: #fff;
+  border-radius: 24px;
+  text-align: center;
+  padding: 13px 0;
+  font-size: 15px;
+  font-weight: 600;
+  box-shadow: 0 4px 12px rgba(255, 107, 53, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.primary-btn-svg { width: 16px; height: 16px; margin-right: 4px; }
+
+/* 新增项目成员：候选人选择弹窗 */
+.add-modal {
+  background: #fff;
+  border-radius: 16px;
+  width: 100%;
+  max-width: 360px;
+  overflow: hidden;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
+}
+.ap-search { padding: 14px 18px 6px; }
+.ap-search-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 9px 12px;
+  background: #f5f5f5;
+  border-radius: 10px;
+  font-size: 13px;
+  color: #333;
+}
+.ap-list { max-height: 300px; padding: 4px 12px 12px; }
+.ap-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 8px;
+  border-bottom: 1px solid #f0f0f0;
+}
+.ap-item:last-child { border-bottom: none; }
+.ap-item.selected { background: #fff8f4; border-radius: 10px; }
+.ap-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 16px;
+  font-weight: 600;
+}
+.ap-info { flex: 1; min-width: 0; }
+.ap-name { font-size: 14px; font-weight: 600; color: #333; }
+.ap-sub { font-size: 12px; color: #999; margin-top: 2px; }
+.ap-check { width: 20px; text-align: center; color: #ff6b35; font-size: 16px; font-weight: 700; }
+.ap-empty { text-align: center; padding: 30px; color: #bbb; font-size: 13px; }
 </style>

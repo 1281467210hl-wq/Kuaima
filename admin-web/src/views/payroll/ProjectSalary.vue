@@ -58,16 +58,24 @@
             </el-table-column>
             <el-table-column prop="creator" label="制单人员" width="95" />
             <el-table-column prop="submitTime" label="提交时间" width="130" />
-            <el-table-column label="状态" width="110">
+            <el-table-column label="状态" width="130">
               <template #default="{ row }">
                 <span :class="['status-badge', statusClass(row.status)]">{{ statusText(row.status) }}</span>
+                <div v-if="row.status === 'draft'" class="draft-progress">
+                  已完成 {{ draftDone(row) }}/2（人员{{ row.peopleCount > 0 ? '✓' : '未' }} · 薪资{{ row.amount > 0 ? '✓' : '未' }}）
+                </div>
               </template>
             </el-table-column>
-            <el-table-column label="操作" width="170" align="right">
+            <el-table-column label="操作" width="260" align="right">
               <template #default="{ row }">
                 <div class="action-btns" style="justify-content:flex-end;">
                   <button class="btn btn-outline" @click="goDetail(row)">查看</button>
-                  <template v-if="row.status === 'pending'">
+                  <template v-if="row.status === 'draft'">
+                    <button class="btn btn-outline" @click="openAddMembers(row)"><i class="fas fa-user-plus"></i> 添加人员</button>
+                    <button class="btn btn-outline" @click="openSetSalary(row)"><i class="fas fa-coins"></i> 设置薪资</button>
+                    <button class="btn btn-outline success-btn" @click="doSubmit(row)">提交审核</button>
+                  </template>
+                  <template v-else-if="row.status === 'pending'">
                     <button class="btn btn-outline danger-btn" @click="doReject(row)">驳回</button>
                     <button class="btn btn-outline success-btn" @click="doApprove(row)">通过</button>
                   </template>
@@ -285,9 +293,9 @@
       </div>
       <div class="form-group">
         <label class="form-label">关联项目</label>
-        <select class="form-select" v-model="createForm.projectName">
+        <select class="form-select" v-model="createForm.projectId">
           <option value="">请选择关联项目</option>
-          <option v-for="p in projectOptions" :key="p" :value="p">{{ p }}</option>
+          <option v-for="p in projects" :key="p.id" :value="p.id">{{ p.name }}</option>
         </select>
       </div>
       <div class="form-group">
@@ -300,11 +308,71 @@
       </div>
       <div class="payroll-tip">
         <i class="fas fa-circle-info"></i>
-        <span>发薪流程：① 开批发薪 → ② 添加人员 → ③ 设置薪资 → ④ 提交支付，提交后需管理员审批通过才会打款</span>
+        <span>发薪流程：① 新建草稿 → ② 添加人员 → ③ 设置薪资 → ④ 提交审核，提交后需管理员审批通过才会打款</span>
       </div>
       <template #footer>
         <button class="btn btn-secondary" @click="createVisible = false">取消</button>
         <button class="btn btn-primary" @click="submitCreate">确定</button>
+      </template>
+    </el-dialog>
+
+    <!-- 添加人员弹窗（草稿：三来源多选 + 手动兜底） -->
+    <el-dialog v-model="addMembersVisible" title="添加人员" width="640px" class="proto-dialog">
+      <div class="am-sub"><i class="fas fa-file-invoice-dollar"></i> 发薪单：<b>{{ draftRow?.title || '—' }}</b></div>
+      <div class="src-tabs">
+        <button type="button" v-for="(t, i) in MEMBER_SOURCE_TABS" :key="t"
+          class="src-tab" :class="{ active: memberTab === i }" @click="switchMemberSource(i)">{{ t }}</button>
+      </div>
+      <div class="am-toolbar">
+        <span class="am-count-label">{{ MEMBER_SOURCE_TABS[memberTab] }}（{{ currentSourceList().length }}）</span>
+        <button type="button" class="am-link" @click="toggleAllSource">{{ allSourceSelected ? '取消全选' : '全选' }}</button>
+      </div>
+      <div class="am-list" v-loading="memberLoading">
+        <label v-for="p in currentSourceList()" :key="personKey(p)" class="am-item">
+          <input type="checkbox" :checked="isSelected(p)" @change="toggleMember(p)">
+          <span class="am-name">{{ p.name || '—' }}</span>
+          <span class="mono am-phone">{{ p.phone || '—' }}</span>
+          <span v-if="p.job" class="wb-tag am-job">{{ p.job }}</span>
+          <span class="am-tag">{{ ['项目成员', '候选人', '企业成员'][memberTab] }}</span>
+        </label>
+        <div v-if="!memberLoading && !currentSourceList().length" class="am-empty">{{ sourceEmptyHint }}</div>
+      </div>
+      <div class="am-total">已选 <span class="am-sel-num">{{ selectedCount() }}</span> 人（跨来源累计，自动去重）</div>
+      <div class="am-manual">
+        <div class="am-manual-title"><i class="fas fa-plus-circle"></i> 手动添加人员（来源缺失时兜底）</div>
+        <div class="am-manual-row">
+          <input class="form-input" placeholder="姓名" v-model="manualForm.name">
+          <input class="form-input" placeholder="手机号" v-model="manualForm.phone">
+          <input class="form-input" placeholder="岗位" v-model="manualForm.job">
+          <button class="btn btn-outline btn-sm" @click="addManual"><i class="fas fa-user-plus"></i> 加入</button>
+        </div>
+      </div>
+      <template #footer>
+        <button class="btn btn-secondary" @click="addMembersVisible = false">取消</button>
+        <button class="btn btn-primary" @click="confirmAddMembers">确定</button>
+      </template>
+    </el-dialog>
+
+    <!-- 设置薪资弹窗（草稿：日薪(元)×出勤天数=应发） -->
+    <el-dialog v-model="setSalaryVisible" title="设置薪资" width="640px" class="proto-dialog">
+      <div class="am-sub"><i class="fas fa-coins"></i> 发薪单：<b>{{ draftRow?.title || '—' }}</b> · 共 {{ salaryList.length }} 人</div>
+      <div class="sal-head">
+        <span>姓名</span><span>手机号</span><span>日薪（元）</span><span>出勤（天）</span><span style="text-align:right;">应发（元）</span>
+      </div>
+      <div class="sal-list">
+        <div class="sal-row" v-for="(s, i) in salaryList" :key="i">
+          <span class="sal-name">{{ s.name || '—' }}</span>
+          <span class="mono sal-phone">{{ s.phone || '—' }}</span>
+          <input class="form-input sal-num" type="number" min="0" step="0.01" placeholder="0.00" v-model="s.dailyYuan">
+          <input class="form-input sal-num" type="number" min="0" step="1" placeholder="0" v-model="s.attendDays">
+          <span class="sal-amount amount-primary">¥{{ fmtYuan(rowSalaryFen(s) / 100) }}</span>
+        </div>
+        <div v-if="!salaryList.length" class="am-empty">暂无人员，请先点击「添加人员」</div>
+      </div>
+      <div class="sal-total">合计应发：<span class="amount-primary">{{ fmtMoney(salaryTotalFen()) }}</span></div>
+      <template #footer>
+        <button class="btn btn-secondary" @click="setSalaryVisible = false">取消</button>
+        <button class="btn btn-primary" @click="confirmSetSalary">确定</button>
       </template>
     </el-dialog>
 
@@ -448,8 +516,13 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { listPayrolls, createPayroll, approvePayroll, rejectPayroll } from '@/api/payroll'
-import { listBossOptions } from '@/api/recruit'
+import {
+  listPayrolls, createPayroll, approvePayroll, rejectPayroll, getPayroll,
+  updatePayrollMembers, updatePayrollSalary, submitPayroll,
+} from '@/api/payroll'
+import { listBossOptions, listCandidates, mapCandidate, unwrapPage } from '@/api/recruit'
+import { listProjects, listProjectMembers } from '@/api/project'
+import { listMembers } from '@/api/enterpriseMember'
 import {
   listTransfers, getTransferDetails, exportTransfers as apiExportTransfers,
   listMerchantAccounts, createMerchantAccount, updateMerchantAccount, deleteMerchantAccount,
@@ -496,8 +569,8 @@ const pick = (obj, keys, fallback) => {
   return fallback
 }
 
-const statusText = (s) => ({ pending: '待审批', approved: '审批通过', rejected: '已驳回', withdrawn: '已撤回' }[s] || s || '—')
-const statusClass = (s) => ({ pending: 'warning', approved: 'success', rejected: 'danger', withdrawn: 'danger' }[s] || 'default')
+const statusText = (s) => ({ draft: '待提交审核', pending: '待审批', approved: '审批通过', rejected: '已驳回', withdrawn: '已撤回' }[s] || s || '—')
+const statusClass = (s) => ({ draft: 'info', pending: 'warning', approved: 'success', rejected: 'danger', withdrawn: 'danger' }[s] || 'default')
 
 const formatTime = (t) => {
   if (!t) return '—'
@@ -516,6 +589,7 @@ const normalize = (o) => ({
   orderNo: pick(o, ['orderNo', 'order_no', 'no']),
   company: o.company || '—',
   title: o.title || '—',
+  projectId: pick(o, ['projectId', 'project_id']),
   projectName: pick(o, ['projectName', 'project_name'], '—'),
   type: pick(o, ['type'], 'wage'),
   amount: o.amount ?? 0,
@@ -606,26 +680,28 @@ const goDetail = (row) => router.push(`/admin/payroll-detail/${row.id}`)
 
 // ===== 新建发薪 =====
 const createVisible = ref(false)
-const createForm = reactive({ title: '', projectName: '', type: 'wage' })
+const createForm = reactive({ title: '', projectId: '', projectName: '', type: 'wage' })
 
 const openCreate = () => {
-  createForm.title = ''; createForm.projectName = ''; createForm.type = 'wage'
+  createForm.title = ''; createForm.projectId = ''; createForm.projectName = ''; createForm.type = 'wage'
   createVisible.value = true
 }
 const submitCreate = async () => {
   if (!createForm.title.trim()) { ElMessage.warning('请输入转账标题'); return }
-  if (!createForm.projectName) { ElMessage.warning('请选择关联项目'); return }
+  if (!createForm.projectId) { ElMessage.warning('请选择关联项目'); return }
+  const project = projects.value.find((p) => p.id === Number(createForm.projectId)) || null
   try {
     await createPayroll({
       order: {
         title: createForm.title.trim(),
         company: null,
-        projectName: createForm.projectName,
+        projectId: project ? project.id : null,
+        projectName: project ? project.name : null,
         type: createForm.type,
       },
       details: [],
     })
-    ElMessage.success('发薪单创建成功，请添加人员后提交审批')
+    ElMessage.success('发薪单已创建（待提交审核），请添加人员并设置薪资后提交审批')
     createVisible.value = false
     handleSearch(); loadTabCounts()
   } catch (err) {
@@ -641,6 +717,177 @@ const doApprove = async (row) => {
 const doReject = async (row) => {
   try { await rejectPayroll(row.id); ElMessage.success('已驳回'); loadData() }
   catch (err) { ElMessage.error('驳回失败') }
+}
+const doSubmit = async (row) => {
+  try { await submitPayroll(row.id); ElMessage.success('已提交审核'); loadData(); loadTabCounts() }
+  catch (err) { console.warn('[ProjectSalary] 提交失败:', err.message); ElMessage.error(err.message || '提交失败，请先添加人员并设置薪资') }
+}
+
+// ===== 草稿：项目 / 人员来源 =====
+// 可选项目（含 projectId / enterpriseId），供创建弹窗与添加人员弹窗取数使用。
+const projects = ref([])
+const loadProjects = async () => {
+  try {
+    const res = await listProjects({ size: 200 })
+    const arr = Array.isArray(res?.data) ? res.data : (res?.data?.content || res?.data?.list || [])
+    projects.value = arr.map((p) => ({ id: p.id, name: p.name, enterpriseId: p.enterpriseId ?? null }))
+  } catch (err) {
+    console.warn('[ProjectSalary] 项目列表加载失败:', err.message)
+    projects.value = []
+  }
+}
+// 草稿进度：人员/薪资是否已完成（列表金额、人数由后端 replaceMembers/setSalaries 维护）
+const draftDone = (row) => (row.peopleCount > 0 ? 1 : 0) + (row.amount > 0 ? 1 : 0)
+// 依据薪单行的 projectId / projectName 反查项目（拿 projectId + enterpriseId 取三类来源）。
+const resolveProject = (row) => {
+  if (!row) return null
+  return projects.value.find((p) => (row.projectId != null && p.id === row.projectId))
+    || projects.value.find((p) => p.name === row.projectName)
+    || null
+}
+const personKey = (p) => (p.userId != null ? 'u:' + p.userId : (p.phone ? 'p:' + String(p.phone).trim() : 'n:' + (p.name || '')))
+
+// ===== 添加人员弹窗（三来源多选，跨来源去重） =====
+const MEMBER_SOURCE_TABS = ['关联项目成员', '候选人列表', '企业成员列表']
+const addMembersVisible = ref(false)
+const draftRow = ref(null)
+const memberTab = ref(0)
+const memberLoading = ref(false)
+const projectMembers = ref([])
+const candidates = ref([])
+const enterpriseMembers = ref([])
+const memberSelMap = reactive({})          // personKey -> { userId, name, phone, job }
+const manualForm = reactive({ name: '', phone: '', job: '' })
+
+const currentSourceList = () => [projectMembers, candidates, enterpriseMembers][memberTab.value].value
+const isSelected = (p) => !!memberSelMap[personKey(p)]
+const selectedCount = () => Object.keys(memberSelMap).length
+const allSourceSelected = computed(() => {
+  const list = currentSourceList()
+  return list.length > 0 && list.every((p) => isSelected(p))
+})
+const sourceEmptyHint = computed(() => {
+  if (memberTab.value === 0) return '未关联到项目成员（草稿无 projectId 或该项目暂无成员），可在下方手动添加'
+  if (memberTab.value === 2) return '未能定位所属企业（草稿缺 projectId/enterpriseId），可在下方手动添加企业成员'
+  return '暂无数据'
+})
+const switchMemberSource = (i) => { memberTab.value = i }
+const toggleMember = (p) => {
+  const k = personKey(p)
+  if (memberSelMap[k]) { delete memberSelMap[k]; return }
+  memberSelMap[k] = { userId: p.userId ?? null, name: p.name || '', phone: p.phone || '', job: p.job || '' }
+}
+const toggleAllSource = () => {
+  const list = currentSourceList()
+  const clear = allSourceSelected.value
+  list.forEach((p) => {
+    const k = personKey(p)
+    if (clear) delete memberSelMap[k]
+    else memberSelMap[k] = { userId: p.userId ?? null, name: p.name || '', phone: p.phone || '', job: p.job || '' }
+  })
+}
+const addManual = () => {
+  const name = manualForm.name.trim()
+  const phone = manualForm.phone.trim()
+  if (!name || !phone) { ElMessage.warning('请填写姓名与手机号'); return }
+  const p = { userId: null, name, phone, job: manualForm.job.trim() }
+  memberSelMap[personKey(p)] = p
+  manualForm.name = ''; manualForm.phone = ''; manualForm.job = ''
+}
+
+const openAddMembers = async (row) => {
+  draftRow.value = row
+  memberTab.value = 0
+  Object.keys(memberSelMap).forEach((k) => delete memberSelMap[k])
+  projectMembers.value = []; candidates.value = []; enterpriseMembers.value = []
+  addMembersVisible.value = true
+  memberLoading.value = true
+  try {
+    // 1) 草稿当前人员 → 预勾选（保持既有选择，跨来源去重）
+    const detail = await getPayroll(row.id)
+    const existing = detail?.data?.details || detail?.details || []
+    existing.forEach((m) => {
+      const p = { userId: m.userId ?? null, name: m.name || '', phone: m.phone || '', job: m.job || '' }
+      memberSelMap[personKey(p)] = p
+    })
+    // 2) 三个来源列表（关联项目成员 / 候选人 / 企业成员）
+    const project = resolveProject(row)
+    if (project && project.id) {
+      const pmRes = await listProjectMembers(project.id).catch((e) => { console.warn('[ProjectSalary] 项目成员加载失败:', e.message); return null })
+      const pmArr = Array.isArray(pmRes?.data) ? pmRes.data : (pmRes?.data?.content || [])
+      projectMembers.value = pmArr.map((m) => ({ userId: m.userId ?? null, name: m.name, phone: m.phone, job: m.job }))
+    }
+    const cdRes = await listCandidates({ size: 200 }).catch((e) => { console.warn('[ProjectSalary] 候选人加载失败:', e.message); return null })
+    if (cdRes) {
+      const { list } = unwrapPage(cdRes)
+      candidates.value = list.map((row2) => { const c = mapCandidate(row2); return { userId: c.userId ?? null, name: c.name, phone: c.phone, job: c.job } })
+    }
+    // TODO(企业成员)：/admin/enterprises/{id}/members 需 enterpriseId，草稿仅有 project 时可反查；
+    // 若草稿既无 projectId 又无可反查企业，则该来源为空，由「手动添加」兜底（见 sourceEmptyHint）。
+    if (project && project.enterpriseId) {
+      const emRes = await listMembers({ enterpriseId: project.enterpriseId, size: 200 }).catch((e) => { console.warn('[ProjectSalary] 企业成员加载失败:', e.message); return null })
+      if (emRes) enterpriseMembers.value = emRes.rows.map((m) => ({ userId: m.userId ?? null, name: m.name, phone: m.phone, job: m.position || m.job || '' }))
+    }
+  } finally {
+    memberLoading.value = false
+  }
+}
+
+const confirmAddMembers = async () => {
+  const members = Object.values(memberSelMap).filter((m) => m.name || m.phone)
+  if (!members.length) { ElMessage.warning('请至少选择一人'); return }
+  try {
+    await updatePayrollMembers(draftRow.value.id, { members })
+    ElMessage.success('已添加 ' + members.length + ' 名人员')
+    addMembersVisible.value = false
+    loadData(); loadTabCounts()
+  } catch (err) {
+    console.warn('[ProjectSalary] 添加人员失败:', err.message)
+    ElMessage.error(err.message || '保存人员失败，请确认草稿状态')
+  }
+}
+
+// ===== 设置薪资弹窗（日薪(元)×出勤=应发，提交转「分」） =====
+const setSalaryVisible = ref(false)
+const salaryList = ref([])   // { userId, name, phone, job, dailyYuan, attendDays }
+const rowSalaryFen = (s) => Math.round((Number(s.dailyYuan) || 0) * 100) * (Number(s.attendDays) || 0)
+const salaryTotalFen = () => salaryList.value.reduce((sum, s) => sum + rowSalaryFen(s), 0)
+
+const openSetSalary = async (row) => {
+  draftRow.value = row
+  salaryList.value = []
+  setSalaryVisible.value = true
+  try {
+    const res = await getPayroll(row.id)
+    const details = res?.data?.details || res?.details || []
+    salaryList.value = details.map((d) => ({
+      userId: d.userId ?? null, name: d.name || '', phone: d.phone || '', job: d.job || '',
+      dailyYuan: d.dailyWage ? (Number(d.dailyWage) / 100) : '',
+      attendDays: d.attendDays ?? '',
+    }))
+    if (!salaryList.value.length) ElMessage.warning('请先添加人员')
+  } catch (err) {
+    console.warn('[ProjectSalary] 薪资明细加载失败:', err.message)
+    ElMessage.error('人员明细加载失败')
+  }
+}
+
+const confirmSetSalary = async () => {
+  if (!salaryList.value.length) { ElMessage.warning('请先添加人员'); return }
+  const salaries = salaryList.value.map((s) => ({
+    userId: s.userId, phone: s.phone,
+    dailyWage: Math.round((Number(s.dailyYuan) || 0) * 100),
+    attendDays: Number(s.attendDays) || 0,
+  }))
+  try {
+    await updatePayrollSalary(draftRow.value.id, { salaries })
+    ElMessage.success('薪资已设置，合计 ' + fmtMoney(salaryTotalFen()))
+    setSalaryVisible.value = false
+    loadData(); loadTabCounts()
+  } catch (err) {
+    console.warn('[ProjectSalary] 设置薪资失败:', err.message)
+    ElMessage.error(err.message || '保存薪资失败，请确认草稿状态')
+  }
 }
 
 /** 把任意字符串包上引号（CSV 安全）。 */
@@ -911,7 +1158,7 @@ const rcPaySuccess = () => {
   loadAccounts()
 }
 
-onMounted(() => { loadData(); loadTabCounts() })
+onMounted(() => { loadData(); loadTabCounts(); loadProjects() })
 </script>
 
 <style scoped>
@@ -989,6 +1236,45 @@ onMounted(() => { loadData(); loadTabCounts() })
 .type-option.active { border-color: var(--primary); background: var(--primary-light); color: var(--primary); font-weight: 500; }
 .payroll-tip { background: var(--primary-light); border-radius: 8px; padding: 12px 14px; font-size: 12px; color: var(--primary); display: flex; gap: 8px; align-items: flex-start; }
 .payroll-tip i { margin-top: 2px; }
+
+/* --- 草稿进度 --- */
+.draft-progress { font-size: 11px; color: var(--text-muted); margin-top: 4px; line-height: 1.3; }
+
+/* --- 添加人员 / 设置薪资 弹窗 --- */
+.am-sub { font-size: 13px; color: var(--text-secondary); margin-bottom: 14px; }
+.am-sub b { color: var(--text-primary); }
+.am-sub i { color: var(--primary); margin-right: 4px; }
+.src-tabs { display: flex; gap: 6px; margin-bottom: 12px; }
+.src-tab { flex: 1; padding: 8px 0; font-size: 12.5px; border-radius: 8px; cursor: pointer; border: 1px solid var(--border); background: #fff; color: var(--text-secondary); transition: all 0.15s; }
+.src-tab.active { border-color: var(--primary); background: var(--primary); color: #fff; font-weight: 600; }
+.am-toolbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.am-count-label { font-size: 12px; font-weight: 600; color: #374151; }
+.am-link { border: none; background: none; padding: 0; color: var(--primary); font-size: 12px; font-weight: 600; cursor: pointer; }
+.am-list { max-height: 260px; overflow-y: auto; min-height: 60px; }
+.am-item { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border: 1px solid #eee; border-radius: 8px; margin-bottom: 6px; font-size: 13px; cursor: pointer; }
+.am-item input[type="checkbox"] { accent-color: var(--primary); width: 15px; height: 15px; flex-shrink: 0; }
+.am-name { color: var(--text-primary); }
+.am-phone { color: var(--text-muted); }
+.am-job { background: #FFF0E8; color: var(--primary); margin-left: auto; }
+.am-tag { font-size: 11px; color: #9ca3af; }
+.am-item:has(.am-job) .am-tag { margin-left: 8px; }
+.am-empty { text-align: center; padding: 24px 12px; font-size: 12px; color: #9ca3af; }
+.am-total { font-size: 12px; color: #9ca3af; margin: 8px 0 4px; }
+.am-sel-num { color: var(--primary); font-weight: 600; }
+.am-manual { margin-top: 14px; border-top: 1px dashed var(--border); padding-top: 12px; }
+.am-manual-title { font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-bottom: 8px; }
+.am-manual-title i { color: var(--primary); margin-right: 4px; }
+.am-manual-row { display: flex; gap: 8px; align-items: center; }
+.am-manual-row .form-input { flex: 1; }
+.sal-head, .sal-row { display: grid; grid-template-columns: 1fr 1.3fr 1fr 0.8fr 1.1fr; gap: 10px; align-items: center; }
+.sal-head { font-size: 12px; color: var(--text-muted); padding: 6px 4px; border-bottom: 1px solid #F3F4F6; }
+.sal-list { max-height: 300px; overflow-y: auto; }
+.sal-row { padding: 8px 4px; border-bottom: 1px solid #F7F7F7; font-size: 13px; }
+.sal-name { color: var(--text-primary); }
+.sal-phone { color: var(--text-muted); }
+.sal-num { padding: 6px 8px; font-size: 13px; }
+.sal-amount { text-align: right; }
+.sal-total { margin-top: 12px; text-align: right; font-size: 14px; color: var(--text-secondary); }
 
 /* --- 弹窗通用表单 --- */
 :deep(.proto-dialog .el-dialog__header) { padding: 20px 24px; border-bottom: 1px solid var(--border); margin-right: 0; }

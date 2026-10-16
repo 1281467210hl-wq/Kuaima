@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -21,6 +22,7 @@ import com.kuaima.app.admin.entity.AdminUser;
 import com.kuaima.app.admin.repository.AdminUserRepository;
 import com.kuaima.app.common.Result;
 import com.kuaima.app.domain.boss.repository.BossMerchantAccountRepository;
+import com.kuaima.app.domain.payroll.entity.PayrollDetail;
 import com.kuaima.app.domain.payroll.entity.PayrollOrder;
 import com.kuaima.app.domain.payroll.model.PayrollCreateRequest;
 import com.kuaima.app.domain.payroll.service.PayrollService;
@@ -74,12 +76,16 @@ public class PayrollController {
     }
 
     @PostMapping
-    @Operation(summary = "创建发薪单（自动汇总金额与人数）")
+    @Operation(summary = "创建发薪单（无明细→待提交审核草稿；带明细→直接待审批并自动汇总）")
     public Result<PayrollOrder> create(@RequestBody PayrollCreateRequest request, Authentication authentication) {
         Long creatorId = currentUserId(authentication);
+        boolean hasDetails = request.getDetails() != null && !request.getDetails().isEmpty();
+        if (!hasDetails) {
+            // 1016 原型：刚创建的发薪单为「待提交审核」草稿，随后添加人员、设置薪资再提交
+            return Result.success(payrollService.createDraft(request.getOrder(), creatorId, operator(authentication)));
+        }
         // 带明细的薪单审批时必须能定位到归属老板账户，否则会变成无法付款的孤儿单，故在源头拦下
-        boolean needsPayment = request.getDetails() != null && !request.getDetails().isEmpty();
-        if (needsPayment && (creatorId == null || !accountRepository.existsByBossId(creatorId))) {
+        if (creatorId == null || !accountRepository.existsByBossId(creatorId)) {
             throw new IllegalArgumentException(
                     "后台建单需指定归属老板账号：当前账号下没有可用企业账户，请改由老板端创建发薪单");
         }
@@ -87,10 +93,26 @@ public class PayrollController {
                 creatorId, operator(authentication)));
     }
 
+    @PutMapping("/{id}/members")
+    @Operation(summary = "草稿-添加/替换发薪人员", description = "body：{members:[{userId,name,phone,job,dailyWage?,attendDays?}]}")
+    public Result<PayrollOrder> setMembers(@PathVariable Long id,
+                                           @RequestBody Map<String, List<PayrollDetail>> body) {
+        List<PayrollDetail> members = body == null ? List.of() : body.getOrDefault("members", List.of());
+        return Result.success(payrollService.replaceMembers(id, members));
+    }
+
+    @PutMapping("/{id}/salary")
+    @Operation(summary = "草稿-设置薪资", description = "body：{salaries:[{userId,phone,dailyWage(分),attendDays}]}")
+    public Result<PayrollOrder> setSalary(@PathVariable Long id,
+                                          @RequestBody Map<String, List<PayrollDetail>> body) {
+        List<PayrollDetail> salaries = body == null ? List.of() : body.getOrDefault("salaries", List.of());
+        return Result.success(payrollService.setSalaries(id, salaries));
+    }
+
     @PostMapping("/{id}/submit")
-    @Operation(summary = "提交发薪单（进入待审批）")
+    @Operation(summary = "提交发薪单（草稿→待审批，校验人员与薪资）")
     public Result<PayrollOrder> submit(@PathVariable Long id) {
-        return Result.success(payrollService.submit(id));
+        return Result.success(payrollService.submitDraft(id));
     }
 
     @PostMapping("/{id}/approve")

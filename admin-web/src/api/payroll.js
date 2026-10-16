@@ -17,12 +17,24 @@ export function getPayroll(id) {
   return request.get(`/admin/payrolls/${id}`)
 }
 
-// 新建发薪单
+// 新建发薪单（无明细 → 待提交审核草稿；带明细 → 直接待审批）
 export function createPayroll(payload) {
   return request.post('/admin/payrolls', payload)
 }
 
-// 提交发薪单（进入待审批）
+// 草稿-添加/替换发薪人员：PUT /admin/payrolls/{id}/members
+// body { members: [{ userId, name, phone, job, dailyWage?, attendDays? }] }
+export function updatePayrollMembers(id, payload) {
+  return request.put(`/admin/payrolls/${id}/members`, payload)
+}
+
+// 草稿-设置薪资：PUT /admin/payrolls/{id}/salary
+// body { salaries: [{ userId, phone, dailyWage(分), attendDays }] }
+export function updatePayrollSalary(id, payload) {
+  return request.put(`/admin/payrolls/${id}/salary`, payload)
+}
+
+// 提交发薪单（草稿→待审批）
 export function submitPayroll(id) {
   return request.post(`/admin/payrolls/${id}/submit`)
 }

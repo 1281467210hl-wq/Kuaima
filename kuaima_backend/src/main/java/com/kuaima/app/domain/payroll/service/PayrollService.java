@@ -134,6 +134,145 @@ public class PayrollService {
         return orderRepository.save(order);
     }
 
+    /* ==================== 草稿流程（1016 原型：draft→添加人员→设置薪资→提交审核） ==================== */
+
+    /** 创建草稿发薪单（无明细，状态 draft）。 */
+    @Transactional(rollbackFor = Exception.class)
+    public PayrollOrder createDraft(PayrollOrder order, Long creatorId, String creator) {
+        order.setStatus(PayrollConstants.ORDER_DRAFT);
+        order.setSubmitTime(null);
+        order.setAmount(0L);
+        order.setPeopleCount(0);
+        if (order.getOrderNo() == null) {
+            order.setOrderNo("TR" + System.currentTimeMillis());
+        }
+        if (creator != null) {
+            order.setCreator(creator);
+        }
+        if (creatorId != null) {
+            order.setCreatorId(creatorId);
+        }
+        return orderRepository.save(order);
+    }
+
+    /** 草稿态：整体替换人员明细；按 userId/手机号 保留此前已设置的日薪与出勤天数。 */
+    @Transactional(rollbackFor = Exception.class)
+    public PayrollOrder replaceMembers(Long id, List<PayrollDetail> people) {
+        PayrollOrder order = requireDraft(id);
+        List<PayrollDetail> existing = detailRepository.findByPayrollId(id);
+        Map<String, PayrollDetail> oldByKey = new java.util.HashMap<>();
+        for (PayrollDetail d : existing) {
+            oldByKey.put(personKey(d.getUserId(), d.getPhone()), d);
+        }
+        detailRepository.deleteAll(existing);
+        List<PayrollDetail> rebuilt = new ArrayList<>();
+        if (people != null) {
+            for (PayrollDetail p : people) {
+                PayrollDetail d = oldByKey.get(personKey(p.getUserId(), p.getPhone()));
+                if (d == null) {
+                    d = new PayrollDetail();
+                }
+                d.setPayrollId(order.getId());
+                d.setUserId(p.getUserId());
+                d.setName(p.getName());
+                d.setPhone(p.getPhone());
+                d.setJob(p.getJob());
+                // 保留已设置薪资；新人员若带默认日薪则采用
+                if (p.getDailyWage() != null && p.getDailyWage() > 0 && (d.getDailyWage() == null || d.getDailyWage() == 0L)) {
+                    d.setDailyWage(p.getDailyWage());
+                }
+                if (p.getAttendDays() != null && p.getAttendDays() > 0 && (d.getAttendDays() == null || d.getAttendDays() == 0)) {
+                    d.setAttendDays(p.getAttendDays());
+                }
+                d.setStatus(PayrollConstants.DETAIL_PENDING);
+                rebuilt.add(d);
+            }
+        }
+        recomputeAmounts(rebuilt);
+        detailRepository.saveAll(rebuilt);
+        return recomputeOrder(order, rebuilt);
+    }
+
+    /** 草稿态：设置每人薪资（dailyWage 分 / attendDays），重算金额。 */
+    @Transactional(rollbackFor = Exception.class)
+    public PayrollOrder setSalaries(Long id, List<PayrollDetail> salaries) {
+        PayrollOrder order = requireDraft(id);
+        List<PayrollDetail> existing = detailRepository.findByPayrollId(id);
+        Map<String, PayrollDetail> byKey = new java.util.HashMap<>();
+        for (PayrollDetail d : existing) {
+            byKey.put(personKey(d.getUserId(), d.getPhone()), d);
+        }
+        if (salaries != null) {
+            for (PayrollDetail s : salaries) {
+                PayrollDetail d = byKey.get(personKey(s.getUserId(), s.getPhone()));
+                if (d == null) {
+                    continue;
+                }
+                if (s.getDailyWage() != null) {
+                    d.setDailyWage(s.getDailyWage());
+                }
+                if (s.getAttendDays() != null) {
+                    d.setAttendDays(s.getAttendDays());
+                }
+            }
+        }
+        recomputeAmounts(existing);
+        detailRepository.saveAll(existing);
+        return recomputeOrder(order, existing);
+    }
+
+    /** 提交草稿 → 待审批；校验有人员且金额>0。 */
+    @Transactional(rollbackFor = Exception.class)
+    public PayrollOrder submitDraft(Long id) {
+        PayrollOrder order = requireDraft(id);
+        List<PayrollDetail> details = detailRepository.findByPayrollId(id);
+        if (details.isEmpty()) {
+            throw new IllegalArgumentException("请先添加发薪人员");
+        }
+        recomputeAmounts(details);
+        long sum = details.stream().mapToLong(d -> d.getAmount() == null ? 0L : d.getAmount()).sum();
+        if (sum <= 0) {
+            throw new IllegalArgumentException("请先设置薪资");
+        }
+        detailRepository.saveAll(details);
+        order.setStatus(PayrollConstants.ORDER_PENDING);
+        order.setSubmitTime(new java.util.Date());
+        order.setAmount(sum);
+        order.setPeopleCount(details.size());
+        return orderRepository.save(order);
+    }
+
+    private PayrollOrder requireDraft(Long id) {
+        PayrollOrder order = getOrThrow(id);
+        if (!PayrollConstants.ORDER_DRAFT.equals(order.getStatus())) {
+            throw new IllegalArgumentException("只有待提交审核（草稿）的发薪单可编辑人员与薪资");
+        }
+        return order;
+    }
+
+    private String personKey(Long userId, String phone) {
+        if (userId != null) {
+            return "u:" + userId;
+        }
+        return "p:" + (phone == null ? "" : phone.trim());
+    }
+
+    /** 应发金额 = 日薪（分）× 出勤天数。 */
+    private void recomputeAmounts(List<PayrollDetail> details) {
+        for (PayrollDetail d : details) {
+            long dailyWage = d.getDailyWage() == null ? 0L : d.getDailyWage();
+            int attendDays = d.getAttendDays() == null ? 0 : d.getAttendDays();
+            d.setAmount(dailyWage * attendDays);
+        }
+    }
+
+    private PayrollOrder recomputeOrder(PayrollOrder order, List<PayrollDetail> details) {
+        long sum = details.stream().mapToLong(d -> d.getAmount() == null ? 0L : d.getAmount()).sum();
+        order.setAmount(sum);
+        order.setPeopleCount(details.size());
+        return orderRepository.save(order);
+    }
+
     /**
      * 审批通过发薪单：自动从老板账户余额扣款，并逐人打入零工钱包。
      *

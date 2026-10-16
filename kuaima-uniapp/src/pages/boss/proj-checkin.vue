@@ -2,7 +2,7 @@
   <view class="container">
     <BossPageHeader title="签到记录" />
     <scroll-view scroll-y class="body">
-      <view class="date-line">{{ project.name || "项目" }} · {{ monthLabel }}</view>
+      <view class="date-line">{{ project.companyName || project.name || "项目" }} · {{ monthLabel }}</view>
 
       <!-- 日期筛选 -->
       <view class="date-picker">
@@ -58,8 +58,8 @@
               </view>
               <view v-if="p.status === 'absent'" class="ci-time absent-text">今日未签到，标记为缺卡</view>
               <view v-else class="ci-time">
-                <text class="time-cell">↓ 签到 {{ p.signIn || "—" }}</text>
-                <text class="time-cell">↑ 签退 {{ p.signOut || "—" }}</text>
+                <text class="time-cell">↓ {{ p.signIn || "—" }}</text>
+                <text class="time-cell">↑ {{ p.signOut || "—" }}</text>
               </view>
             </view>
             <view class="ci-status" :class="rightClass(p)">{{ rightText(p) }}</view>
@@ -261,7 +261,7 @@ export default {
   margin-bottom: 10px;
   box-shadow: 0 1px 6px rgba(0, 0, 0, 0.04);
 }
-.day-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.day-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
 .day-date { font-size: 15px; font-weight: 600; color: #333; display: flex; align-items: center; gap: 6px; }
 .day-week { font-size: 11px; color: #999; font-weight: 400; }
 .day-badges { display: flex; gap: 6px; }

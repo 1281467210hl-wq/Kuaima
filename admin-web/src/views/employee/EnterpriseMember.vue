@@ -284,6 +284,9 @@
         <div class="detail-section-body" :class="{ collapsed: detailCollapsed.base }">
           <div class="detail-info-grid">
             <div class="detail-info-item"><span class="detail-info-label">手机号</span><span class="detail-info-value">{{ detail.phone }}</span></div>
+            <div class="detail-info-item"><span class="detail-info-label">性别</span><span class="detail-info-value">{{ genderText(detail.gender) }}</span></div>
+            <div class="detail-info-item"><span class="detail-info-label">身份证号</span><span class="detail-info-value">{{ detail.idCard || '—' }}</span></div>
+            <div class="detail-info-item"><span class="detail-info-label">年龄</span><span class="detail-info-value">{{ detail.age != null && detail.age !== '' ? detail.age : '—' }}</span></div>
             <div class="detail-info-item"><span class="detail-info-label">加入时间</span><span class="detail-info-value">{{ detail.joinTime }}</span></div>
           </div>
         </div>
@@ -366,6 +369,21 @@
       <div class="form-group">
         <label class="form-label">手机号</label>
         <input class="form-input" type="text" v-model="editForm.phone">
+      </div>
+      <div class="form-group">
+        <label class="form-label">性别</label>
+        <select class="form-select" v-model="editForm.gender">
+          <option value="male">男</option>
+          <option value="female">女</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">身份证号</label>
+        <input class="form-input" type="text" maxlength="18" placeholder="请输入18位身份证号" v-model="editForm.idCard">
+      </div>
+      <div class="form-group">
+        <label class="form-label">年龄</label>
+        <input class="form-input" type="number" min="16" max="70" placeholder="请输入年龄" v-model="editForm.age">
       </div>
       <div class="form-group">
         <label class="form-label">所属公司</label>
@@ -613,6 +631,8 @@ const ROLE_NAME_MAP = { super: '超级管理员', admin: '管理员', member: '�
 const roleTagCls = (r) => (r === 'super' ? 'super' : r === 'admin' ? 'admin' : 'staff')
 const applyStatusText = (s) => ({ pending: '待审批', approved: '已同意', rejected: '已拒绝' }[s] || s || '—')
 const applyStatusClass = (s) => ({ pending: 'warning', approved: 'success', rejected: 'danger' }[s] || 'default')
+// 后端 gender 为 male/female，UI 统一展示男/女；无值回退 '—'（已是中文则原样返回）。
+const genderText = (g) => (g === 'male' ? '男' : g === 'female' ? '女' : (g && g !== '—' ? g : '—'))
 
 const toast = (msg) => ElMessage.success(msg)
 
@@ -812,7 +832,7 @@ const doRemoveMember = async () => {
 
 /* ===================== 编辑成员 ===================== */
 const editVisible = ref(false)
-const editForm = reactive({ name: '', phone: '', dept: '', position: '', role: 'staff', status: 'active', wbPerms: [] })
+const editForm = reactive({ name: '', phone: '', gender: 'male', idCard: '', age: '', dept: '', position: '', role: 'staff', status: 'active', wbPerms: [] })
 const editingMemberId = ref(null)
 let editOriginalStatus = 'active'
 
@@ -821,6 +841,11 @@ const openEditMember = (row) => {
   editOriginalStatus = row.status
   editForm.name = row.name === '—' ? '' : row.name
   editForm.phone = row.phone === '—' ? '' : row.phone
+  // 性别缺省按男（对齐原型 eGender = m.gender || '男'）；身份证号回填脱敏串，
+  // 保存时仅提交完整 18 位值（脱敏串不覆盖后端）；年龄可编辑，身份证为完整值时后端会重算。
+  editForm.gender = row.gender === 'female' ? 'female' : 'male'
+  editForm.idCard = row.idCard === '—' ? '' : (row.idCard || '')
+  editForm.age = row.age != null ? row.age : ''
   editForm.dept = row.dept === '—' ? (currentEnterpriseName.value || '') : row.dept
   editForm.position = row.position === '—' ? '' : row.position
   editForm.role = row.role || 'staff'
@@ -836,11 +861,19 @@ const onToggleWb = (arr, name, checked) => {
 const saveEditMember = async () => {
   if (!editForm.name.trim()) { ElMessage.warning('请填写成员姓名'); return }
   if (!enterpriseId.value || editingMemberId.value == null) { ElMessage.warning('缺少成员上下文，请刷新后重试'); return }
-  // 姓名 / 手机号 / 所属公司来自账号维度，后端成员接口不提供改写入口，此处仅提交职位 + 角色 + 工作台权限
+  // 姓名 / 手机号 / 所属公司来自账号维度，后端成员接口不提供改写入口，此处仅提交职位 + 角色 + 性别/身份证/年龄 + 工作台权限
   try {
+    // 身份证号仅在为完整 18 位（数字+末位校验位 X/x）时提交，避免把脱敏串写回后端；
+    // 完整值后端会据此重算年龄，age 字段作为手动覆盖值一并提交。
+    const idCardVal = String(editForm.idCard || '').trim()
+    const fullIdCard = /^[0-9Xx]{18}$/.test(idCardVal) ? idCardVal : undefined
+    const ageVal = editForm.age === '' || editForm.age == null ? undefined : Number(editForm.age)
     await updateMemberRole(enterpriseId.value, editingMemberId.value, {
       role: editForm.role,
       title: editForm.position.trim(),
+      gender: editForm.gender,
+      idCard: fullIdCard,
+      age: Number.isFinite(ageVal) ? ageVal : undefined,
     })
     await updateMemberPermissions(enterpriseId.value, editingMemberId.value, editForm.wbPerms)
   } catch (err) {

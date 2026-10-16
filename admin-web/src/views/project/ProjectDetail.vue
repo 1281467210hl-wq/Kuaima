@@ -46,6 +46,9 @@
           <el-table-column type="index" label="序号" width="60" />
           <el-table-column prop="name" label="姓名" min-width="100" />
           <el-table-column prop="job" label="岗位" min-width="110" />
+          <el-table-column label="日薪" min-width="110">
+            <template #default="{ row }">{{ row.salary || '—' }}</template>
+          </el-table-column>
           <el-table-column prop="type" label="用工类型" min-width="100" />
           <el-table-column prop="joinTime" label="入职时间" min-width="160" />
           <el-table-column label="离职时间" min-width="160">

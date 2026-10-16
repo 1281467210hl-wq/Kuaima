@@ -2,7 +2,7 @@
   <view class="container">
     <BossPageHeader title="考勤打卡" />
     <scroll-view scroll-y class="body">
-      <view class="date-line">{{ project.name || "项目" }} · 今日 {{ today }}</view>
+      <view class="date-line">{{ project.companyName || project.name || "项目" }} · 今日 {{ today }}</view>
 
       <!-- 今日统计 -->
       <view class="stats">
@@ -45,7 +45,7 @@
             <text>{{ r.name }}</text>
             <text class="status-pill" :class="pillClass(r.status)">{{ ATTEND_STATUS_TEXT[r.status] || r.status }}</text>
           </view>
-          <view class="ck-time" :class="{ 'time-absent': r.status === 'absent' }">{{ timeText(r) }}</view>
+          <view class="ck-time">{{ timeText(r) }}</view>
         </view>
         <view class="ck-right" :class="rightClass(r.status)">{{ rightText(r) }}</view>
       </view>
@@ -182,10 +182,21 @@ export default {
   background: #fff;
   border-radius: 12px;
   padding: 14px 0;
-  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.04);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
   margin-bottom: 12px;
 }
-.stat { flex: 1; text-align: center; }
+.stat { flex: 1; text-align: center; position: relative; }
+/* 原型统计列间 0.5px 分隔线 */
+.stat:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  height: 22px;
+  width: 0.5px;
+  background: #f0f0f0;
+}
 .stat-value { font-size: 20px; font-weight: 700; color: #333; display: block; }
 .stat-value.orange { color: #ff6b35; }
 .stat-label { font-size: 11px; color: #999; margin-top: 3px; display: block; }
@@ -232,9 +243,8 @@ export default {
   font-weight: 600;
 }
 .ck-info { flex: 1; min-width: 0; }
-.ck-name { font-size: 15px; font-weight: 600; color: #333; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.ck-name { font-size: 15px; font-weight: 600; color: #333; display: flex; align-items: center; gap: 6px; }
 .ck-time { font-size: 12px; color: #999; margin-top: 4px; }
-.ck-time.time-absent { color: #dc2626; }
 .ck-right { text-align: right; font-size: 12px; color: #666; flex-shrink: 0; }
 .ck-right.late { color: #d97706; font-weight: 600; }
 .ck-right.absent { color: #dc2626; font-weight: 600; }

@@ -24,15 +24,15 @@
           <text class="pd-step-num">{{ position.hireCount || 0 }}</text>
           <text class="pd-step-label">招聘人数</text>
         </view>
-        <view class="pd-step" @click="goApplicants">
+        <view class="pd-step" @click="goCandidates()">
           <text class="pd-step-num hl">{{ position.applyCount || 0 }}</text>
           <text class="pd-step-label">已投递</text>
         </view>
-        <view class="pd-step" @click="goApplicants">
+        <view class="pd-step" @click="goCandidates('interview')">
           <text class="pd-step-num hl">{{ position.interviewCount || 0 }}</text>
           <text class="pd-step-label">面试中</text>
         </view>
-        <view class="pd-step" @click="goApplicants">
+        <view class="pd-step" @click="goCandidates('hired')">
           <text class="pd-step-num">{{ position.hiredCount || 0 }}</text>
           <text class="pd-step-label">已录用</text>
         </view>
@@ -42,7 +42,7 @@
       <view class="card" style="padding: 2px 16px 10px">
         <view class="block-title">
           <text class="block-ico">ℹ️</text>岗位信息
-          <text class="more-link" @click="goApplicants">查看申请 ›</text>
+          <text class="more-link" @click="goCandidates()">查看候选人列表 ›</text>
         </view>
         <view class="pd-line">
           <text class="pd-key">岗位类别</text>
@@ -89,8 +89,11 @@
       <view class="footer-btn outline" @click="goEdit">
         <text class="footer-btn-ico">✏️</text>编辑
       </view>
-      <view class="footer-btn primary" @click="shareJob">
-        <text class="footer-btn-ico">🔗</text>分享岗位
+      <view class="footer-btn outline warn" @click="togglePause">
+        <text class="footer-btn-ico">{{ position.status === "on" ? "⏸️" : "▶️" }}</text>{{ position.status === "on" ? "暂停" : "恢复" }}
+      </view>
+      <view class="footer-btn primary" @click="goCandidates()">
+        <text class="footer-btn-ico">👥</text>选择候选人
       </view>
     </view>
   </view>
@@ -98,7 +101,7 @@
 
 <script>
 import BossPageHeader from "@/components/BossPageHeader.vue";
-import { getPosition } from "@/api/position";
+import { getPosition, togglePositionStatus } from "@/api/position";
 
 export default {
   components: { BossPageHeader },
@@ -107,6 +110,7 @@ export default {
       positionId: "",
       position: {},
       safeBottom: 0,
+      toggling: false,
     };
   },
   onLoad(query) {
@@ -145,15 +149,35 @@ export default {
     goEdit() {
       uni.navigateTo({ url: `/pages/boss/position-form?mode=edit&id=${this.positionId}` });
     },
-    goApplicants() {
-      // 原型 boss-position-detail.html「查看申请」→ boss-applicants.html（按岗位过滤）
-      const job = encodeURIComponent(this.position?.name || "");
-      uni.navigateTo({
-        url: `/pages/boss/applicants?positionId=${this.positionId || ""}&job=${job}`,
-      });
+    goCandidates(tab) {
+      // 原型 boss-position-detail.html「查看候选人列表」/「选择候选人」→ 岗位候选人页（按本岗位过滤）
+      const params = [];
+      if (this.positionId) params.push(`positionId=${encodeURIComponent(this.positionId)}`);
+      if (tab) params.push(`tab=${encodeURIComponent(tab)}`);
+      const qs = params.length ? `?${params.join("&")}` : "";
+      uni.navigateTo({ url: `/pages/boss/candidates${qs}` });
     },
-    shareJob() {
-      uni.showToast({ title: "原型演示：分享岗位到微信/抖音/复制链接", icon: "none" });
+    async togglePause() {
+      if (this.toggling) return;
+      if (!this.positionId) {
+        uni.showToast({ title: "岗位信息加载中", icon: "none" });
+        return;
+      }
+      this.toggling = true;
+      try {
+        // 复用现有岗位状态接口（api/position.js togglePositionStatus），不新增后端调用
+        await togglePositionStatus(this.positionId);
+        await this.load();
+        uni.showToast({
+          title: this.position.status === "on" ? "岗位已恢复招聘" : "岗位已暂停招聘",
+          icon: "none",
+        });
+      } catch (e) {
+        console.warn("岗位状态切换失败", e);
+        uni.showToast({ title: "操作失败，请稍后重试", icon: "none" });
+      } finally {
+        this.toggling = false;
+      }
     },
   },
 };
@@ -338,6 +362,11 @@ export default {
   background: #fff;
   color: #333;
   border: 1px solid #e0e0e0;
+}
+.footer-btn.warn {
+  background: #fff8f0;
+  color: #e8910c;
+  border: 1px solid #f5c48c;
 }
 .footer-btn.primary {
   background: linear-gradient(135deg, #ff6b35, #ff8c5a);

@@ -42,6 +42,19 @@
           <input class="form-input" type="text" v-model="form.title" placeholder="请输入职位" />
         </view>
         <view class="form-item">
+          <text class="form-label">性别</text>
+          <picker class="form-picker" mode="selector" :range="genderOptions" :value="genderIndex" @change="onGenderPick">
+            <view class="picker-value">
+              <text class="picker-text" :class="{ placeholder: !form.gender }">{{ form.gender || "请选择性别" }}</text>
+              <text class="picker-arrow">›</text>
+            </view>
+          </picker>
+        </view>
+        <view class="form-item">
+          <text class="form-label">身份证号</text>
+          <input class="form-input" type="idcard" maxlength="18" v-model="form.idCard" placeholder="请输入18位身份证号" />
+        </view>
+        <view class="form-item">
           <text class="form-label">手机号</text>
           <text class="phone-prefix">+86</text>
           <input class="form-input" type="number" maxlength="11" v-model="form.phone" :placeholder="isEdit ? form.phone || '手机号' : '请输入11位手机号'" disabled />
@@ -89,7 +102,7 @@
 </template>
 
 <script>
-import { createInvite, getMemberDetail, updateMemberRole, getExitInfo } from "@/api/enterprise";
+import { getMemberDetail, updateMemberRole, getExitInfo } from "@/api/enterprise";
 import { request } from "@/api/http";
 
 export default {
@@ -104,14 +117,20 @@ export default {
       certified: false,
       countdown: 0,
       timer: null,
-      form: { name: "", title: "", phone: "", code: "", remark: "", role: "STAFF" },
+      genderOptions: ["男", "女"],
+      form: { name: "", title: "", gender: "", idCard: "", phone: "", code: "", remark: "", role: "STAFF" },
       // 编辑模式初始值：保存时按改动分别提交，姓名仅提示（sys_user 域，接口不改）
-      original: { name: "", title: "", remark: "", role: "STAFF" },
+      original: { name: "", title: "", gender: "", idCard: "", remark: "", role: "STAFF" },
     };
   },
   computed: {
     isEdit() {
       return !!this.memberId;
+    },
+    // picker 当前选中索引：按 男/女 反查，未选时回退 0（占位文案由 form.gender 是否为空控制）
+    genderIndex() {
+      const i = this.genderOptions.indexOf(this.form.gender);
+      return i < 0 ? 0 : i;
     },
   },
   onLoad(options) {
@@ -142,12 +161,18 @@ export default {
         this.userId = d.userId != null ? String(d.userId) : "";
         this.form.name = d.name || "";
         this.form.title = d.title || "";
+        // 性别后端为 male/female，回填展示用男/女；身份证号后端已脱敏，仅作展示、
+        // 保存时仅提交完整 18 位值（脱敏串不覆盖后端）
+        this.form.gender = this.codeToGender(d.gender);
+        this.form.idCard = d.idCard && d.idCard !== "—" ? d.idCard : "";
         this.form.phone = d.phone || "";
         this.form.remark = d.remark || "";
         this.form.role = d.role === "ADMIN" ? "ADMIN" : "STAFF";
         this.original = {
           name: this.form.name,
           title: this.form.title,
+          gender: this.form.gender,
+          idCard: this.form.idCard,
           remark: this.form.remark,
           role: this.form.role,
         };
@@ -156,6 +181,26 @@ export default {
       } finally {
         this.loading = false;
       }
+    },
+    onGenderPick(e) {
+      this.form.gender = this.genderOptions[Number(e.detail.value)] || "";
+    },
+    /** 展示值 男/女 → 后端码 male/female；未选返回空串。 */
+    genderToCode(gender) {
+      if (gender === "男") return "male";
+      if (gender === "女") return "female";
+      return "";
+    },
+    /** 后端码 male/female（兼容已是中文）→ 展示值 男/女；无值返回空串。 */
+    codeToGender(code) {
+      if (code === "male" || code === "男") return "男";
+      if (code === "female" || code === "女") return "女";
+      return "";
+    },
+    /** 身份证号仅在完整 18 位（数字 + 末位校验位 X/x）时提交，脱敏串不写回后端。 */
+    fullIdCardOrEmpty(value) {
+      const v = String(value || "").trim();
+      return /^[0-9Xx]{18}$/.test(v) ? v : "";
     },
     async sendSms() {
       if (this.countdown > 0) return;
@@ -206,8 +251,22 @@ export default {
         } else {
           // 创建前先校验短信验证码：POST /boss/sms/verify {phone, code}，通过后再发邀请
           await request({ url: "/boss/sms/verify", method: "POST", data: { phone, code } });
-          // 姓名/职位/备注随邀请透传待后端支持，此处仅提交手机号+角色
-          await createInvite(phone, this.form.role);
+          // 邀请制创建：仅手机号 + 角色可即时落库，姓名/职位/性别/身份证随请求透传。
+          // TODO 后端 POST /boss/enterprise/invites 目前只按 phone+role 建邀请（无成员行），
+          // 性别/身份证号此处透传但不保证持久化；待邀请/创建接口支持身份字段后由后端落库，
+          // 年龄由后端按完整身份证计算（创建页不采集年龄）。
+          const gender = this.genderToCode(this.form.gender);
+          const idCard = this.fullIdCardOrEmpty(this.form.idCard);
+          await request({
+            url: "/boss/enterprise/invites",
+            method: "POST",
+            data: {
+              phone,
+              role: this.form.role,
+              gender: gender || undefined,
+              idCard: idCard || undefined,
+            },
+          });
           uni.showToast({ title: "邀请已发送，员工创建成功！", icon: "none" });
         }
         setTimeout(() => this.goBack(), 600);
@@ -225,12 +284,20 @@ export default {
       const ops = [];
       const titleChanged = this.form.title !== this.original.title;
       const remarkChanged = this.form.remark !== this.original.remark;
-      if (titleChanged || remarkChanged) {
+      const newGender = this.genderToCode(this.form.gender);
+      const genderChanged = !!newGender && newGender !== this.genderToCode(this.original.gender);
+      const newIdCard = this.fullIdCardOrEmpty(this.form.idCard);
+      const idCardChanged = !!newIdCard && newIdCard !== this.original.idCard;
+      if (titleChanged || remarkChanged || genderChanged || idCardChanged) {
         const payload = {};
-        if (titleChanged) payload.title = this.form.title;
-        if (remarkChanged) payload.remark = this.form.remark;
+        const labels = [];
+        if (titleChanged) { payload.title = this.form.title; labels.push("职位"); }
+        if (remarkChanged) { payload.remark = this.form.remark; labels.push("备注"); }
+        if (genderChanged) { payload.gender = newGender; labels.push("性别"); }
+        if (idCardChanged) { payload.idCard = newIdCard; labels.push("身份证号"); }
+        // 年龄由后端按完整身份证自动计算，编辑页不采集/不下发 age，避免覆盖派生值。
         ops.push({
-          label: "职位/备注",
+          label: labels.join("/"),
           run: () =>
             request({
               url: `/boss/enterprise/members/${this.userId}/info`,
@@ -481,6 +548,26 @@ export default {
   font-size: 15px;
   color: #333;
   min-width: 0;
+}
+
+/* 性别选择器（复用 form-item 行布局：左标签 + 右 picker，未选显示占位灰字） */
+.form-picker {
+  flex: 1;
+  min-width: 0;
+}
+.picker-value {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 15px;
+  color: #333;
+}
+.picker-text.placeholder {
+  color: #999;
+}
+.picker-arrow {
+  color: #ccc;
+  font-size: 16px;
 }
 
 .phone-prefix {

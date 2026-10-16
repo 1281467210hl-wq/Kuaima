@@ -72,6 +72,12 @@ public class EnterpriseMemberController {
         Map<String, Object> detail = service.memberDetail(member);
         // remark 列本轮新增，service.memberDetail 未返回，这里补齐供 member-detail/member-edit 回显。
         detail.put("remark", member.getRemark() != null ? member.getRemark() : "");
+        // 性别/年龄/身份证（1016 原型）：年龄优先按身份证实时计算，身份证脱敏返回。
+        detail.put("gender", member.getGender() != null ? member.getGender()
+                : com.kuaima.app.common.util.IdCardUtils.gender(member.getIdCard()));
+        detail.put("idCard", com.kuaima.app.common.util.IdCardUtils.mask(member.getIdCard()));
+        Integer computedAge = com.kuaima.app.common.util.IdCardUtils.age(member.getIdCard());
+        detail.put("age", computedAge != null ? computedAge : member.getAge());
         return Result.success(detail);
     }
 
@@ -238,6 +244,26 @@ public class EnterpriseMemberController {
                 throw new BusinessHttpException(HttpStatus.BAD_REQUEST, "备注不能超过500字");
             }
             member.setRemark(remark == null || remark.isBlank() ? null : remark.trim());
+        }
+        if (body.containsKey("gender")) {
+            String g = body.get("gender");
+            member.setGender(g == null || g.isBlank() ? null : g.trim());
+        }
+        if (body.containsKey("idCard")) {
+            String idc = body.get("idCard");
+            member.setIdCard(idc == null || idc.isBlank() ? null : idc.trim());
+        }
+        if (body.containsKey("age")) {
+            String ageStr = body.get("age");
+            if (ageStr == null || ageStr.isBlank()) {
+                member.setAge(null);
+            } else {
+                try {
+                    member.setAge(Integer.parseInt(ageStr.trim()));
+                } catch (NumberFormatException ignore) {
+                    // 非法年龄忽略，读取时按身份证回退计算
+                }
+            }
         }
         return Result.success(memberRepo.save(member));
     }

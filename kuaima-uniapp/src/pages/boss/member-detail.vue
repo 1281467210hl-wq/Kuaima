@@ -38,6 +38,8 @@
         <view class="md-block-title"><text class="block-ico">🪪</text>基本信息</view>
         <view class="md-info">
           <view class="md-line"><text class="md-key">姓名</text><text class="md-val">{{ detail.name || '—' }}</text></view>
+          <view class="md-line"><text class="md-key">性别</text><text class="md-val">{{ genderText(detail.gender) }}</text></view>
+          <view class="md-line"><text class="md-key">年龄</text><text class="md-val">{{ ageText(detail.age) }}</text></view>
           <view class="md-line"><text class="md-key">职位</text><text class="md-val">{{ detail.title || '—' }}</text></view>
           <view class="md-line"><text class="md-key">手机号</text><text class="md-val">{{ detail.phone || '—' }}</text></view>
           <view class="md-line"><text class="md-key">企业角色</text><text class="md-val">{{ roleText(detail.role) }}</text></view>
@@ -199,6 +201,17 @@ export default {
     avatarColor,
     roleText(role) {
       return { OWNER: "超级管理员", ADMIN: "管理员", STAFF: "成员" }[role] || role || "成员";
+    },
+    // 后端 gender 为 male/female，UI 展示男/女；已是中文原样返回，无值回退 '—'
+    genderText(gender) {
+      if (gender === "male") return "男";
+      if (gender === "female") return "女";
+      return gender || "—";
+    },
+    // 年龄由后端按身份证计算返回整数，原型展示带「岁」（如 36岁）
+    ageText(age) {
+      if (age == null || age === "") return "—";
+      return `${age}岁`;
     },
     // 权限模块开通状态：优先按后端 permissions 数组匹配；无数据时按角色默认降级
     moduleOn(key) {

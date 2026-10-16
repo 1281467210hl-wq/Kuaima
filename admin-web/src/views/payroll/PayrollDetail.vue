@@ -97,8 +97,8 @@ const fmtMoney = (fen) => {
 
 const formatTime = (t) => { if (!t) return '—'; const s = String(t).replace('T', ' '); return s.length > 16 ? s.substring(0, 16) : s }
 
-const statusText = (s) => ({ pending: '待审批', approved: '审批通过', rejected: '已驳回', withdrawn: '已撤回' }[s] || s || '—')
-const statusClass = (s) => ({ pending: 'warning', approved: 'success', rejected: 'danger', withdrawn: 'default' }[s] || 'default')
+const statusText = (s) => ({ draft: '待提交审核', pending: '待审批', approved: '审批通过', rejected: '已驳回', withdrawn: '已撤回' }[s] || s || '—')
+const statusClass = (s) => ({ draft: 'info', pending: 'warning', approved: 'success', rejected: 'danger', withdrawn: 'default' }[s] || 'default')
 const detailStatusText = (s) => ({ pending: '待转账', success: '已到账', failed: '转账失败' }[s] || s || '—')
 const detailStatusClass = (s) => ({ pending: 'warning', success: 'success', failed: 'danger' }[s] || 'default')
 

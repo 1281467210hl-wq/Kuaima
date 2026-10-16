@@ -9,6 +9,7 @@ import request from './request'
  *             POST /admin/resumes/import   GET  /admin/resumes/stats
  *   候选人    GET  /admin/candidates       /{id}  PUT /{id}/status
  *             POST /admin/candidates       DELETE /admin/candidates/{id}
+ *             POST /admin/candidates/from-resume（简历库「加入候选人」）
  *   直播橱窗  GET/POST/PUT/DELETE /admin/live-showcases  PUT /{id}/status
  *   归属老板  GET  /admin/users/bosses（兜底 GET /admin/enterprises）
  * 字段与后端 AdminRecruitService 行映射保持一致，差异在本层适配，页面模板只关心 UI 字段。
@@ -264,6 +265,14 @@ export function createCandidate({ positionId, resumeId, remark }) {
   return request.post('/admin/candidates', { positionId, resumeId, remark })
 }
 
+// 简历库「加入候选人」：POST /admin/candidates/from-resume（body: {resumeId}）。
+// 后端按 简历意向岗位 ↔ 岗位名称 匹配岗位，命中则建 source=MANUAL 的 PENDING 投递；
+// 匹配不到岗位时返回 400，调用方需回退到岗位下拉手动选择（走 createCandidate）。
+// 成功响应 data.created=false 表示该(position,resume)投递已存在，即「已在候选人列表中」。
+export function addCandidateFromResume(resumeId) {
+  return request.post('/admin/candidates/from-resume', { resumeId })
+}
+
 export function deleteCandidate(id) {
   return request.delete(`/admin/candidates/${id}`)
 }
@@ -273,6 +282,7 @@ export function mapCandidate(row) {
     id: row.id,
     positionId: row.positionId,
     resumeId: row.resumeId,
+    userId: row.userId,
     name: text(row.name, '未知候选人'),
     job: text(row.job, ''),
     applyTime: trimMillis(row.applyTime) || '—',

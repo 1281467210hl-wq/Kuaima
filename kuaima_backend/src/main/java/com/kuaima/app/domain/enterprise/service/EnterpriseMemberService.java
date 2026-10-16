@@ -71,6 +71,11 @@ public class EnterpriseMemberService {
             item.put("permissions", m.getPermissions() == null
                     ? List.of() : com.alibaba.fastjson2.JSON.parseArray(m.getPermissions()));
             item.put("joinDate", m.getDate() != null ? m.getDate().toString() : "");
+            String gender = m.getGender() != null ? m.getGender()
+                    : com.kuaima.app.common.util.IdCardUtils.gender(m.getIdCard());
+            Integer age = com.kuaima.app.common.util.IdCardUtils.age(m.getIdCard());
+            item.put("gender", gender);
+            item.put("age", age != null ? age : m.getAge());
             return item;
         }).toList();
     }

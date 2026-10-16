@@ -44,6 +44,10 @@ public class PositionApplication extends BaseEntity {
     @Column(nullable = false, length = 20)
     private String status = "PENDING";
 
+    /** 候选人来源：APPLY 应聘自动进入 / MANUAL 简历库「加入候选人」手工加入 */
+    @Column(length = 20)
+    private String source = "APPLY";
+
     @Column(name = "apply_time")
     private LocalDateTime applyTime;
 

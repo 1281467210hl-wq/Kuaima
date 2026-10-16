@@ -37,6 +37,9 @@ public class ProjectMember extends BaseEntity {
     @Column(name = "`role`", comment = "职位/岗位，如 分拣员、装车员")
     private String role;
 
+    @Column(comment = "日薪，来源岗位薪资范围 salaryRange，如 200元/天")
+    private String salary;
+
     @Column(name = "`status`", comment = "状态:active在职/temp临时/left已离职")
     private String status = "temp";
 

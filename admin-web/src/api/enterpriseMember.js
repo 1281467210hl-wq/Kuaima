@@ -143,6 +143,11 @@ export function normalizeMember(row) {
     memberId: row.memberId != null ? row.memberId : row.id,
     name: dash(row.name),
     phone: dash(row.phone),
+    // 性别(male/female) / 身份证号(后端已脱敏) / 年龄(后端按身份证计算或存值) 原样透传，
+    // 缺失时置空串/null，展示层按 '—' 兜底；编辑弹窗据此回填。
+    gender: row.gender || '',
+    idCard: row.idCard || '',
+    age: row.age != null ? row.age : null,
     dept: dash(row.dept),
     position: dash(row.position),
     avatar: row.avatar || 'orange',
@@ -212,11 +217,20 @@ export function listMemberProjects(enterpriseId, memberId) {
 
 // 编辑角色：role = super/admin/staff（后端归一化为 OWNER/ADMIN/STAFF），title = 职位，
 // roleId 传 null/0 可解除与 employee_role 的绑定。
-export function updateMemberRole(enterpriseId, memberId, { role, roleId = undefined, title } = {}) {
+// gender = male/female，idCard = 完整 18 位身份证（后端据此计算年龄），age = 手动覆盖值；
+// 三者在有值时并入同一 PUT body（idCard 仅传完整值，脱敏串由调用方过滤后为 undefined）。
+export function updateMemberRole(
+  enterpriseId,
+  memberId,
+  { role, roleId = undefined, title, gender = undefined, idCard = undefined, age = undefined } = {},
+) {
   const body = {}
   if (role != null) body.role = role
   if (roleId !== undefined) body.roleId = roleId
   if (title != null) body.title = title
+  if (gender != null && gender !== '') body.gender = gender
+  if (idCard != null && idCard !== '') body.idCard = idCard
+  if (age != null && age !== '') body.age = age
   return request.put(`${memberBase(enterpriseId)}/${memberId}/role`, body)
 }
 

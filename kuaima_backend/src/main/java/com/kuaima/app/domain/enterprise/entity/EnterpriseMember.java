@@ -36,6 +36,15 @@ public class EnterpriseMember extends BaseEntity {
     private Integer permissionVersion = 1;
     @Column(length = 50)
     private String title;
+    /** 性别：male/female，创建员工时选择。 */
+    @Column(length = 10)
+    private String gender;
+    /** 身份证号；年龄优先按此实时计算。 */
+    @Column(name = "id_card", length = 32)
+    private String idCard;
+    /** 年龄（可由身份证计算，此为存储/覆盖值）。 */
+    @Column
+    private Integer age;
     /** 备注（老板端成员编辑页维护，最长 500 字）。 */
     @Column(length = 500)
     private String remark;

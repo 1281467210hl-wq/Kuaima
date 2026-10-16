@@ -378,6 +378,7 @@ public class AdminProjectController {
         m.put("name", e.getName());
         m.put("phone", e.getPhone());
         m.put("job", e.getRole());
+        m.put("salary", e.getSalary());
         // 用工类型：优先取实体列，缺省时按成员状态推断（temp=临时工，其余=正式工）
         m.put("type", employmentTypeText(e));
         m.put("joinTime", e.getJoinDate() != null ? e.getJoinDate().toString() : null);

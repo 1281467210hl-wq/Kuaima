@@ -145,6 +145,7 @@ export default {
       statusBarHeight: 0,
       searchText: "",
       searchTimer: null,
+      positionId: "",
       tabs: CANDIDATE_TABS,
       currentTab: "all",
       list: [],
@@ -164,6 +165,7 @@ export default {
   onLoad(options) {
     const info = typeof uni.getWindowInfo === "function" ? uni.getWindowInfo() : uni.getSystemInfoSync();
     this.statusBarHeight = Number(info.statusBarHeight || 0);
+    if (options && options.positionId) this.positionId = options.positionId;
     if (options && options.tab) this.currentTab = options.tab;
     this.reload();
   },
@@ -202,6 +204,8 @@ export default {
       return {
         status: tab && tab.status ? tab.status : undefined,
         keyword: this.searchText.trim() || undefined,
+        // 按岗位过滤：api/candidate.js listBossApplications 已支持 positionId
+        positionId: this.positionId || undefined,
       };
     },
     reload() {

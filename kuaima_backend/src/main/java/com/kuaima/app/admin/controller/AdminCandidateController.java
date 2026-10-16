@@ -160,6 +160,69 @@ public class AdminCandidateController {
         return detail(application.getId());
     }
 
+    @PostMapping("/from-resume")
+    @Operation(summary = "简历库-加入候选人",
+            description = "body: {resumeId}；按「简历意向岗位 ↔ 岗位名称」定位岗位，命中且无同(position,resume)投递时创建 source=MANUAL 的 PENDING 候选人（岗位 applyCount+1）；"
+                    + "匹配不到岗位时返回 400，前端据此回退到岗位下拉手动选择。响应带 created=false 表示已在候选人列表中。")
+    public Result<Map<String, Object>> fromResume(@RequestBody Map<String, Object> body) {
+        Long resumeId = toLong(body.get("resumeId"));
+        if (resumeId == null) {
+            throw new IllegalArgumentException("resumeId 必填");
+        }
+        Resume resume = resumeRepository.findById(resumeId)
+                .orElseThrow(() -> new EntityNotFoundException("简历不存在: " + resumeId));
+        BossPosition position = resolvePositionByResumeIntent(resume);
+        if (position == null) {
+            throw new IllegalArgumentException("未能按意向岗位「" + resumeIntent(resume)
+                    + "」匹配到岗位，请手动选择应聘岗位");
+        }
+
+        boolean created = false;
+        // 复用 search（positionId + resumeIds 均走索引）判重，避免整岗位投递记录载入内存
+        PositionApplication application = applicationRepository
+                .search(null, null, position.getId(), List.of(resume.getId()), null, null, PageRequest.of(0, 1))
+                .getContent().stream().findFirst().orElse(null);
+        if (application == null) {
+            application = new PositionApplication();
+            application.setPositionId(position.getId());
+            application.setResumeId(resume.getId());
+            application.setUserId(resume.getUserId());
+            application.setBossId(position.getCreateBy());
+            application.setStatus("PENDING");
+            application.setSource("MANUAL");
+            application.setApplyTime(LocalDateTime.now());
+            applicationRepository.save(application);
+            position.setApplyCount((position.getApplyCount() == null ? 0 : position.getApplyCount()) + 1);
+            positionRepository.save(position);
+            created = true;
+        }
+
+        Map<String, Object> row = detail(application.getId()).getData();
+        row.put("created", created);
+        return Result.success(row);
+    }
+
+    /**
+     * 简历意向岗位 → 岗位：沿用 searchByKeywordAndStatus 的 LIKE 命中集（限量 50），再要求岗位名称完全一致；
+     * 同名多条时优先在招（status=on）岗位，其次取最新创建的岗位。
+     */
+    private BossPosition resolvePositionByResumeIntent(Resume resume) {
+        String intent = resumeIntent(resume);
+        if (intent.isEmpty()) {
+            return null;
+        }
+        List<BossPosition> matched = positionRepository
+                .searchByKeywordAndStatus(intent, null, PageRequest.of(0, 50)).getContent().stream()
+                .filter(p -> intent.equals(p.getName() == null ? null : p.getName().trim()))
+                .toList();
+        return matched.stream().filter(p -> "on".equals(p.getStatus())).findFirst()
+                .orElse(matched.isEmpty() ? null : matched.get(0));
+    }
+
+    private String resumeIntent(Resume resume) {
+        return resume.getPosition() == null ? "" : resume.getPosition().trim();
+    }
+
     private Long toLong(Object value) {
         if (value == null) {
             return null;
