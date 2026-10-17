@@ -48,6 +48,7 @@ class WorkerAttendanceServiceTests {
         BossOrderService bossOrders = mock(BossOrderService.class);
         WorkerAttendanceService service = new WorkerAttendanceService(orders, items, codes, bossOrders);
         BossOrder order = new BossOrder(); order.setId(11L); order.setCreateBy(21L); order.setEnterpriseId(99L);
+        order.setOrderStatus(BossStatus.ORDER_RECRUIT_END);
         BaseOrderItem item = new BaseOrderItem(); item.setId(41L); item.setOrderId(11L); item.setUserId(30L);
         item.setStatus(BossStatus.ITEM_HIRED);
         when(orders.findById(11L)).thenReturn(Optional.of(order));
@@ -55,6 +56,7 @@ class WorkerAttendanceServiceTests {
 
         service.checkIn(30L, 11L, "1234");
 
+        assertEquals(BossStatus.ORDER_WORKING, order.getOrderStatus());
         verify(codes).verifyByEnterprise(99L, 21L, true, "1234");
         verify(codes, never()).verify(anyLong(), anyBoolean(), anyString());
     }

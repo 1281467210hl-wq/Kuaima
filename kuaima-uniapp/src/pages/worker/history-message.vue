@@ -32,7 +32,6 @@
             v-for="item in group.items"
             :key="item.id"
             class="msg-item"
-            @click="openMessage(item)"
           >
             <view class="msg-head">
               <view :class="['msg-icon', item.kind]">
@@ -160,12 +159,6 @@ function goBack() {
   uni.navigateBack();
 }
 
-function openMessage(item) {
-  if (!item.id) return;
-  uni.navigateTo({
-    url: `/pages/worker/notification-detail?id=${encodeURIComponent(item.id)}&title=${encodeURIComponent(item.title || "")}&desc=${encodeURIComponent(item.content || "")}`,
-  });
-}
 </script>
 
 <style scoped>
@@ -267,10 +260,6 @@ function openMessage(item) {
   padding: 28rpx;
   border-radius: 20rpx;
   background: #fff;
-}
-
-.msg-item:active {
-  background: #fafafa;
 }
 
 .msg-head {

@@ -40,6 +40,7 @@ import com.kuaima.app.domain.jobfavorite.entity.JobFavorite;
 import com.kuaima.app.domain.jobfavorite.repository.JobFavoriteRepository;
 import com.kuaima.app.domain.enterprise.repository.EnterpriseRepository;
 import com.kuaima.app.common.service.OssStorageService;
+import com.kuaima.app.common.service.RecruitmentMediaPreviewService;
 import org.springframework.util.StringUtils;
 
 /**
@@ -57,12 +58,14 @@ public class JobController {
     private final EnterpriseRepository enterpriseRepository;
     private final OssStorageService ossStorageService;
     private final UserRepository userRepository;
+    private final RecruitmentMediaPreviewService recruitmentMediaPreviewService;
 
     public JobController(JobFavoriteRepository favoriteRepository,
                          BrowseHistoryRepository browseHistoryRepository,
                          BossOrderRespository orderRepository,
                          BossOrderService bossOrderService) {
-        this(favoriteRepository, browseHistoryRepository, orderRepository, bossOrderService, null, null);
+        this(favoriteRepository, browseHistoryRepository, orderRepository, bossOrderService,
+                null, null, null, null);
     }
 
     public JobController(JobFavoriteRepository favoriteRepository,
@@ -71,7 +74,7 @@ public class JobController {
                          BossOrderService bossOrderService,
                          EnterpriseRepository enterpriseRepository) {
         this(favoriteRepository, browseHistoryRepository, orderRepository, bossOrderService,
-                enterpriseRepository, null, null);
+                enterpriseRepository, null, null, null);
     }
 
     public JobController(JobFavoriteRepository favoriteRepository,
@@ -81,7 +84,18 @@ public class JobController {
                          EnterpriseRepository enterpriseRepository,
                          OssStorageService ossStorageService) {
         this(favoriteRepository, browseHistoryRepository, orderRepository, bossOrderService,
-                enterpriseRepository, ossStorageService, null);
+                enterpriseRepository, ossStorageService, null, null);
+    }
+
+    public JobController(JobFavoriteRepository favoriteRepository,
+                         BrowseHistoryRepository browseHistoryRepository,
+                         BossOrderRespository orderRepository,
+                         BossOrderService bossOrderService,
+                         EnterpriseRepository enterpriseRepository,
+                         OssStorageService ossStorageService,
+                         UserRepository userRepository) {
+        this(favoriteRepository, browseHistoryRepository, orderRepository, bossOrderService,
+                enterpriseRepository, ossStorageService, userRepository, null);
     }
 
     @org.springframework.beans.factory.annotation.Autowired
@@ -91,7 +105,8 @@ public class JobController {
                          BossOrderService bossOrderService,
                          EnterpriseRepository enterpriseRepository,
                          OssStorageService ossStorageService,
-                         UserRepository userRepository) {
+                         UserRepository userRepository,
+                         RecruitmentMediaPreviewService recruitmentMediaPreviewService) {
         this.favoriteRepository = favoriteRepository;
         this.browseHistoryRepository = browseHistoryRepository;
         this.orderRepository = orderRepository;
@@ -99,6 +114,7 @@ public class JobController {
         this.enterpriseRepository = enterpriseRepository;
         this.ossStorageService = ossStorageService;
         this.userRepository = userRepository;
+        this.recruitmentMediaPreviewService = recruitmentMediaPreviewService;
     }
 
     /** 零工公开岗位列表：GET /jobs。仅返回招工中的岗位，不按老板归属过滤。 */
@@ -144,7 +160,9 @@ public class JobController {
                     .toList());
         }
         if (StringUtils.hasText(order.getVideoKey())) {
-            order.setVideoUrl(ossStorageService.playableUrl(order.getVideoKey()));
+            order.setVideoUrl(recruitmentMediaPreviewService == null
+                    ? ossStorageService.playableUrl(order.getVideoKey())
+                    : recruitmentMediaPreviewService.previewUrl(order.getVideoKey()));
         }
     }
 

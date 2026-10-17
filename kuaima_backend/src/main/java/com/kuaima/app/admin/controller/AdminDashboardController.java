@@ -13,6 +13,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.kuaima.app.admin.dto.BossOrderView;
@@ -90,34 +91,51 @@ public class AdminDashboardController {
                 .count();
     }
 
-    /** 订单趋势（近7天每日订单数） */
-    @Operation(summary = "订单趋势", description = "返回近 7 天每日订单数，用于折线图。返回 {labels: [...], values: [...]}")
+    /** 订单趋势（按时间范围每日订单数） */
+    @Operation(summary = "订单趋势", description = "range=7d/30d/month，默认 7d。返回 {labels: [...], values: [...]}")
     @GetMapping("/trend")
-    public Result<Map<String, Object>> trend() {
+    public Result<Map<String, Object>> trend(@RequestParam(defaultValue = "7d") String range) {
         List<BossOrder> allOrders = orderRepository.findAll(Sort.by(Sort.Direction.DESC, "id"));
 
-        // 按日期分组统计近7天
+        Calendar start = Calendar.getInstance();
+        start.set(Calendar.HOUR_OF_DAY, 0);
+        start.set(Calendar.MINUTE, 0);
+        start.set(Calendar.SECOND, 0);
+        start.set(Calendar.MILLISECOND, 0);
+        int dayCount;
+        switch (range == null ? "" : range) {
+            case "30d" -> {
+                dayCount = 30;
+                start.add(Calendar.DAY_OF_MONTH, -29);
+            }
+            case "month" -> {
+                start.set(Calendar.DAY_OF_MONTH, 1);
+                dayCount = start.getActualMaximum(Calendar.DAY_OF_MONTH);
+            }
+            case "7d", "" -> {
+                dayCount = 7;
+                start.add(Calendar.DAY_OF_MONTH, -6);
+            }
+            default -> throw new IllegalArgumentException("range 只能是 7d、30d 或 month");
+        }
+        Calendar end = (Calendar) start.clone();
+        end.add(Calendar.DAY_OF_MONTH, dayCount);
+
+        // 按日期分组统计指定范围
         SimpleDateFormat sdf = new SimpleDateFormat("MM-dd");
-        Calendar cal = Calendar.getInstance();
-        cal.add(Calendar.DAY_OF_MONTH, -6);
-        cal.set(Calendar.HOUR_OF_DAY, 0);
-        cal.set(Calendar.MINUTE, 0);
-        cal.set(Calendar.SECOND, 0);
-        cal.set(Calendar.MILLISECOND, 0);
-        Date startDate = cal.getTime();
 
         Map<String, Long> dailyCount = new LinkedHashMap<>();
-        for (int i = 0; i < 7; i++) {
-            Calendar c = (Calendar) cal.clone();
+        for (int i = 0; i < dayCount; i++) {
+            Calendar c = (Calendar) start.clone();
             c.add(Calendar.DAY_OF_MONTH, i);
             dailyCount.put(sdf.format(c.getTime()), 0L);
         }
 
         for (BossOrder order : allOrders) {
             Timestamp ts = order.getTimestamp();
-            if (ts != null && !ts.before(startDate)) {
+            if (ts != null && !ts.before(start.getTime()) && ts.before(end.getTime())) {
                 String key = sdf.format(ts);
-                dailyCount.merge(key, 1L, Long::sum);
+                dailyCount.computeIfPresent(key, (ignored, count) -> count + 1);
             }
         }
 

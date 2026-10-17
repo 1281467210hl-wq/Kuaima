@@ -19,6 +19,8 @@ import com.kuaima.app.domain.boss.repository.BossOrderRespository;
 import com.kuaima.app.domain.review.entity.WorkerReview;
 import com.kuaima.app.domain.review.model.WorkerReviewModels.SaveRequest;
 import com.kuaima.app.domain.review.repository.WorkerReviewRepository;
+import com.kuaima.app.domain.user.entity.User;
+import com.kuaima.app.domain.user.repository.UserRepository;
 import com.kuaima.app.domain.user.service.CreditScoreService;
 
 class WorkerReviewServiceTests {
@@ -26,6 +28,7 @@ class WorkerReviewServiceTests {
     private BossOrderRespository orders;
     private BaseOrderItemRespository items;
     private CreditScoreService scores;
+    private UserRepository users;
     private WorkerReviewService service;
 
     @BeforeEach
@@ -34,7 +37,8 @@ class WorkerReviewServiceTests {
         orders = mock(BossOrderRespository.class);
         items = mock(BaseOrderItemRespository.class);
         scores = mock(CreditScoreService.class);
-        service = new WorkerReviewService(reviews, orders, items, scores);
+        users = mock(UserRepository.class);
+        service = new WorkerReviewService(reviews, orders, items, scores, users);
         when(reviews.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
     }
 
@@ -74,6 +78,44 @@ class WorkerReviewServiceTests {
         order(11L, 99L, BossStatus.ORDER_RECRUIT_END);
         assertThrows(IllegalStateException.class,
                 () -> service.saveOrderReviews(99L, 11L, new SaveRequest(5, 5, 5, 5, null)));
+    }
+
+    @Test
+    void enterpriseMember_shouldEvaluateOrderCreatedByAnotherMember() {
+        BossOrder order = new BossOrder();
+        order.setId(12L); order.setCreateBy(100L); order.setEnterpriseId(3L);
+        order.setOrderStatus(BossStatus.ORDER_COMPLETED);
+        when(orders.findById(12L)).thenReturn(Optional.of(order));
+        when(items.findByOrderId(12L)).thenReturn(List.of(item(4L, 12L, 21L, BossStatus.ITEM_FINISHED)));
+        when(reviews.existsByItemId(4L)).thenReturn(false);
+        WorkerReview saved = new WorkerReview();
+        saved.setItemId(4L); saved.setOrderId(12L); saved.setWorkerId(21L);
+        when(reviews.findByOrderIdOrderByIdAsc(12L)).thenReturn(List.of(saved));
+        User worker = new User(); worker.setId(21L); worker.setNickname("测试零工");
+        when(users.findAllById(List.of(21L))).thenReturn(List.of(worker));
+
+        assertNotNull(service.saveOrderReviews(88L, 3L, 12L,
+                new SaveRequest(4, 4, 4, 4, "合作顺利")));
+
+        verify(reviews).save(any(WorkerReview.class));
+    }
+
+    @Test
+    void statuses_shouldCountReviewableAndReviewedWorkersByOrder() {
+        when(items.findByOrderIdIn(java.util.List.of(10L, 11L))).thenReturn(List.of(
+                item(1L, 10L, 21L, BossStatus.ITEM_FINISHED),
+                item(2L, 10L, null, BossStatus.ITEM_FINISHED),
+                item(3L, 11L, 22L, BossStatus.ITEM_ON_WORK)));
+        WorkerReview review = new WorkerReview();
+        review.setOrderId(10L); review.setWorkerId(21L);
+        when(reviews.findByOrderIdIn(java.util.List.of(10L, 11L))).thenReturn(List.of(review));
+
+        var statuses = service.statuses(java.util.List.of(10L, 11L));
+
+        assertEquals(1L, statuses.get(10L).reviewableWorkerCount());
+        assertEquals(1L, statuses.get(10L).reviewCount());
+        assertEquals(0L, statuses.get(11L).reviewableWorkerCount());
+        assertEquals(0L, statuses.get(11L).reviewCount());
     }
 
     @Test

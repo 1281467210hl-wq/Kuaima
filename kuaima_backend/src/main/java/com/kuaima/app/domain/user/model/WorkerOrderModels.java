@@ -28,6 +28,8 @@ public final class WorkerOrderModels {
             String orderStatus,
             Integer duration,
             String tags,
+            boolean workCodeEnabled,
+            boolean leaveCodeEnabled,
             boolean reviewed,
             ReviewSummary bossReview) {
     }

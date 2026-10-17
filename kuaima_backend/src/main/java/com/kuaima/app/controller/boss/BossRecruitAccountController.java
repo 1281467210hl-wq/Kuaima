@@ -9,6 +9,7 @@ import java.util.regex.Pattern;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -165,6 +166,7 @@ public class BossRecruitAccountController {
             if (!UserRole.BOSS.equals(target.getRole())) {
                 throw new ForbiddenBusinessException("目标不是老板账号");
             }
+            if (!StringUtils.hasText(target.getStatus())) target.setStatus("正常");
             if (!"正常".equals(target.getStatus())) {
                 throw new BusinessHttpException(HttpStatus.CONFLICT, "目标账号已注销或被禁用");
             }

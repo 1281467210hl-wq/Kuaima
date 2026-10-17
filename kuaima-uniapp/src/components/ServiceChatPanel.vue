@@ -10,7 +10,7 @@
     <scroll-view scroll-y class="chat-messages" :scroll-top="scrollTop" :show-scrollbar="false">
       <text class="msg-time">{{ currentTimeLabel }}</text>
       <view class="msg-row"><view class="msg-avatar service">🎧</view><view class="msg-content"><view class="msg-bubble">您好，请问有什么可以帮助您？</view></view></view>
-      <view class="msg-row"><view class="msg-avatar service">🎧</view><view class="msg-content hot-content"><view class="hot-questions"><text class="hot-title">常见问题</text><view v-for="item in hotQuestions" :key="item" class="hot-item" @click="sendText(item)"><text class="hot-dot">●</text><text>{{ item }}</text></view><view class="hot-item human" @click="sendText('转人工客服')"><text>🎧</text><text>人工客服</text></view></view></view></view>
+      <view class="msg-row"><view class="msg-avatar service">🎧</view><view class="msg-content hot-content"><view class="hot-questions"><text class="hot-title">常见问题</text><view v-for="item in displayedFaqs" :key="item.id" class="hot-item faq" @click="consultFaq(item)"><text class="hot-dot">●</text><text class="faq-question">{{ item.question }}</text></view><view v-if="!displayedFaqs.length" class="faq-empty">暂未配置常见问题</view><view class="hot-item human" @click="sendText('转人工客服')"><text>🎧</text><text>人工客服</text></view></view></view></view>
       <view v-for="(item, index) in messages" :id="`msg-${index}`" :key="item.id || item.messageId || index" :class="['msg-row', { self: item.self }]"><view :class="['msg-avatar', item.self ? 'user' : 'service']">{{ item.self ? "我" : "🎧" }}</view><view class="msg-content"><view :class="['msg-bubble', { 'self-bubble': item.self }]">{{ item.text }}</view><text v-if="item.time" class="message-time">{{ item.time }}</text></view></view>
       <view v-if="sessionClosed" class="msg-row system-notice"><view class="msg-avatar service">🎧</view><view class="msg-content"><view class="msg-bubble">本次客服会话已结束，如有其他问题请重新发起咨询</view></view></view>
       <view class="scroll-space" />
@@ -52,6 +52,14 @@ const showSecurity = ref(true);
 const messages = ref([]);
 let wsBaseUrl = resolveWsBaseUrl();
 const hotQuestions = computed(() => props.hotQuestions);
+const displayedFaqs = computed(() => props.hotQuestions.map((item, index) => {
+  if (typeof item === "string") return { id: `hot-${index}`, question: item, answer: "" };
+  return {
+    id: item.id || `hot-${index}`,
+    question: String(item.question || "").trim(),
+    answer: String(item.answer || "").trim(),
+  };
+}).filter((item) => item.question));
 const scrollTop = ref(0);
 const currentTimeLabel = computed(() => { const now = new Date(); return `今天 ${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`; });
 
@@ -164,6 +172,21 @@ function stopMessageSync() {
 }
 function normalizeMessage(item = {}) { const timestamp = item.timestamp || item.createTime; return { ...item, id: item.id || item.messageId, text: item.content || item.text || "", self: String(item.fromId) === userId || String(item.fromType || "").toUpperCase() === "USER", time: timestamp ? formatTime(timestamp) : "" }; }
 function formatTime(value) { const date = new Date(value); if (Number.isNaN(date.getTime())) return ""; return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`; }
+function consultFaq(item) {
+  if (!item.answer) return sendText(item.question);
+  appendMessage({
+    id: `faq-question-${item.id}`,
+    fromId: userId,
+    content: item.question,
+    timestamp: Date.now(),
+  });
+  appendMessage({
+    id: `faq-answer-${item.id}`,
+    fromType: "SERVICE",
+    content: item.answer,
+    timestamp: Date.now(),
+  });
+}
 async function reopenSession() {
   try {
     const session = await createChatSession({ userId: Number(userId) });
@@ -207,4 +230,6 @@ defineExpose({ resume, pause: stopMessageSync });
 .service-chat-panel{height:100vh;display:flex;flex-direction:column;background:#f5f5f5;overflow:hidden}.chat-header{flex:none;display:flex;align-items:center;gap:18rpx;padding-left:20rpx;padding-right:20rpx;padding-bottom:22rpx;background:linear-gradient(135deg,#ff6b35,#ff8c5a);color:#fff}.header-action{width:56rpx;height:56rpx;display:flex;align-items:center;justify-content:center;font-size:50rpx;line-height:1}.header-action.more{font-size:28rpx;letter-spacing:2rpx}.header-avatar{width:80rpx;height:80rpx;display:flex;align-items:center;justify-content:center;flex-shrink:0;border-radius:50%;background:#fff;font-size:36rpx}.header-info{flex:1;min-width:0}.header-name{display:block;font-size:30rpx;font-weight:600}.header-status{display:flex;align-items:center;gap:8rpx;margin-top:6rpx;color:rgba(255,255,255,.85);font-size:22rpx}.status-dot{width:12rpx;height:12rpx;border-radius:50%;background:#52c41a}.security-tip{flex:none;display:flex;align-items:center;gap:12rpx;padding:16rpx 28rpx;border-bottom:1rpx solid #ffe4a0;background:#fff8e6;color:#b8860b;font-size:22rpx}.shield{color:#fa8c16;font-size:18rpx}.security-text{flex:1}.security-close{padding:0 8rpx;color:#fa8c16;font-size:34rpx}.chat-messages{flex:1;min-height:0;width:100%;height:0;padding:22rpx 28rpx 170rpx;box-sizing:border-box;background:#f5f5f5}.msg-time{display:block;margin:14rpx 0 24rpx;text-align:center;color:#999;font-size:20rpx}.msg-row{display:flex;align-items:flex-start;gap:16rpx;margin-bottom:28rpx}.msg-row.self{flex-direction:row-reverse}.msg-avatar{width:64rpx;height:64rpx;display:flex;align-items:center;justify-content:center;flex-shrink:0;border-radius:50%;color:#fff;font-size:25rpx}.msg-avatar.service{background:linear-gradient(135deg,#ff6b35,#ff8c5a)}.msg-avatar.user{background:#52c41a}.msg-content{max-width:75%}.hot-content{width:calc(100% - 80rpx);max-width:calc(100% - 80rpx)}.msg-bubble{padding:22rpx 26rpx;border-radius:8rpx 24rpx 24rpx;background:#fff;color:#333;font-size:26rpx;line-height:1.6;word-break:break-all}.self-bubble{border-radius:24rpx 8rpx 24rpx 24rpx;background:linear-gradient(135deg,#ff6b35,#ff8c5a);color:#fff}.message-time{display:block;margin-top:6rpx;color:#aaa;font-size:18rpx}.self .message-time{text-align:right}.hot-questions{padding:26rpx;border-radius:24rpx;background:#fff}.hot-title{display:block;margin-bottom:16rpx;color:#333;font-size:27rpx;font-weight:600}.hot-item{display:flex;align-items:flex-start;gap:12rpx;margin-top:14rpx;padding:18rpx 20rpx;border-radius:16rpx;background:#fff8f5;color:#ff6b35;font-size:23rpx;line-height:1.45}.hot-dot{padding-top:5rpx;font-size:12rpx}.hot-item.human{align-items:center;justify-content:center;background:#f5f5f5;color:#666}.scroll-space{height:30rpx}.composer{position:fixed;z-index:10;left:0;right:0;bottom:0;display:flex;align-items:center;gap:14rpx;padding:18rpx 24rpx 12rpx;border-top:1rpx solid #eee;background:#fff;box-sizing:border-box}.voice-button{width:64rpx;height:64rpx;display:flex;align-items:center;justify-content:center;color:#666;font-size:34rpx}.input-field{flex:1;height:76rpx;padding:0 26rpx;border-radius:40rpx;background:#f5f5f5;font-size:25rpx}.send-button{width:116rpx;height:76rpx;margin:0;padding:0;border:0;border-radius:40rpx;background:linear-gradient(135deg,#ff6b35,#ff8c5a);color:#fff;font-size:25rpx;line-height:76rpx}.send-button::after{border:0}.send-button[disabled]{opacity:.5}
 .system-notice .msg-bubble { background: #f3f4f6; color: #6b7280; }
 .send-button.reopen { width: 100%; }
+.faq-question { flex: 1; color: #333; }
+.faq-empty { margin-top: 14rpx; color: #999; font-size: 22rpx; }
 </style>

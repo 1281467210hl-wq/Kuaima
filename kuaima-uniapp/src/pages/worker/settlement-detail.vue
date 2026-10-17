@@ -93,7 +93,7 @@
 import { ref } from "vue";
 import { onLoad } from "@dcloudio/uni-app";
 import AppNavBar from "@/components/AppNavBar.vue";
-import { getOrder, listSettlements } from "@/api/backend";
+import { getPublicJob, listSettlements } from "@/api/backend";
 
 const loading = ref(false);
 const loadError = ref(false);
@@ -121,7 +121,7 @@ onLoad(async (options = {}) => {
     let order = {};
     if (item.orderId) {
       try {
-        order = await getOrder(item.orderId);
+        order = await getPublicJob(item.orderId);
       } catch (_) {}
     }
     detail.value = normalizeSettlement(item, order);
@@ -133,7 +133,7 @@ onLoad(async (options = {}) => {
   }
 });
 function normalizeSettlement(item, order = {}) {
-  const amount = (Number(item.wage ?? item.totalAmount ?? 0) / 100).toFixed(2);
+  const amount = Number(item.wage ?? item.totalAmount ?? 0).toFixed(2);
   return {
     ...detail.value,
     ...item,

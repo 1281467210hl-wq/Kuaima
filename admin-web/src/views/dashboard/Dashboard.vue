@@ -138,10 +138,12 @@
       <div class="pagination">
         <div class="pagination-info">共 {{ recentOrdersTotal }} 条订单记录</div>
         <el-pagination
+          v-model:current-page="recentOrdersPage"
           background
           layout="prev, pager, next"
-          :total="1856"
-          :page-size="10"
+          :total="recentOrdersTotal"
+          :page-size="recentOrdersPageSize"
+          @current-change="handleRecentOrdersPageChange"
         />
       </div>
     </div>
@@ -149,7 +151,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, onBeforeUnmount } from 'vue'
+import { ref, reactive, onMounted, onBeforeUnmount, watch } from 'vue'
 import * as echarts from 'echarts'
 import { getStats, getTrend, getDistribution, getEmployeeStats, getPayrollStats } from '@/api/dashboard'
 import { listOrders } from '@/api/order'
@@ -202,6 +204,9 @@ const jobTypeData = ref([
 ])
 const recentOrders = ref([])
 const recentOrdersTotal = ref(0)
+const recentOrdersPage = ref(1)
+const recentOrdersPageSize = 8
+let recentOrdersRequestSequence = 0
 
 const trendRange = ref('7d')
 const trendChart = ref(null)
@@ -227,16 +232,24 @@ const loadStats = async () => {
 // 加载订单趋势
 const loadTrend = async () => {
   try {
-    const result = await getTrend()
+    const result = await getTrend(trendRange.value)
     const d = result.data || {}
     if (d.labels && d.values) {
       orderTrendData.labels = d.labels
       orderTrendData.values = d.values
+      trendChartInstance?.setOption({
+        xAxis: { data: orderTrendData.labels },
+        series: [{ data: orderTrendData.values }]
+      })
     }
   } catch (e) {
     console.warn('[Dashboard] 加载趋势数据失败:', e)
   }
 }
+
+watch(trendRange, () => {
+  loadTrend()
+})
 
 // 加载工种分布
 const loadDistribution = async () => {
@@ -253,8 +266,13 @@ const loadDistribution = async () => {
 
 // 加载最近订单
 const loadRecentOrders = async () => {
+  const requestSequence = ++recentOrdersRequestSequence
   try {
-    const result = await listOrders({ page: 0, size: 8 })
+    const result = await listOrders({
+      page: recentOrdersPage.value - 1,
+      size: recentOrdersPageSize,
+    })
+    if (requestSequence !== recentOrdersRequestSequence) return
     const d = result.data || []
     const list = Array.isArray(d) ? d : (d?.content || d?.list || [])
     recentOrdersTotal.value = result.total ?? d?.totalElements ?? d?.total ?? list.length
@@ -286,6 +304,10 @@ const loadRecentOrders = async () => {
   } catch (e) {
     console.warn('[Dashboard] 加载最近订单失败:', e)
   }
+}
+
+const handleRecentOrdersPageChange = () => {
+  loadRecentOrders()
 }
 
 const formatNumber = (n) => {
@@ -411,9 +433,6 @@ onMounted(async () => {
   // 加载真实数据
   await Promise.all([loadStats(), loadTrend(), loadDistribution(), loadRecentOrders(), loadEmployeeStats(), loadPayrollStats()])
   // 数据加载后刷新图表
-  if (trendChartInstance) {
-    trendChartInstance.setOption({ xAxis: { data: orderTrendData.labels }, series: [{ data: orderTrendData.values }] })
-  }
   if (donutChartInstance) {
     donutChartInstance.setOption({ series: [{ data: jobTypeData.value }] })
   }

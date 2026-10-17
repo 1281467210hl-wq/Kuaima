@@ -102,6 +102,22 @@ class AdminAgreementControllerTests {
         assertEquals(2048L, data.get("fileSize"));
     }
 
+    @Test
+    void publicLatestShouldReturnEnabledInputAgreement() {
+        AgreementRepository agreements = mock(AgreementRepository.class);
+        Agreement agreement = agreement(2L, "INPUT");
+        agreement.setName("用户服务协议");
+        when(agreements.findFirstByTypeAndEnabledOrderByUpdatedAtDescIdDesc("用户服务协议", true))
+                .thenReturn(Optional.of(agreement));
+
+        var data = new PublicAgreementController(agreements, mock(OssStorageService.class))
+                .latest("用户服务协议").getData();
+
+        assertEquals("用户服务协议", data.name());
+        assertEquals("INPUT", data.contentMode());
+        assertEquals("协议正文", data.content());
+    }
+
     private AdminAgreementController controller(AgreementRepository agreements, AdminUserRepository admins) {
         return new AdminAgreementController(agreements, admins, mock(OssStorageService.class));
     }

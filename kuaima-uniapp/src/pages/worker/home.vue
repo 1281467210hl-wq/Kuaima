@@ -165,7 +165,7 @@ import WorkerTabBar from "@/components/WorkerTabBar.vue";
 import { request, USE_MOCK } from "@/api/http";
 import {
   applyPublicJob,
-  getCertificationStatus,
+  getWorkerRealnameStatus,
   listPublicJobs,
   reverseGeocode,
 } from "@/api/backend";
@@ -602,23 +602,17 @@ function openDetail(job) {
 }
 
 async function applyJob(job) {
-  // TODO: 临时去掉实名认证限制，后续需要恢复。
-  // 恢复方式：还原下方注释掉的认证状态检查即可。
-  // let certStatus = uni.getStorageSync("workerCertStatus") || "未认证";
-  // try {
-  //   const result = await getCertificationStatus();
-  //   certStatus = result?.certStatus || result?.status || certStatus;
-  //   uni.setStorageSync("workerCertStatus", certStatus);
-  //   if (["已通过", "通过", "已认证"].includes(certStatus)) {
-  //     uni.setStorageSync("workerRealname", true);
-  //   }
-  // } catch (_) {}
-  // if (
-  //   !["已通过", "通过", "已认证"].includes(certStatus) &&
-  //   uni.getStorageSync("workerRealname") !== true
-  // ) {
-  //   return uni.navigateTo({ url: "/pages/worker/realname" });
-  // }
+  // 报名须完成人脸实名，与后端 /realname/status 口径一致
+  if (uni.getStorageSync("workerRealname") !== true) {
+    try {
+      const result = await getWorkerRealnameStatus();
+      if (result?.realnameStatus === "APPROVED") uni.setStorageSync("workerRealname", true);
+    } catch (_) {}
+  }
+  if (uni.getStorageSync("workerRealname") !== true) {
+    uni.showToast({ title: "请先完成实名认证", icon: "none" });
+    return uni.navigateTo({ url: "/pages/worker/realname" });
+  }
 
   try {
     await applyPublicJob(job.id, { trial: job.salaryType === "MONTHLY" });
@@ -628,6 +622,11 @@ async function applyJob(job) {
     uni.showToast({ title: "报名成功", icon: "success" });
   } catch (e) {
     uni.showToast({ title: e.message || "报名失败", icon: "none" });
+    if (/实名/.test(e?.message || "")) {
+      // 本地缓存的实名标记已过期（如旧流程认证），以后端结果为准
+      uni.removeStorageSync("workerRealname");
+      uni.navigateTo({ url: "/pages/worker/realname" });
+    }
   }
 }
 

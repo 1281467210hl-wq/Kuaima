@@ -110,7 +110,7 @@ const statusDesc = computed(
     ({
       applied: "等待雇主审核报名信息",
       hired: "雇主已录用，请按时到岗",
-      arrived: "已确认到岗，完成工作后等待结算",
+      arrived: "工作中，完成工作后进入结算",
       done: "工作已完成，等待结算到账",
     })[order.value.status] || "订单处理中",
 );
@@ -132,8 +132,8 @@ const steps = computed(() => {
     },
     {
       key: "arrived",
-      label: "已到岗",
-      desc: "到岗后由雇主确认",
+      label: "工作中",
+      desc: "开工码验证或雇主确认后开始工作",
       done: index >= 2,
     },
     {
@@ -148,8 +148,8 @@ const actionText = computed(
   () =>
     ({
       applied: "取消报名",
-      hired: "输入开工码",
-      arrived: "输入早退码",
+      hired: order.value.workCodeEnabled ? "输入开工码" : "等待老板确认到岗",
+      arrived: order.value.leaveCodeEnabled ? "输入早退码" : "等待老板确认完工",
       done: "查看结算",
     })[order.value.status] || "查看钱包",
 );
@@ -162,7 +162,13 @@ function contact() {
 function primaryAction() {
   if (order.value.status === "applied") return cancel();
   if (order.value.status === "done") return openSettlement();
+  if (order.value.status === "hired" && !order.value.workCodeEnabled) {
+    return uni.showToast({ title: "雇主未开启开工码，请等待老板确认到岗", icon: "none" });
+  }
   if (order.value.status === "hired") return enterAttendanceCode("work");
+  if (order.value.status === "arrived" && !order.value.leaveCodeEnabled) {
+    return uni.showToast({ title: "雇主未开启早退码，请等待老板确认完工", icon: "none" });
+  }
   if (order.value.status === "arrived") return enterAttendanceCode("leave");
   uni.navigateTo({ url: "/pages/worker/wallet" });
 }
@@ -183,7 +189,7 @@ function enterAttendanceCode(type) {
         if (isWork) {
           await workerCheckIn(order.value.orderId, code);
           order.value.status = "arrived";
-          order.value.statusText = "已到岗";
+          order.value.statusText = "工作中";
         } else {
           await workerEarlyLeave(order.value.orderId, code);
           order.value.status = "done";
@@ -266,6 +272,8 @@ function normalizeOrderDetail(item, detail) {
     unit: typeMap[detail.type] || "日结",
     status: statusMap[item.status] || "applied",
     statusText: item.status || "已报名",
+    workCodeEnabled: Boolean(item.workCodeEnabled),
+    leaveCodeEnabled: Boolean(item.leaveCodeEnabled),
   };
 }
 </script>

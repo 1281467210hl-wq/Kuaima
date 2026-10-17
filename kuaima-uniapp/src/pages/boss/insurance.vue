@@ -30,39 +30,54 @@
         <view class="service-block">
           <view class="service-header">
             <text class="service-title">服务包</text>
-            <view class="service-meta">
+            <view v-if="currentProduct" class="service-meta">
               <text class="meta-icon">🛡</text>
-              <text>众安保险承保</text>
+              <text>{{ currentProduct.carrier }}承保</text>
               <text class="divider">|</text>
               <text class="link" @click="goDetail">更多详情 ›</text>
             </view>
           </view>
-          <view class="tier-row">
-            <view
-              v-for="tier in tiers"
-              :key="tier.amount"
-              class="tier-item"
-              :class="{ selected: selectedAmount === tier.amount }"
-              @click="selectTier(tier)"
-            >
-              <view class="amount"><text>{{ tier.amount }}万</text></view>
-              <view class="cost"><text>{{ tier.points }}积分/天</text></view>
-              <view class="check"><text>✓</text></view>
-            </view>
+          <view v-if="products.length > 1" class="product-row">
+            <text
+              v-for="product in products"
+              :key="product.id"
+              class="product-chip"
+              :class="{ selected: product.id === productId }"
+              @click="selectProduct(product)"
+            >{{ product.carrier }} · {{ product.code }}</text>
           </view>
-          <view class="coverage-detail">
-            <view class="row">
-              <text>意外伤害身故残疾</text>
-              <text class="val">{{ selectedTier.death }}万</text>
-            </view>
-            <view class="row">
-              <text>意外医疗</text>
-              <text class="val">{{ selectedTier.medical }}万</text>
-            </view>
-            <view class="hint">
-              <text>注：意外医疗限二级及以上公立医院就诊，限额内按实际费用 100% 赔付。</text>
-            </view>
+          <view v-if="loading" class="empty-tip"><text>保障方案加载中...</text></view>
+          <view v-else-if="!tiers.length" class="empty-tip">
+            <text>{{ loadError ? "保障方案加载失败，请稍后重试" : "平台暂未上架保险产品" }}</text>
           </view>
+          <template v-else>
+            <view class="tier-row">
+              <view
+                v-for="(tier, index) in tiers"
+                :key="index"
+                class="tier-item"
+                :class="{ selected: selectedAmount === tier.amount }"
+                @click="selectTier(tier)"
+              >
+                <view class="amount"><text>{{ tier.amountText }}</text></view>
+                <view class="cost"><text>{{ tier.points }}积分/天</text></view>
+                <view class="check"><text>✓</text></view>
+              </view>
+            </view>
+            <view class="coverage-detail">
+              <view class="row">
+                <text>意外伤害身故残疾</text>
+                <text class="val">{{ selectedTier.deathText }}</text>
+              </view>
+              <view class="row">
+                <text>意外医疗</text>
+                <text class="val">{{ selectedTier.medicalText }}</text>
+              </view>
+              <view class="hint">
+                <text>注：意外医疗限二级及以上公立医院就诊，限额内按实际费用 100% 赔付。</text>
+              </view>
+            </view>
+          </template>
         </view>
 
         <view class="job-block">
@@ -82,6 +97,10 @@
 </template>
 
 <script>
+import { listInsuranceProducts } from "@/api/backend";
+
+const toWan = (text, value) => text || (value != null && value !== "" ? `${value}万` : "-");
+
 export default {
   data() {
     return {
@@ -89,18 +108,31 @@ export default {
       statusBarHeight: 0,
       jobName: "普工",
       selectedJob: "普工",
-      selectedAmount: 33,
-      tiers: [
-        { amount: 11, points: 1, death: 10, medical: 1 },
-        { amount: 33, points: 2, death: 30, medical: 3 },
-        { amount: 55, points: 3, death: 50, medical: 5 },
-        { amount: 88, points: 4, death: 80, medical: 8 }
-      ]
+      selectedAmount: null,
+      products: [],
+      productId: null,
+      loading: true,
+      loadError: false
     };
   },
   computed: {
+    currentProduct() {
+      return this.products.find(product => product.id === this.productId) || this.products[0] || null;
+    },
+    tiers() {
+      // 档位以后台「保险管理」发布的数据为准，展示文案优先用后台填写的原文
+      return (this.currentProduct?.tiers || []).map(tier => ({
+        amount: Number(tier.amount) || 0,
+        points: Number(tier.points) || 0,
+        death: Number(tier.death) || 0,
+        medical: Number(tier.medical) || 0,
+        amountText: toWan(tier.amountText, tier.amount),
+        deathText: toWan(tier.deathText, tier.death),
+        medicalText: toWan(tier.medicalText, tier.medical)
+      }));
+    },
     selectedTier() {
-      return this.tiers.find(tier => tier.amount === this.selectedAmount) || this.tiers[1];
+      return this.tiers.find(tier => tier.amount === this.selectedAmount) || this.tiers[0] || null;
     }
   },
   onLoad(options) {
@@ -109,35 +141,70 @@ export default {
     const saved = uni.getStorageSync("recruitInsurancePlan");
     if (saved && typeof saved === "object") {
       this.enabled = saved.enabled !== false;
-      this.selectedAmount = Number(saved.amount) || 33;
+      this.selectedAmount = Number(saved.amount) || null;
+      this.productId = saved.productId || null;
       this.selectedJob = saved.job || this.jobName;
     }
+    this.loadProducts();
   },
   methods: {
+    async loadProducts() {
+      this.loading = true;
+      this.loadError = false;
+      try {
+        const list = await listInsuranceProducts();
+        this.products = Array.isArray(list) ? list : [];
+      } catch (error) {
+        console.warn("[insurance] 加载保险产品失败:", error);
+        this.products = [];
+        this.loadError = true;
+      } finally {
+        this.loading = false;
+      }
+      // 本地保存的产品可能已被后台停用，回落到最新启用的产品
+      if (!this.products.some(product => product.id === this.productId)) {
+        this.productId = this.products[0]?.id ?? null;
+      }
+      if (this.selectedTier) this.selectedAmount = this.selectedTier.amount;
+    },
     goBack() {
       uni.navigateBack({ fail: () => uni.redirectTo({ url: "/pages/boss-publish/recruit-demand" }) });
     },
     goDetail() {
+      if (!this.selectedTier) return;
       uni.navigateTo({
         url: `/pages/worker/insurance-detail?amount=${this.selectedTier.amount}&cost=${this.selectedTier.points}&medical=${this.selectedTier.medical}&disability=${this.selectedTier.death}`
       });
+    },
+    selectProduct(product) {
+      this.productId = product.id;
+      this.selectedAmount = this.selectedTier?.amount ?? null;
     },
     selectTier(tier) {
       this.selectedAmount = tier.amount;
     },
     savePlan() {
+      const tier = this.selectedTier;
+      if (this.enabled && !tier) {
+        uni.showToast({ title: "暂无可选保障方案", icon: "none" });
+        return;
+      }
+      const product = this.currentProduct;
       const plan = {
         enabled: this.enabled,
-        amount: this.selectedTier.amount,
-        points: this.selectedTier.points,
-        death: this.selectedTier.death,
-        medical: this.selectedTier.medical,
+        productId: product?.id ?? null,
+        productCode: product?.code || "",
+        carrier: product?.carrier || "",
+        amount: tier?.amount ?? 0,
+        points: tier?.points ?? 0,
+        death: tier?.death ?? 0,
+        medical: tier?.medical ?? 0,
         job: this.selectedJob
       };
       uni.setStorageSync("recruitInsurancePlan", plan);
       uni.$emit("insurancePlanSaved", plan);
       uni.showToast({
-        title: `已确定：${plan.amount}万 · ${plan.points}积分/天`,
+        title: plan.enabled ? `已确定：${tier.amountText} · ${plan.points}积分/天` : "已关闭零工意外保障",
         icon: "none"
       });
       setTimeout(() => this.goBack(), 400);
@@ -170,6 +237,10 @@ export default {
 .meta-icon { font-size: 22rpx; }
 .divider { color: #ddd; }
 .link { color: #1677ff; }
+.product-row { display: flex; flex-wrap: wrap; gap: 16rpx; margin-bottom: 24rpx; }
+.product-chip { padding: 10rpx 20rpx; border: 2rpx solid #eee; border-radius: 28rpx; font-size: 22rpx; color: #666; }
+.product-chip.selected { border-color: #16a34a; background: #f0fff4; color: #16a34a; }
+.empty-tip { padding: 40rpx 0; text-align: center; font-size: 24rpx; color: #999; }
 .tier-row { display: flex; gap: 16rpx; }
 .tier-item { position: relative; flex: 1; padding: 20rpx 8rpx 16rpx; border: 3rpx solid #eee; border-radius: 16rpx; background: #fff; text-align: center; transition: all .15s; }
 .tier-item .amount { font-size: 30rpx; font-weight: 700; color: #333; }

@@ -107,7 +107,7 @@ const handleUpdateType = async type => {
     ElMessage.success(type === 'complaint' ? '已标记为投诉' : '已标记为咨询')
   } catch (e) { ElMessage.error(e?.message || '更新对话类型失败') }
 }
-const isOpen = computed(() => session.value?.status === 'OPEN'); const displaySessionId = computed(() => Number.isFinite(sessionId) ? `S${String(sessionId).padStart(11, '0')}` : '—')
+const isOpen = computed(() => ['OPEN', 'PROCESSING'].includes(session.value?.status)); const displaySessionId = computed(() => Number.isFinite(sessionId) ? `S${String(sessionId).padStart(11, '0')}` : '—')
 const formatTime = ts => { if (!ts) return ''; const d = new Date(ts); return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}` }
 const firstMessageDate = computed(() => { const ts = messages.value[0]?.timestamp; if (!ts) return '本次会话'; const d = new Date(ts); return `${d.toDateString() === new Date().toDateString() ? '今天' : `${d.getMonth() + 1}月${d.getDate()}日`} ${formatTime(ts)}` })
 const scrollToBottom = () => nextTick(() => { if (messagesRef.value) messagesRef.value.scrollTop = messagesRef.value.scrollHeight })

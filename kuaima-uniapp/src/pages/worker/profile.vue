@@ -244,7 +244,7 @@ async function loadProfile() {
   }
   if (walletResult.status === "fulfilled" && walletResult.value) {
     const wallet = walletResult.value;
-    assets.walletBalance = fromCents(
+    assets.walletBalance = Number(
       wallet.balance ?? wallet.available ?? wallet.availableBalance ?? 0,
     );
   }

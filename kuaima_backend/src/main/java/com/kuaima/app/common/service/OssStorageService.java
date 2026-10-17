@@ -5,6 +5,8 @@ import com.aliyun.oss.ClientBuilderConfiguration;
 import com.aliyun.oss.OSSClientBuilder;
 import com.aliyun.oss.OSSException;
 import com.aliyun.oss.HttpMethod;
+import com.aliyun.oss.model.GetObjectRequest;
+import com.aliyun.oss.model.OSSObject;
 import com.aliyun.oss.model.GeneratePresignedUrlRequest;
 import com.aliyun.oss.model.ObjectMetadata;
 import com.aliyun.oss.model.ResponseHeaderOverrides;
@@ -50,7 +52,7 @@ public class OssStorageService {
     private volatile OSS previewClient;
 
     /** OSS 四项必填配置齐全才走云端，否则本地磁盘兜底（开发/测试环境无 OSS 也能上传成功）。 */
-    private boolean ossConfigured() {
+    public boolean isOssConfigured() {
         return StringUtils.hasText(endpoint) && StringUtils.hasText(bucketName)
                 && StringUtils.hasText(accessKeyId) && StringUtils.hasText(accessKeySecret);
     }
@@ -84,7 +86,7 @@ public class OssStorageService {
     }
 
     public OssUploadResult uploadResult(MultipartFile file, String folder, String extension) {
-        if (!ossConfigured()) {
+        if (!isOssConfigured()) {
             try {
                 return saveLocal(file.getBytes(), folder, extension);
             } catch (IOException e) {
@@ -115,7 +117,7 @@ public class OssStorageService {
     }
 
     public OssUploadResult uploadResult(Path file, String contentType, String folder, String extension) {
-        if (!ossConfigured()) {
+        if (!isOssConfigured()) {
             try {
                 return saveLocal(Files.readAllBytes(file), folder, extension);
             } catch (IOException e) {
@@ -149,7 +151,7 @@ public class OssStorageService {
         if (content == null || content.length == 0) {
             throw new IllegalArgumentException("上传内容为空");
         }
-        if (!ossConfigured()) {
+        if (!isOssConfigured()) {
             return saveLocal(content, folder, extension).toMap();
         }
         String suffix = extension == null ? "" : extension.toLowerCase();
@@ -249,6 +251,42 @@ public class OssStorageService {
         request.setResponseHeaders(responseHeaders);
         return getPreviewClient().generatePresignedUrl(request).toString()
                 .replaceFirst("^http://", "https://");
+    }
+
+    public ObjectStream openObject(String objectKey, Long start, Long end) {
+        if (!isOssConfigured()) throw new IllegalStateException("OSS 存储未配置");
+        if (!StringUtils.hasText(objectKey)) throw new IllegalArgumentException("对象地址不能为空");
+        OSS client = getClient();
+        ObjectMetadata metadata = client.getObjectMetadata(bucketName, objectKey);
+        long objectLength = Math.max(0, metadata.getContentLength());
+        GetObjectRequest request = new GetObjectRequest(bucketName, objectKey);
+        if (start != null || end != null) {
+            long rangeStart = start == null ? 0 : start;
+            long rangeEnd = end == null ? objectLength - 1 : end;
+            if (rangeStart < 0 || rangeEnd < rangeStart || rangeStart >= objectLength) {
+                throw new IllegalArgumentException("请求范围无效");
+            }
+            request.setRange(rangeStart, Math.min(rangeEnd, objectLength - 1));
+        }
+        OSSObject object = client.getObject(request);
+        long responseLength = Math.max(0, object.getObjectMetadata().getContentLength());
+        return new ObjectStream(
+                object.getObjectContent(),
+                object.getObjectMetadata().getContentType(),
+                objectLength,
+                responseLength,
+                start == null && end == null ? null : (start == null ? 0 : start),
+                start == null && end == null ? null
+                        : Math.min(end == null ? objectLength - 1 : end, objectLength - 1));
+    }
+
+    public record ObjectStream(
+            java.io.InputStream content,
+            String contentType,
+            long objectLength,
+            long responseLength,
+            Long start,
+            Long end) {
     }
 
     /**

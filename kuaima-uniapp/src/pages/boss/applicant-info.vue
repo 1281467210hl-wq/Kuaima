@@ -132,17 +132,27 @@
               </template>
               <template v-else-if="record.status === 'accepted'">
                 <text
+                  v-if="!workCodeEnabled"
                   class="record-btn secondary"
                   @click="handleRecord(record.id, 'arrive')"
                   >确认到岗</text
                 >
+                <text
+                  v-else
+                  class="record-btn waiting"
+                >等待开工码</text>
               </template>
               <template v-else-if="record.status === 'arrived'">
                 <text
+                  v-if="!leaveCodeEnabled"
                   class="record-btn primary"
                   @click="handleRecord(record.id, 'complete')"
                   >确认完工</text
                 >
+                <text
+                  v-else
+                  class="record-btn waiting"
+                >等待早退码</text>
               </template>
             </view>
           </view>
@@ -168,6 +178,7 @@ import {
   confirmOrderItemWork,
   finishOrderItem,
   readMessage,
+  getBossAttendanceCodes,
 } from "@/api/backend";
 
 export default {
@@ -180,7 +191,7 @@ export default {
         { label: "全部", value: "all" },
         { label: "待录用", value: "pending" },
         { label: "已录用", value: "accepted" },
-        { label: "已到岗", value: "arrived" },
+        { label: "工作中", value: "arrived" },
         { label: "已完成", value: "completed" },
         { label: "已拒绝", value: "rejected" },
       ],
@@ -190,7 +201,7 @@ export default {
       statusMap: {
         pending: { text: "待录用", color: "pending" },
         accepted: { text: "已录用", color: "accepted" },
-        arrived: { text: "已到岗", color: "arrived" },
+        arrived: { text: "工作中", color: "arrived" },
         completed: { text: "已完成", color: "completed" },
         rejected: { text: "已拒绝", color: "rejected" },
         expired: { text: "已过期", color: "expired" },
@@ -206,6 +217,8 @@ export default {
       targetMessageId: "",
       orderId: "",
       actionLoadingId: "",
+      workCodeEnabled: false,
+      leaveCodeEnabled: false,
     };
   },
   onLoad(options = {}) {
@@ -220,9 +233,13 @@ export default {
     this.targetMessageId = options.messageId || "";
     this.orderId = options.orderId || "";
     this.loadApplicants();
+    this.loadAttendanceCodes();
   },
   onShow() {
-    if (this._loadedOnce) this.loadApplicants();
+    if (this._loadedOnce) {
+      this.loadApplicants();
+      this.loadAttendanceCodes();
+    }
     this._loadedOnce = true;
   },
   computed: {
@@ -243,6 +260,16 @@ export default {
     },
   },
   methods: {
+    async loadAttendanceCodes() {
+      try {
+        const result = await getBossAttendanceCodes();
+        this.workCodeEnabled = Boolean(result?.workCodeEnabled);
+        this.leaveCodeEnabled = Boolean(result?.leaveCodeEnabled);
+      } catch (error) {
+        this.workCodeEnabled = false;
+        this.leaveCodeEnabled = false;
+      }
+    },
     async loadApplicants() {
       try {
         let orders;
@@ -728,6 +755,11 @@ export default {
   background: #fff;
   color: #666;
   border-color: #e8e8e8;
+}
+.record-btn.waiting {
+  background: #f6f6f6;
+  color: #999;
+  border-color: #eee;
 }
 /* 原型尺寸与跨端适配 */
 .nav-bar {

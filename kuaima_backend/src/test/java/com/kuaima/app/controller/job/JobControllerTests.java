@@ -20,6 +20,8 @@ import com.kuaima.app.domain.enterprise.entity.Enterprise;
 import com.kuaima.app.domain.enterprise.repository.EnterpriseRepository;
 import com.kuaima.app.domain.user.entity.User;
 import com.kuaima.app.domain.user.repository.UserRepository;
+import com.kuaima.app.common.service.OssStorageService;
+import com.kuaima.app.common.service.RecruitmentMediaPreviewService;
 
 class JobControllerTests {
 
@@ -71,5 +73,26 @@ class JobControllerTests {
         assertEquals("13800138000", result.getData().getContactPhone());
         assertEquals(new java.math.BigDecimal("121.473701"), result.getData().getLongitude());
         assertEquals(new java.math.BigDecimal("31.230416"), result.getData().getLatitude());
+    }
+
+    @Test
+    void publicJobDetail_shouldUseSameDomainVideoProxy() {
+        BossOrderRespository orders = mock(BossOrderRespository.class);
+        BossOrder order = new BossOrder();
+        order.setOrderStatus("招工中");
+        order.setVideoKey("insurance/recruitment/2026/10/15/e9b4d56a626c4376b3bcf9d8bad8289e.mp4");
+        when(orders.findById(9L)).thenReturn(java.util.Optional.of(order));
+        RecruitmentMediaPreviewService previewService = mock(RecruitmentMediaPreviewService.class);
+        when(previewService.previewUrl(order.getVideoKey()))
+                .thenReturn("https://ke.taifang.xyz/api/public/recruitment-media?objectKey=x");
+
+        JobController controller = new JobController(mock(JobFavoriteRepository.class),
+                mock(BrowseHistoryRepository.class), orders, mock(BossOrderService.class),
+                null, mock(OssStorageService.class), null, previewService);
+
+        var result = controller.getPublicJob(9L);
+
+        assertEquals("https://ke.taifang.xyz/api/public/recruitment-media?objectKey=x",
+                result.getData().getVideoUrl());
     }
 }

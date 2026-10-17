@@ -72,6 +72,16 @@ function extractClock(value) {
   return match ? match[1] : "";
 }
 
+// 与招工订单列表一致：计时/计件的真实单价存在 tags 里，salary 只是折算后的日薪
+function parseWage(detail = {}) {
+  const tags = String(detail.tags || "");
+  const hourly = tags.match(/时薪:([\d.]+)/);
+  if (hourly) return { wage: Number(hourly[1]), unit: "元/小时" };
+  const piece = tags.match(/计件单价:([\d.]+)/);
+  if (piece) return { wage: Number(piece[1]), unit: `元/${tags.match(/计件单位:([^,]+)/)?.[1] || "件"}` };
+  return { wage: Number(detail.salary || 0), unit: "元/天" };
+}
+
 export default {
   data() {
     return {
@@ -115,7 +125,7 @@ export default {
       return;
     }
     if (this.orderId) {
-      const saved = await this.saveTemplate(false);
+      const saved = await this.saveTemplate();
       if (saved && this.templateId) await this.loadTemplateDetail(this.templateId);
       return;
     }
@@ -139,8 +149,7 @@ export default {
         id: detail.id || detail.templateId,
         templateName: detail.templateName || detail.orderTitle || "未命名模板",
         jobName: detail.orderTitle || detail.postion || "未命名岗位",
-        wage: detail.salary ?? "0",
-        unit: detail.unit || "元/天",
+        ...parseWage(detail),
         tag: typeLabels[detail.type] || detail.settleMode || "每天日结",
         time: start && end ? `${start}开工 ${end}完工` : "时间待定",
         hours: detail.duration
@@ -151,34 +160,38 @@ export default {
         gender: detail.gender || "男女不限",
       };
     },
+    async fetchAllTemplates() {
+      const pageSize = 20;
+      const rows = [];
+      const seenIds = new Set();
+      let page = 0;
+      let hasMore = true;
+      while (hasMore) {
+        const result = await listBossOrderTemplates({ page, size: pageSize });
+        const records = Array.isArray(result)
+          ? result
+          : result?.records || result?.content || [];
+        let added = 0;
+        records.forEach((item) => {
+          const id = item?.id || item?.templateId;
+          if (!id || seenIds.has(id)) return;
+          seenIds.add(id);
+          rows.push(item);
+          added += 1;
+        });
+        const total = Number(result?.total);
+        hasMore = Number.isFinite(total)
+          ? rows.length < total && added > 0
+          : records.length === pageSize && added > 0;
+        page += 1;
+      }
+      return rows;
+    },
     async loadTemplates() {
       this.loading = true;
       this.loadError = "";
       try {
-        const pageSize = 20;
-        const rows = [];
-        const seenIds = new Set();
-        let page = 0;
-        let hasMore = true;
-        while (hasMore) {
-          const result = await listBossOrderTemplates({ page, size: pageSize });
-          const records = Array.isArray(result)
-            ? result
-            : result?.records || result?.content || [];
-          let added = 0;
-          records.forEach((item) => {
-            const id = item?.id || item?.templateId;
-            if (!id || seenIds.has(id)) return;
-            seenIds.add(id);
-            rows.push(item);
-            added += 1;
-          });
-          const total = Number(result?.total);
-          hasMore = Number.isFinite(total)
-            ? rows.length < total && added > 0
-            : records.length === pageSize && added > 0;
-          page += 1;
-        }
+        const rows = await this.fetchAllTemplates();
         this.templates = rows
           .filter((item) => item?.id || item?.templateId)
           .map((item) => this.normalizeTemplate(item));
@@ -210,8 +223,8 @@ export default {
       this.orderId = detail.sourceOrderId || detail.orderId || this.orderId;
       this.templateName = detail.templateName || detail.orderTitle || this.templateName || "未命名模板";
       this.jobName = detail.orderTitle || detail.postion || this.jobName || "未命名岗位";
-      this.wage = detail.salary ?? this.wage ?? "0";
-      this.unit = detail.unit || this.unit || "元/天";
+      this.wage = normalized.wage;
+      this.unit = normalized.unit;
       this.tag = normalized.tag;
       this.time = normalized.time;
       this.hours = detail.duration ? `${detail.duration}${String(detail.duration).includes("工") ? "" : "工时"}` : (this.hours || "工时待定");
@@ -227,38 +240,41 @@ export default {
     goBack() {
       uni.navigateBack();
     },
-    async saveTemplate(overwrite = false) {
+    async saveTemplate() {
       if (!this.orderId || !this.templateName.trim() || this.operating) {
         if (!this.orderId) uni.showToast({ title: "缺少订单信息", icon: "none" });
         return false;
       }
       this.operating = true;
+      const name = this.templateName.trim();
       try {
-        const result = await createBossOrderTemplate(this.orderId, {
-          templateName: this.templateName.trim(),
-          overwrite,
-        });
+        const result = await createBossOrderTemplate(this.orderId, { templateName: name });
         this.templateId = result?.id || result?.templateId || this.templateId;
         uni.$emit("bossTemplateChanged");
-        uni.showToast({ title: overwrite ? "模板已覆盖" : "模板已收藏", icon: "success" });
+        uni.showToast({ title: "模板已收藏", icon: "success" });
         return true;
       } catch (error) {
-        const duplicate = Number(error?.code || error?.statusCode) === 400 || /重复|已存在|duplicate/i.test(error?.message || "");
-        if (!overwrite && duplicate) {
-          uni.showModal({
-            title: "模板名称重复",
-            content: error?.message || "已存在同名模板，是否覆盖？",
-            confirmText: "覆盖",
-            success: ({ confirm }) => {
-              if (confirm) this.saveTemplate(true);
-            },
-          });
-        } else {
-          await this.handleRequestError(error, "模板保存失败");
+        // 重复收藏同一岗位时直接回显已有的同名模板，不再让用户处理冲突
+        const existing = /已存在|重复|duplicate/i.test(error?.message || "")
+          ? await this.findTemplateByName(name)
+          : null;
+        if (existing) {
+          this.templateId = existing.id || existing.templateId;
+          uni.showToast({ title: "模板已保存", icon: "success" });
+          return true;
         }
+        await this.handleRequestError(error, "模板保存失败");
         return false;
       } finally {
         this.operating = false;
+      }
+    },
+    async findTemplateByName(name) {
+      try {
+        const rows = await this.fetchAllTemplates();
+        return rows.find((item) => String(item?.templateName || "").trim() === name) || null;
+      } catch (_) {
+        return null;
       }
     },
     renameTemplate(item) {
@@ -327,7 +343,7 @@ export default {
         });
         return;
       }
-      const saved = await this.saveTemplate(false);
+      const saved = await this.saveTemplate();
       if (saved) uni.navigateTo({ url: "/pages/boss/home" });
     },
   },

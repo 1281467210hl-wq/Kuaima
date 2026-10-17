@@ -18,6 +18,7 @@ public interface PointPurchaseOrderRepository extends JpaRepository<PointPurchas
     Optional<PointPurchaseOrder> findByIdempotencyKey(String key);
     Optional<PointPurchaseOrder> findByOrderNoAndBossId(String orderNo, Long bossId);
     Optional<PointPurchaseOrder> findByOrderNo(String orderNo);
+    List<PointPurchaseOrder> findByBossIdOrderByPurchaseTimeDescIdDesc(Long bossId);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select o from PointPurchaseOrder o where o.orderNo = :orderNo")

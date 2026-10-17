@@ -4,8 +4,8 @@ export function getStats() {
   return request.get('/admin/dashboard/stats')
 }
 
-export function getTrend() {
-  return request.get('/admin/dashboard/trend')
+export function getTrend(range = '7d') {
+  return request.get('/admin/dashboard/trend', { params: { range } })
 }
 
 export function getDistribution() {

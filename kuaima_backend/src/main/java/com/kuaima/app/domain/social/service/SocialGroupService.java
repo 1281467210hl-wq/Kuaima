@@ -180,12 +180,12 @@ public class SocialGroupService {
         if (login == null || login.id() == null) {
             throw new ForbiddenBusinessException("请先登录");
         }
-        User user = users.findById(login.id())
-                .orElseThrow(() -> new EntityNotFoundException("用户不存在: " + login.id()));
-        if (!UserRole.isWorkerIdentity(user)) {
-            throw new ForbiddenBusinessException("当前用户不是零工身份");
+        // 按当前登录端判断：已认证企业的用户切到零工端后同样可以看群、加群、建群
+        if (!UserRole.USER.equals(login.role())) {
+            throw new ForbiddenBusinessException("请切换到零工端使用社群");
         }
-        return user;
+        return users.findById(login.id())
+                .orElseThrow(() -> new EntityNotFoundException("用户不存在: " + login.id()));
     }
 
     private boolean isRealnameApproved(User user) {

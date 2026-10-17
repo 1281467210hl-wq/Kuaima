@@ -19,6 +19,8 @@ import com.kuaima.app.domain.boss.entity.BaseOrderItem;
 import com.kuaima.app.domain.boss.entity.BossOrder;
 import com.kuaima.app.domain.boss.repository.BaseOrderItemRespository;
 import com.kuaima.app.domain.boss.repository.BossOrderRespository;
+import com.kuaima.app.domain.boss.entity.BossRecruitSettings;
+import com.kuaima.app.domain.boss.repository.BossRecruitSettingsRepository;
 import com.kuaima.app.common.ForbiddenBusinessException;
 import com.kuaima.app.domain.user.entity.User;
 import com.kuaima.app.domain.user.model.WorkerProfileModels.UpdateWorkerProfileRequest;
@@ -38,15 +40,26 @@ public class WorkerProfileService {
     private final BaseOrderItemRespository itemRepository;
     private final BossOrderRespository orderRepository;
     private final BossReviewRepository reviewRepository;
+    private final BossRecruitSettingsRepository recruitSettingsRepository;
 
     public WorkerProfileService(UserRepository userRepository,
                                 BaseOrderItemRespository itemRepository,
                                 BossOrderRespository orderRepository,
                                 BossReviewRepository reviewRepository) {
+        this(userRepository, itemRepository, orderRepository, reviewRepository, null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public WorkerProfileService(UserRepository userRepository,
+                                BaseOrderItemRespository itemRepository,
+                                BossOrderRespository orderRepository,
+                                BossReviewRepository reviewRepository,
+                                BossRecruitSettingsRepository recruitSettingsRepository) {
         this.userRepository = userRepository;
         this.itemRepository = itemRepository;
         this.orderRepository = orderRepository;
         this.reviewRepository = reviewRepository;
+        this.recruitSettingsRepository = recruitSettingsRepository;
     }
 
     @Transactional(readOnly = true)
@@ -145,12 +158,15 @@ public class WorkerProfileService {
             throw new EntityNotFoundException("报名关联的订单不存在: " + item.getOrderId());
         }
         User boss = order.getCreateBy() == null ? null : bosses.get(order.getCreateBy());
+        BossRecruitSettings settings = recruitSettings(order);
         return new WorkerOrder(item.getId(), item.getOrderId(), mapDisplayStatus(item.getStatus()), item.getTrialRequested(),
                 item.getApplyDate(), item.getHireDate(), item.getWorkDate(), item.getFinishDate(),
                 order.getOrderTitle(), order.getType(), order.getSalary(), order.getAddress(),
                 order.getLongitude(), order.getLatitude(),
                 order.getStartTime(), order.getEndTime(), boss == null ? null : boss.getCompanyName(),
-                order.getPostion(), order.getOrderStatus(), order.getDuration(), order.getTags(), review != null,
+                order.getPostion(), order.getOrderStatus(), order.getDuration(), order.getTags(),
+                settings != null && Boolean.TRUE.equals(settings.getStartCodeEnabled()),
+                settings != null && Boolean.TRUE.equals(settings.getEarlyCodeEnabled()), review != null,
                 review == null ? null : new ReviewSummary(review.getAttitudeScore(), review.getSettlementScore(),
                         review.getEnvironmentScore(), review.getContent(), review.getUpdatedAt()));
     }
@@ -173,6 +189,13 @@ public class WorkerProfileService {
 
     private String blankToNull(String value) {
         return value == null || value.isBlank() ? null : value.trim();
+    }
+
+    private BossRecruitSettings recruitSettings(BossOrder order) {
+        if (recruitSettingsRepository == null) return null;
+        return (order.getEnterpriseId() != null
+                ? recruitSettingsRepository.findByEnterpriseId(order.getEnterpriseId())
+                : recruitSettingsRepository.findByBossId(order.getCreateBy())).orElse(null);
     }
 
     private void validate(UpdateWorkerProfileRequest request) {

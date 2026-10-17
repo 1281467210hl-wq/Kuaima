@@ -251,6 +251,10 @@ import {
   updateOrder,
 } from "@/api/backend";
 import { handleTokenInvalid } from "@/api/auth";
+import {
+  checkBossPublishEligibility,
+  redirectByPublishEligibility,
+} from "@/api/publish-eligibility";
 import { normalizeBossAddressSelection, validateBossWorkLocation } from "@/utils/boss-address";
 
 function mergeTemplateSource(detail = {}, source = {}) {
@@ -577,6 +581,9 @@ export default {
       const current = this.insurancePlan || {};
       this.insurancePlan = {
         enabled: plan.enabled !== undefined ? !!plan.enabled : current.enabled,
+        productId: plan.productId ?? current.productId ?? null,
+        productCode: plan.productCode || current.productCode || "",
+        carrier: plan.carrier || current.carrier || "",
         amount: Number(plan.amount) || current.amount || 33,
         points: Number(plan.points) || current.points || 2,
         death: Number(plan.death) || current.death || 30,
@@ -716,13 +723,26 @@ export default {
         uni.showToast({ title: "请完善计件价格和日产量", icon: "none" });
         return;
       }
+      // 「再来一单」「使用模板」不经过首页入口，新建岗位提交前再校验一次发布资格
+      if (!this.orderId) {
+        const eligibility = await checkBossPublishEligibility();
+        if (!eligibility.canPublish) return;
+      }
       this.publishing = true;
       try {
         const workTime = uni.getStorageSync("workTimeSelection") || {};
-        const dateText =
+        const selectedDates =
           Array.isArray(workTime.selectedDates) && workTime.selectedDates.length
-            ? workTime.selectedDates[0]
-            : formatLocalDate(new Date());
+            ? workTime.selectedDates.map(String).sort()
+            : [formatLocalDate(new Date())];
+        const dateText = selectedDates[0];
+        const workStartTime = workTime.startTime || "08:00";
+        const workEndTime = workTime.endTime || "18:00";
+        // endTime 落在最后一个工作日，编辑时才能回显完整日期区间；跨天班次收工在次日
+        const endDateText = shiftLocalDate(
+          selectedDates[selectedDates.length - 1],
+          clockMinutes(workEndTime) <= clockMinutes(workStartTime) ? 1 : 0,
+        );
         const workLocation = uni.getStorageSync("workLocationSelection") || {};
         const location = normalizeBossAddressSelection(workLocation);
         const locationValidation = validateBossWorkLocation(location);
@@ -770,8 +790,13 @@ export default {
             ? taskContent.images.map((item) => item?.objectKey).filter(Boolean).join(",")
             : taskContent.imageKeys || "",
           videoKey: taskContent.video?.objectKey || taskContent.videoKey || "",
-          startTime: `${dateText} ${workTime.startTime || "08:00"}:00`,
-          endTime: `${dateText} ${workTime.endTime || "18:00"}:00`,
+          startTime: `${dateText} ${workStartTime}:00`,
+          endTime: `${endDateText} ${workEndTime}:00`,
+          restMode: workTime.mode || "none",
+          restSlots: JSON.stringify(Array.isArray(workTime.restSlots) ? workTime.restSlots : []),
+          restMinutes: Number(workTime.restMinutes || 0),
+          restCheckin: Boolean(workTime.checkin),
+          restCheckinCount: Number(workTime.checkinCount || 0),
           salary,
           orderContent: composeTaskContent(taskContent),
           gender: genderAge.gender || "不限",
@@ -818,9 +843,13 @@ export default {
       } catch (error) {
         if (error?.statusCode === 403) {
           uni.showToast({
-            title: error.message || "发布受限，请联系平台处理",
+            title: error.message || "请先完成人脸实名认证和企业认证",
             icon: "none",
           });
+          if (/认证/.test(error?.message || "")) {
+            const eligibility = await checkBossPublishEligibility({ redirect: false });
+            if (!eligibility.canPublish) redirectByPublishEligibility(eligibility);
+          }
         } else {
           uni.showToast({ title: error.message || "发布失败", icon: "none" });
         }
@@ -859,6 +888,16 @@ function formatAgeRequirement(selection = {}) {
 
 function formatLocalDate(date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function shiftLocalDate(value, days) {
+  const [year, month, day] = String(value).split("-").map(Number);
+  return formatLocalDate(new Date(year, month - 1, day + days));
+}
+
+function clockMinutes(value) {
+  const [hour, minute] = String(value).split(":").map(Number);
+  return hour * 60 + (minute || 0);
 }
 </script>
 

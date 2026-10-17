@@ -22,14 +22,19 @@ import org.springframework.data.jpa.domain.Specification;
 import com.kuaima.app.domain.boss.constant.BossStatus;
 import com.kuaima.app.domain.boss.entity.BaseOrderItem;
 import com.kuaima.app.domain.boss.entity.BossOrder;
+import com.kuaima.app.domain.boss.entity.BossRecruitSettings;
 import com.kuaima.app.domain.boss.model.BossOrderQuery;
+import com.kuaima.app.domain.boss.repository.BossAddressRepository;
+import com.kuaima.app.domain.boss.repository.BossRecruitSettingsRepository;
 import com.kuaima.app.domain.boss.repository.BaseOrderItemRespository;
 import com.kuaima.app.domain.boss.repository.BossOrderRespository;
 import com.kuaima.app.domain.message.service.MessageService;
+import com.kuaima.app.domain.user.service.CertificationService;
 import com.kuaima.app.domain.user.repository.UserRepository;
 import com.kuaima.app.domain.wallet.constant.SettlementStatus;
 import com.kuaima.app.domain.wallet.entity.Settlement;
 import com.kuaima.app.domain.wallet.repository.SettlementRespository;
+import com.kuaima.app.admin.repository.AdminSettingRepository;
 
 class BossOrderServiceListTests {
 
@@ -71,6 +76,7 @@ class BossOrderServiceListTests {
                         BossStatus.ITEM_APPLIED,
                         BossStatus.ITEM_HIRED,
                         BossStatus.ITEM_ON_WORK,
+                        BossStatus.ITEM_PENDING_SETTLE,
                         BossStatus.ITEM_FINISHED)));
     }
 
@@ -146,7 +152,7 @@ class BossOrderServiceListTests {
     }
 
     @Test
-    void confirmWork_shouldMoveOrderToPendingSettlementAfterAllHiredWorkersArrive() {
+    void confirmWork_shouldMoveOrderToWorking() {
         BossOrder order = new BossOrder();
         order.setId(22L);
         order.setCreateBy(51L);
@@ -171,8 +177,9 @@ class BossOrderServiceListTests {
 
         service.confirmWork(32L);
 
-        assertEquals(BossStatus.ORDER_PENDING_SETTLE, order.getOrderStatus());
+        assertEquals(BossStatus.ORDER_WORKING, order.getOrderStatus());
         verify(orderRepository).save(order);
+        verify(settlementRepository, times(0)).save(any(Settlement.class));
     }
 
     @Test
@@ -209,7 +216,7 @@ class BossOrderServiceListTests {
     }
 
     @Test
-    void updateOrder_shouldReconcileFinishedApplicantWhenHeadcountReducedToOne() {
+    void updateOrder_shouldKeepOrderWorkingWhenAllActiveApplicantsArrived() {
         BossOrder order = new BossOrder(); order.setId(39L); order.setOrderStatus(BossStatus.ORDER_RECRUITING); order.setOrderNum(3); order.setSalary(200);
         BaseOrderItem finished = new BaseOrderItem(); finished.setId(390L); finished.setOrderId(39L); finished.setUserId(99L); finished.setStatus(BossStatus.ITEM_FINISHED); finished.setWorkDate(Date.valueOf(java.time.LocalDate.now())); finished.setFinishDate(Date.valueOf(java.time.LocalDate.now()));
         BossOrder update = new BossOrder(); update.setOrderNum(1);
@@ -221,12 +228,12 @@ class BossOrderServiceListTests {
 
         BossOrder result = service.updateOrder(39L, update);
 
-        assertEquals(BossStatus.ORDER_PENDING_SETTLE, result.getOrderStatus());
-        verify(settlementRepository).save(any(Settlement.class));
+        assertEquals(BossStatus.ORDER_WORKING, result.getOrderStatus());
+        verify(settlementRepository, times(0)).save(any(Settlement.class));
     }
 
     @Test
-    void changeOrderStatus_shouldMarkHiredWorkersArrivedAndCreateSettlements() {
+    void changeOrderStatus_shouldMarkHiredWorkersFinishedAndCreateSettlements() {
         BossOrder order = new BossOrder();
         order.setId(26L);
         order.setOrderStatus(BossStatus.ORDER_RECRUIT_END);
@@ -245,14 +252,78 @@ class BossOrderServiceListTests {
         BossOrder result = service.changeOrderStatus(26L, BossStatus.ORDER_PENDING_SETTLE);
 
         assertEquals(BossStatus.ORDER_PENDING_SETTLE, result.getOrderStatus());
-        assertEquals(BossStatus.ITEM_ON_WORK, hired.getStatus());
+        assertEquals(BossStatus.ITEM_PENDING_SETTLE, hired.getStatus());
         assertEquals(Date.valueOf(java.time.LocalDate.now()), hired.getWorkDate());
-        verify(itemRepository).saveAll(List.of(hired));
+        verify(itemRepository, times(2)).saveAll(List.of(hired));
         ArgumentCaptor<Settlement> captor = ArgumentCaptor.forClass(Settlement.class);
         verify(settlementRepository).save(captor.capture());
         assertEquals(37L, captor.getValue().getItemId());
         assertEquals(SettlementStatus.PENDING, captor.getValue().getStatus());
-        verify(itemRepository, times(2)).findByOrderId(26L);
+        verify(itemRepository, times(3)).findByOrderId(26L);
+    }
+
+    @Test
+    void manualFinish_shouldRejectWhenEarlyLeaveCodeEnabled() {
+        BossRecruitSettingsRepository recruitSettingsRepository = mock(BossRecruitSettingsRepository.class);
+        BossOrderService guardedService = guardedService(recruitSettingsRepository);
+        BossOrder order = new BossOrder();
+        order.setId(28L);
+        order.setCreateBy(58L);
+        order.setOrderStatus(BossStatus.ORDER_WORKING);
+        BaseOrderItem item = new BaseOrderItem();
+        item.setId(38L);
+        item.setOrderId(28L);
+        item.setStatus(BossStatus.ITEM_ON_WORK);
+        when(orderRepository.findById(28L)).thenReturn(java.util.Optional.of(order));
+        when(itemRepository.findById(38L)).thenReturn(java.util.Optional.of(item));
+        when(recruitSettingsRepository.findByBossId(58L))
+                .thenReturn(java.util.Optional.of(attendanceSettings(false, true)));
+
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
+                () -> guardedService.finishItemManually(38L));
+
+        assertEquals("已开启早退码，请由零工输入早退码后完成工作", error.getMessage());
+        verify(itemRepository, times(0)).save(any());
+    }
+
+    @Test
+    void workingOrderCompletion_shouldRejectWhenEarlyLeaveCodeEnabled() {
+        BossRecruitSettingsRepository recruitSettingsRepository = mock(BossRecruitSettingsRepository.class);
+        BossOrderService guardedService = guardedService(recruitSettingsRepository);
+        BossOrder order = new BossOrder();
+        order.setId(29L);
+        order.setCreateBy(59L);
+        order.setOrderStatus(BossStatus.ORDER_WORKING);
+        when(orderRepository.findById(29L)).thenReturn(java.util.Optional.of(order));
+        when(recruitSettingsRepository.findByBossId(59L))
+                .thenReturn(java.util.Optional.of(attendanceSettings(false, true)));
+
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
+                () -> guardedService.changeOrderStatus(29L, BossStatus.ORDER_PENDING_SETTLE));
+
+        assertEquals("已开启早退码，请由零工输入早退码后完成工作", error.getMessage());
+        verify(orderRepository, times(0)).save(any());
+    }
+
+    private BossOrderService guardedService(BossRecruitSettingsRepository recruitSettingsRepository) {
+        return new BossOrderService(
+                orderRepository,
+                itemRepository,
+                mock(UserRepository.class),
+                mock(MessageService.class),
+                settlementRepository,
+                mock(CertificationService.class),
+                recruitSettingsRepository,
+                mock(com.kuaima.app.domain.coupon.service.BossCouponService.class),
+                mock(AdminSettingRepository.class),
+                mock(BossAddressRepository.class));
+    }
+
+    private BossRecruitSettings attendanceSettings(boolean startCode, boolean earlyCode) {
+        BossRecruitSettings settings = new BossRecruitSettings();
+        settings.setStartCodeEnabled(startCode);
+        settings.setEarlyCodeEnabled(earlyCode);
+        return settings;
     }
 
     @Test

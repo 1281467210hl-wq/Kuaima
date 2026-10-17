@@ -29,5 +29,10 @@ export function closeSession(sessionId) {
 
 // 获取 FAQ 列表
 export function getFaqs(category) {
-  return request({ url: '/service/faqs', method: 'GET', data: { category } })
+  return request({
+    url: '/service/faqs',
+    method: 'GET',
+    // 未传分类时不能携带 undefined，避免小程序序列化为 category=undefined。
+    data: category ? { category } : undefined,
+  })
 }

@@ -50,7 +50,7 @@
       </view>
 
       <view class="emp-tools-wrap">
-        <view class="emp-tools-header"><view class="acct-current"><image v-if="account.avatar" class="acct-avatar account-avatar-image" :src="account.avatar" mode="aspectFill" /><view v-else class="acct-avatar">{{ (account.name || "账").slice(0, 1) }}</view><view class="acct-info"><text>{{ account.name || "当前账号" }}</text><text>{{ authorizationTypeText }}</text></view><image class="acct-swap-icon" src="/static/icons/boss-profile/exchange.svg" mode="aspectFit" /></view><view class="home-codes"><view @click.stop="navigateTo('recruit-set')"><text>开工码</text><b>{{ attendance.workCodeEnabled ? (attendance.workCode || "--") : "未开启" }}</b></view><view @click.stop="navigateTo('recruit-set')"><text>早退码</text><b class="warn">{{ attendance.leaveCodeEnabled ? (attendance.leaveCode || "--") : "未开启" }}</b></view></view></view>
+        <view class="emp-tools-header"><view class="acct-current" @click="navigateTo('switch-account')"><image v-if="account.avatar" class="acct-avatar account-avatar-image" :src="account.avatar" mode="aspectFill" /><view v-else class="acct-avatar">{{ (account.name || "账").slice(0, 1) }}</view><view class="acct-info"><text>{{ account.name || "当前账号" }}</text><text>{{ authorizationTypeText }}</text></view><image class="acct-swap-icon" src="/static/icons/boss-profile/exchange.svg" mode="aspectFit" /></view><view class="home-codes"><view @click.stop="navigateTo('recruit-set')"><text>开工码</text><b>{{ attendance.workCodeEnabled ? (attendance.workCode || "--") : "未开启" }}</b></view><view @click.stop="navigateTo('recruit-set')"><text>早退码</text><b class="warn">{{ attendance.leaveCodeEnabled ? (attendance.leaveCode || "--") : "未开启" }}</b></view></view></view>
         <view class="emp-tools-row"><view v-for="(item, index) in tools" :key="item.label" class="emp-tool-item" :class="{ active: index === 0 }" @click="navigateTo(item.page)"><view class="emp-tool-icon"><image :src="item.icon" mode="aspectFit"/></view><text class="emp-tool-label">{{ item.label }}</text></view></view>
         <view class="schedule-mini"><view class="schedule-tabs"><view v-for="day in schedule" :key="day.date" class="schedule-tab" :class="{active: selectedScheduleDate === day.date}" @click="selectSchedule(day)"><text>{{ day.label }}</text><small class="schedule-req">需求 {{ day.demand }}</small></view></view><view class="schedule-data"><view v-if="scheduleLoading" class="schedule-state">排班加载中...</view><template v-else><view class="schedule-stats"><view v-for="stat in selectedSchedule.stats" :key="stat.label" class="schedule-stat"><text :class="{highlight: stat.highlight}">{{ stat.value }}</text><small>{{ stat.label }}</small></view></view><view v-for="record in selectedSchedule.records" :key="record.id" class="schedule-record"><view class="schedule-record-icon"><image :src="record.icon" mode="aspectFit" /></view><view class="schedule-record-info"><text class="schedule-record-title">{{ record.title }}</text><text class="schedule-record-sub">{{ record.sub }}</text></view><text class="schedule-record-tag" :class="record.statusClass">{{ record.status }}</text></view><view v-if="!selectedSchedule.records.length" class="schedule-state">暂无排班记录</view></template></view></view>
       </view>
@@ -93,6 +93,7 @@ import {
 } from "@/api/backend";
 import { handleTokenInvalid } from "@/api/auth";
 import { hasEnterprisePermission } from "@/api/enterprise-context";
+import { checkBossPublishEligibility } from "@/api/publish-eligibility";
 import squarePlusIcon from "/static/icons/boss-home/square-plus-orange.svg";
 import fileLinesIcon from "/static/icons/boss-home/file-lines.svg";
 import gearIcon from "/static/icons/boss-home/gear.svg";
@@ -147,6 +148,7 @@ export default {
       lastAttendanceLoadAt: 0,
       overviewLoading: false,
       templateChecking: false,
+      publishChecking: false,
     };
   },
   onLoad() {
@@ -387,7 +389,15 @@ export default {
       }
 
       if (pageName === "select-job") {
-        // 发布入口暂不校验认证，直接进入发布流程。
+        if (this.publishChecking) return;
+        this.publishChecking = true;
+        try {
+          // 发布招工须完成人脸实名 + 企业认证，未完成时由工具方法跳转到对应认证页
+          const eligibility = await checkBossPublishEligibility();
+          if (!eligibility.canPublish) return;
+        } finally {
+          this.publishChecking = false;
+        }
       }
       const bossPages = [
         "boss-employer",

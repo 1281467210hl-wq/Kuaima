@@ -58,7 +58,8 @@ public class FfmpegVideoTranscoder {
     public Path transcodeToH264(Path input) throws IOException {
         Path output = Files.createTempFile("kuaima-academy-h264-", ".mp4");
         List<String> command = List.of(executable, "-y", "-i", input.toString(),
-                "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac",
+                "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p",
+                "-c:a", "aac",
                 "-movflags", "+faststart", output.toString());
         Process process;
         try {

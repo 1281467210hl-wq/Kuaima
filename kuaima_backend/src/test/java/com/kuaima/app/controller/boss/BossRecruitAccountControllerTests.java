@@ -261,6 +261,34 @@ class BossRecruitAccountControllerTests {
         assertEquals(409, error.getStatus().value());
     }
 
+    @Test
+    void quickLogin_shouldRepairLegacyNullStatusTarget() {
+        BossRecruitAccountRepository repository = mock(BossRecruitAccountRepository.class);
+        UserRepository userRepository = mock(UserRepository.class);
+        JwtUtil jwtUtil = mock(JwtUtil.class);
+        BossRecruitAccountController controller = new BossRecruitAccountController(repository,
+                userRepository, mock(BossRecruitAccountService.class), mock(AdminLogService.class), jwtUtil);
+        BossRecruitAccount original = account(1L, 7L, true);
+        original.setTargetUserId(7L);
+        BossRecruitAccount target = account(5L, 7L, false);
+        target.setTargetUserId(31L);
+        User legacyTarget = user(31L);
+        legacyTarget.setStatus(null);
+        when(userRepository.findByIdForUpdate(7L)).thenReturn(Optional.of(user(7L)));
+        when(repository.findById(5L)).thenReturn(Optional.of(target));
+        when(userRepository.findById(31L)).thenReturn(Optional.of(legacyTarget));
+        when(repository.findByOwnerUserIdOrderByIdAsc(7L)).thenReturn(List.of(original, target));
+        when(jwtUtil.generateAccessToken("boss-31", UserRole.BOSS, 31L, 7L)).thenReturn("legacy-token");
+
+        Result<QuickLoginResponse> result = controller.quickLogin(5L,
+                bossAuthentication(31L, 7L), new MockHttpServletRequest());
+
+        assertEquals("正常", legacyTarget.getStatus());
+        assertEquals("legacy-token", result.getData().accessToken());
+        assertTrue(target.getCurrent());
+        assertFalse(original.getCurrent());
+    }
+
     private Authentication bossAuthentication(Long id) {
         Authentication authentication = mock(Authentication.class);
         when(authentication.getPrincipal()).thenReturn(new LoginUser(id, "boss", "BOSS"));

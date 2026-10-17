@@ -28,6 +28,8 @@ kuaima:
   media:
     ffmpeg-path: ${FFMPEG_PATH:ffmpeg}
     transcode-timeout-seconds: ${VIDEO_TRANSCODE_TIMEOUT_SECONDS:900}
+    public-base-url: ${KUAIMA_MEDIA_PUBLIC_BASE_URL:}
+    proxy-url-expiration-seconds: ${KUAIMA_MEDIA_PROXY_URL_EXPIRATION_SECONDS:3600}
   settle:
     # 平台服务费率(% of 工资)，规则待定，默认 0 即暂不收取
     service-fee-rate: 0

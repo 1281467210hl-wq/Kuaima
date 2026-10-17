@@ -4,6 +4,10 @@ import java.sql.Timestamp;
 import java.util.List;
 import java.util.Map;
 
+import com.alibaba.fastjson2.JSON;
+import com.alibaba.fastjson2.JSONArray;
+import com.alibaba.fastjson2.JSONObject;
+
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 
@@ -18,6 +22,8 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.kuaima.app.common.Result;
 import com.kuaima.app.domain.insurance.entity.Insurance;
+import com.kuaima.app.domain.insurance.entity.InsuranceProduct;
+import com.kuaima.app.domain.insurance.repository.InsuranceProductRepository;
 import com.kuaima.app.domain.insurance.repository.InsuranceRepository;
 
 import jakarta.persistence.EntityNotFoundException;
@@ -31,9 +37,21 @@ import jakarta.persistence.EntityNotFoundException;
 public class InsuranceController {
 
     private final InsuranceRepository insuranceRepository;
+    private final InsuranceProductRepository insuranceProductRepository;
 
-    public InsuranceController(InsuranceRepository insuranceRepository) {
+    public InsuranceController(InsuranceRepository insuranceRepository,
+                               InsuranceProductRepository insuranceProductRepository) {
         this.insuranceRepository = insuranceRepository;
+        this.insuranceProductRepository = insuranceProductRepository;
+    }
+
+    /** 可选保险产品：GET /insurance/products */
+    @Operation(summary = "可选保险产品", description = "返回后台已启用的保险产品，按 id 倒序；tiers 解析为档位数组，不含告知书附件地址")
+    @GetMapping("/products")
+    public Result<List<JSONObject>> listProducts() {
+        return Result.success(insuranceProductRepository.findByEnabledTrueOrderByIdDesc().stream()
+                .map(this::productView)
+                .toList());
     }
 
     /** 保险记录列表：GET /insurance?userId=1 */
@@ -66,5 +84,34 @@ public class InsuranceController {
     public Result<Insurance> getInsurance(@PathVariable Long id) {
         return Result.success(insuranceRepository.findById(id)
                 .orElseThrow(() -> new EntityNotFoundException("保险记录不存在: " + id)));
+    }
+
+    private JSONObject productView(InsuranceProduct product) {
+        JSONObject obj = new JSONObject();
+        obj.put("id", product.getId());
+        obj.put("carrier", product.getCarrier());
+        obj.put("code", product.getCode());
+        JSONArray tiers = new JSONArray();
+        for (Object item : parseTiers(product.getTiers())) {
+            if (!(item instanceof JSONObject tier)) continue;
+            JSONObject view = new JSONObject();
+            // 告知书存放在私有 Bucket，客户端只拿方案数据，不暴露对象地址
+            for (String key : List.of("amount", "amountText", "death", "deathText", "medical", "medicalText",
+                    "points", "pointsText", "notice")) {
+                view.put(key, tier.get(key));
+            }
+            tiers.add(view);
+        }
+        obj.put("tiers", tiers);
+        return obj;
+    }
+
+    private JSONArray parseTiers(String tiers) {
+        if (tiers == null || tiers.isBlank()) return new JSONArray();
+        try {
+            return JSON.parseArray(tiers);
+        } catch (RuntimeException e) {
+            return new JSONArray();
+        }
     }
 }

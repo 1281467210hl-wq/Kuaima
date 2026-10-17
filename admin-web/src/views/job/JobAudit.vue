@@ -46,13 +46,23 @@
         <el-table-column prop="auditTime" label="审核时间" show-overflow-tooltip>
           <template #default="{ row }">{{ formatTime(row.auditTime) }}</template>
         </el-table-column>
-        <el-table-column label="操作" width="200" fixed="right">
+        <el-table-column label="操作" width="210" fixed="right">
           <template #default="{ row }">
-            <el-button v-permission="'permJob.audit.detail'" link type="primary" size="small" @click="handleDetail(row)">查看详情</el-button>
-            <template v-if="isAuditable(row)">
-              <el-button v-permission="row.status === '审核拒绝' ? 'permJob.audit.reaudit' : 'permJob.audit.approve'" link type="success" size="small" @click="handleApprove(row)">{{ row.status === '审核拒绝' ? '重新审核' : '通过' }}</el-button>
-              <el-button v-permission="'permJob.audit.reject'" link type="danger" size="small" @click="handleReject(row)">拒绝</el-button>
-            </template>
+            <div class="action-btns">
+              <template v-if="isAuditable(row)">
+                <el-button v-permission="'permJob.audit.detail'" type="primary" size="small" @click="handleDetail(row)">审核</el-button>
+                <el-button v-permission="'permJob.audit.detail'" size="small" @click="handleDetail(row)">预览</el-button>
+              </template>
+              <template v-else>
+                <el-button v-permission="'permJob.audit.detail'" size="small" @click="handleDetail(row)">查看</el-button>
+                <el-button
+                  v-if="isRejected(row)"
+                  v-permission="'permJob.audit.reaudit'"
+                  size="small"
+                  @click="handleDetail(row, true)"
+                >重新审核</el-button>
+              </template>
+            </div>
           </template>
         </el-table-column>
       </el-table>
@@ -76,9 +86,14 @@
     <el-dialog v-model="detailVisible" width="780px" class="audit-detail-dialog" :show-close="true">
       <template #header><div class="audit-dialog-title">招工审核详情 <span v-if="currentItem" :class="['status-badge', currentItem.statusClass]">● {{ currentItem.status }}</span></div></template>
       <div v-if="currentItem">
-        <div v-if="isAuditable(currentItem)" class="audit-action-bar">
-          <div><div class="action-title">{{ currentItem.status === '审核拒绝' ? '重新审核' : '招工审核' }} <span class="risk-tag">低风险</span></div><div class="action-desc">请仔细审核以下招工信息，确认无误后通过审核</div></div>
-          <div class="action-buttons"><button v-permission="'permJob.audit.approve'" class="btn btn-success" @click="confirmApprove"><i class="fas fa-check-circle"></i> 一键通过</button><button v-permission="'permJob.audit.reject'" class="btn btn-danger" @click="confirmReject"><i class="fas fa-times-circle"></i> 拒绝</button></div>
+        <div v-if="canShowAuditActions(currentItem)" class="audit-action-bar">
+          <div><div class="action-title">{{ isRejected(currentItem) ? '重新审核' : '招工审核' }} <span class="risk-tag">低风险</span></div><div class="action-desc">请仔细审核以下招工信息，确认无误后通过审核</div></div>
+        </div>
+        <div v-if="isRejected(currentItem)" class="reject-result">
+          <div class="reject-result-title"><i class="fas fa-times-circle"></i> 审核拒绝信息</div>
+          <el-descriptions :column="1" border>
+            <el-descriptions-item label="拒绝原因">{{ currentItem.rejectReason || '-' }}</el-descriptions-item>
+          </el-descriptions>
         </div>
         <div class="detail-section-title">招工信息预览</div>
         <div class="audit-preview-grid">
@@ -89,6 +104,7 @@
           <el-descriptions-item label="需求人数">{{ currentItem.count }} 人</el-descriptions-item>
           <el-descriptions-item label="地点">{{ currentItem.location }}</el-descriptions-item>
           <el-descriptions-item label="工作时间">{{ formatTime(currentItem.startTime) }} - {{ formatTime(currentItem.endTime) }}</el-descriptions-item>
+          <el-descriptions-item label="休息时间">{{ restTimeText(currentItem) }}</el-descriptions-item>
           <el-descriptions-item label="结算方式">{{ settlementText(currentItem.type) }}</el-descriptions-item>
           <el-descriptions-item label="性别要求">{{ genderText(currentItem.gender) }}</el-descriptions-item>
         </el-descriptions></div>
@@ -100,52 +116,63 @@
         <div class="detail-section-title">提交材料</div>
         <div v-if="materialItems(currentItem).length" class="materials-list">
           <div v-for="material in materialItems(currentItem)" :key="material.key" class="material-item">
-            <span class="material-icon"><i :class="material.icon"></i></span>
-            <span class="material-info"><strong>{{ material.name }}</strong><small v-if="material.time">上传时间：{{ formatTime(material.time) }}</small></span>
-            <a v-if="material.url" class="btn btn-outline btn-sm" :href="material.url" target="_blank" rel="noopener"><i class="fas fa-eye"></i> 查看</a>
+            <div v-if="material.type === 'image' && material.url" class="material-preview material-image-preview">
+              <el-image
+                :src="material.url"
+                :preview-src-list="[material.url]"
+                :initial-index="0"
+                fit="cover"
+                preview-teleported
+                hide-on-click-modal
+              >
+                <template #error><div class="material-preview-error"><i class="fas fa-image"></i><span>图片加载失败</span></div></template>
+              </el-image>
+            </div>
+            <div v-else-if="material.type === 'video' && material.url" class="material-preview material-video-preview">
+              <video :src="material.url" controls playsinline preload="metadata">当前浏览器不支持视频播放</video>
+            </div>
+            <span v-else class="material-icon"><i :class="material.icon"></i></span>
+            <div class="material-meta">
+              <span class="material-info"><strong>{{ material.name }}</strong><small v-if="material.time">上传时间：{{ formatTime(material.time) }}</small></span>
+              <a v-if="material.url" class="btn btn-outline btn-sm" :href="material.url" target="_blank" rel="noopener"><i class="fas fa-up-right-from-square"></i> 新窗口打开</a>
+            </div>
           </div>
         </div>
         <div v-else class="materials-box">暂无提交材料</div>
-        <el-descriptions class="audit-extra" :column="2" border><el-descriptions-item label="提交时间">{{ formatTime(currentItem.time) }}</el-descriptions-item><el-descriptions-item label="审核人">{{ currentItem.auditBy || '-' }}</el-descriptions-item><el-descriptions-item label="审核时间">{{ formatTime(currentItem.auditTime) }}</el-descriptions-item></el-descriptions>
+        <div class="detail-section-title">提交与审核信息</div>
+        <el-descriptions class="audit-extra" :column="2" border>
+          <el-descriptions-item label="提交时间">{{ formatTime(currentItem.time) }}</el-descriptions-item>
+          <el-descriptions-item label="当前状态">{{ auditStatusText(currentItem) }}</el-descriptions-item>
+          <el-descriptions-item v-if="hasAuditResult(currentItem)" label="审核人">{{ currentItem.auditBy || '-' }}</el-descriptions-item>
+          <el-descriptions-item v-if="hasAuditResult(currentItem)" label="审核时间">{{ formatTime(currentItem.auditTime) }}</el-descriptions-item>
+        </el-descriptions>
 
-        <div style="margin-bottom: 16px;">
+        <div v-if="canShowAuditActions(currentItem)" style="margin-bottom: 16px;">
           <div style="font-weight: 600; margin-bottom: 8px;">审核备注</div>
           <el-input type="textarea" v-model="auditRemark" placeholder="请输入审核备注（可选）" :rows="3" />
         </div>
-        <div style="margin-bottom: 4px;">
-          <div style="font-weight: 600; margin-bottom: 8px;">驳回原因（拒绝时必填）</div>
-          <el-input type="textarea" v-model="rejectDesc" placeholder="若拒绝该招工信息，请填写驳回原因" :rows="2" />
+        <div v-if="canShowAuditActions(currentItem)" style="margin-bottom: 4px;">
+          <div style="font-weight: 600; margin-bottom: 8px;">审核结果 <span class="required-mark">*</span></div>
+          <el-radio-group v-model="auditResult">
+            <el-radio value="approve">通过</el-radio>
+            <el-radio value="reject">拒绝</el-radio>
+          </el-radio-group>
+        </div>
+        <div v-if="canShowAuditActions(currentItem) && auditResult === 'reject'" style="margin-bottom: 4px;">
+          <div style="font-weight: 600; margin-bottom: 8px;">拒绝原因 <span class="required-mark">*</span></div>
+          <el-input type="textarea" v-model="rejectDesc" placeholder="请输入拒绝原因" :rows="3" maxlength="200" show-word-limit />
         </div>
       </div>
       
       <template #footer>
         <el-button @click="detailVisible = false">关闭</el-button>
-        <template v-if="isAuditable(currentItem)">
-          <el-button v-permission="'permJob.audit.reject'" type="danger" @click="confirmReject">拒绝</el-button>
-          <el-button v-permission="'permJob.audit.approve'" type="primary" @click="confirmApprove">通过审核</el-button>
-        </template>
-      </template>
-    </el-dialog>
-
-    <!-- 拒绝原因弹窗 -->
-    <el-dialog v-model="rejectVisible" title="拒绝原因" width="450px">
-      <el-form>
-        <el-form-item label="拒绝原因">
-          <el-select v-model="rejectReason" placeholder="请选择拒绝原因" style="width: 100%;">
-            <el-option label="信息不完整" value="incomplete" />
-            <el-option label="价格严重偏低" value="low_price" />
-            <el-option label="内容违规" value="violation" />
-            <el-option label="疑似虚假招工" value="fake" />
-            <el-option label="其他" value="other" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="补充说明">
-          <el-input type="textarea" v-model="rejectDesc" :rows="3" placeholder="请输入补充说明（可选）" />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="rejectVisible = false">取消</el-button>
-        <el-button type="danger" @click="confirmRejectSubmit">确认拒绝</el-button>
+        <el-button
+          v-if="canShowAuditActions(currentItem)"
+          v-permission="auditResult === 'reject' ? 'permJob.audit.reject' : 'permJob.audit.approve'"
+          type="primary"
+          :disabled="!auditResult"
+          @click="submitAuditResult"
+        >提交审核</el-button>
       </template>
     </el-dialog>
   </div>
@@ -153,7 +180,7 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus'
 import { listJobs, exportJobs, getJob, auditJobPass, auditJobReject } from '@/api/job'
 import { getUser } from '@/api/user'
 
@@ -161,11 +188,11 @@ const searchKeyword = ref('')
 const statusFilter = ref('ALL')
 const submitDateRange = ref([])
 const auditRemark = ref('')
-const rejectReason = ref('')
+const auditResult = ref('')
 const rejectDesc = ref('')
 const detailVisible = ref(false)
-const rejectVisible = ref(false)
 const currentItem = ref(null)
+const reviewMode = ref(false)
 
 const auditData = ref([])
 const total = ref(0)
@@ -194,7 +221,15 @@ const statusClassMap = {
   '审核拒绝': 'danger',
 }
 
-const isAuditable = (item) => item?.status === '待审核' || item?.status === '审核拒绝'
+const isAuditable = (item) => item?.status === '待审核'
+const isRejected = (item) => item?.status === '审核拒绝'
+const hasAuditResult = (item) => item?.status !== '待审核'
+const canShowAuditActions = (item) => isAuditable(item) || (isRejected(item) && reviewMode.value)
+const auditStatusText = (item) => {
+  if (isRejected(item)) return '已拒绝'
+  if (isAuditable(item)) return '待审核'
+  return '已通过'
+}
 
 const formatTime = (t) => {
   if (!t) return '-'
@@ -266,10 +301,61 @@ const materialItems = (item) => {
   return values.map((value, index) => {
     const entry = typeof value === 'object' && value !== null ? value : { name: String(value) }
     const name = entry.name || entry.fileName || entry.title || entry.url || `材料${index + 1}`
-    const ext = String(name).split('.').pop().toLowerCase()
-    const icon = ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext) ? 'fas fa-image' : (ext === 'pdf' ? 'fas fa-file-pdf' : 'fas fa-file-alt')
-    return { key: `${name}-${index}`, name, url: entry.url || entry.fileUrl || entry.filePath, time: entry.time || entry.uploadTime || entry.createdAt, icon }
+    const url = entry.url || entry.fileUrl || entry.filePath
+    const extensionSource = entry.objectKey || name || url || ''
+    const ext = String(extensionSource).split(/[?#]/)[0].split('.').pop().toLowerCase()
+    const declaredType = String(entry.type || entry.mediaType || entry.contentType || '').toLowerCase()
+    const imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg']
+    const videoExtensions = ['mp4', 'webm', 'ogg', 'mov', 'm4v']
+    const type = declaredType.includes('image') || imageExtensions.includes(ext)
+      ? 'image'
+      : (declaredType.includes('video') || videoExtensions.includes(ext) ? 'video' : 'file')
+    const icon = type === 'image' ? 'fas fa-image' : (type === 'video' ? 'fas fa-video' : (ext === 'pdf' ? 'fas fa-file-pdf' : 'fas fa-file-alt'))
+    return { key: `${entry.objectKey || name}-${index}`, name, url, time: entry.time || entry.uploadTime || entry.createdAt, icon, type }
   })
+}
+
+const restTimeText = (item) => {
+  const mode = String(item?.restMode || '').toLowerCase()
+  if (!mode) {
+    const clockPart = (value) => {
+      if (!value) return ''
+      if (typeof value === 'number') {
+        const date = new Date(value)
+        return Number.isNaN(date.getTime()) ? '' : `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
+      }
+      const match = String(value).match(/(?:T|\s)(\d{1,2}:\d{2})/)
+      return match ? match[1].padStart(5, '0') : ''
+    }
+    const start = clockPart(item?.startTime)
+    const end = clockPart(item?.endTime)
+    const durationHours = Number(item?.duration)
+    if (/^\d{2}:\d{2}$/.test(start) && /^\d{2}:\d{2}$/.test(end) && Number.isFinite(durationHours) && durationHours > 0) {
+      const startMinutes = Number(start.slice(0, 2)) * 60 + Number(start.slice(3))
+      let totalMinutes = Number(end.slice(0, 2)) * 60 + Number(end.slice(3)) - startMinutes
+      if (totalMinutes <= 0) totalMinutes += 24 * 60
+      const inferred = Math.round(totalMinutes - durationHours * 60)
+      if (inferred > 0) return `有休息时间（未记录具体时段，共${inferred}分钟）`
+      return '无休息时间'
+    }
+    return '-'
+  }
+  if (mode === 'none') return '无休息时间'
+  let slots = item?.restSlots
+  if (typeof slots === 'string') {
+    try { slots = JSON.parse(slots) } catch { slots = [] }
+  }
+  const ranges = Array.isArray(slots)
+    ? slots.map(slot => {
+      const start = slot?.start || slot?.s
+      const end = slot?.end || slot?.e
+      return start && end ? `${start}-${end}` : ''
+    }).filter(Boolean)
+    : []
+  const minutes = Number(item?.restMinutes)
+  const duration = Number.isFinite(minutes) && minutes > 0 ? `，共${minutes}分钟` : ''
+  const checkin = item?.restCheckin ? `，休息打卡${item.restCheckinCount || 0}次/天` : ''
+  return `${ranges.length ? ranges.join('、') : '有休息时间'}${duration}${checkin}`
 }
 
 const employerInitial = (value) => String(value || '?').trim().charAt(0) || '?'
@@ -298,6 +384,7 @@ const normalizeAudit = (item) => {
     statusClass: statusClassMap[statusVal] ?? 'default',
     auditBy: item.auditBy,
     auditTime: item.auditTime,
+    rejectReason: item.rejectReason,
     createBy: item.createBy,
     gender: item.gender,
     experience: item.experience,
@@ -386,11 +473,12 @@ const loadDetail = async (row) => {
   }
 }
 
-const openDetail = async (row) => {
+const openDetail = async (row, reaudit = false) => {
   currentItem.value = row
+  reviewMode.value = Boolean(reaudit)
   auditRemark.value = ''
   rejectDesc.value = ''
-  rejectReason.value = ''
+  auditResult.value = ''
   detailVisible.value = true
   try {
     currentItem.value = await loadDetail(row)
@@ -402,60 +490,30 @@ const openDetail = async (row) => {
 
 const handleDetail = openDetail
 
-const handleApprove = openDetail
-
-const handleReject = (row) => {
-  currentItem.value = row
-  rejectReason.value = ''
-  rejectDesc.value = ''
-  rejectVisible.value = true
-}
-
-const confirmApprove = async () => {
+const submitAuditResult = async () => {
   if (!currentItem.value) return
-  try {
-    await auditJobPass(currentItem.value.id)
-    detailVisible.value = false
-    ElMessage.success('审核通过')
-    loadAuditData()
-  } catch (err) {
-    console.warn('[JobAudit] 审核通过 API 调用失败:', err.message)
-    ElMessage.error('审核操作失败')
-  }
-}
-
-const confirmReject = () => {
-  detailVisible.value = false
-  if (rejectDesc.value) rejectReason.value = 'other'
-  rejectVisible.value = true
-}
-
-const confirmRejectSubmit = async () => {
-  if (!rejectReason.value) {
-    ElMessage.warning('请选择拒绝原因')
+  if (!auditResult.value) {
+    ElMessage.warning('请选择审核结果')
     return
   }
-  if (!currentItem.value) return
-
-  const reasonLabel = {
-    incomplete: '信息不完整',
-    low_price: '价格严重偏低',
-    violation: '内容违规',
-    fake: '疑似虚假招工',
-    other: '其他',
-  }[rejectReason.value] || rejectReason.value
-  const fullReason = rejectDesc.value
-    ? `${reasonLabel}：${rejectDesc.value}`
-    : reasonLabel
-
+  if (auditResult.value === 'reject' && !rejectDesc.value.trim()) {
+    ElMessage.warning('请输入拒绝原因')
+    return
+  }
   try {
-    await auditJobReject(currentItem.value.id, fullReason)
-    rejectVisible.value = false
-    ElMessage.success('已拒绝')
+    if (auditResult.value === 'approve') {
+      await auditJobPass(currentItem.value.id)
+      ElMessage.success('审核通过')
+    } else {
+      await auditJobReject(currentItem.value.id, rejectDesc.value.trim())
+      ElMessage.success('已拒绝')
+    }
+    detailVisible.value = false
+    reviewMode.value = false
     loadAuditData()
   } catch (err) {
-    console.warn('[JobAudit] 审核拒绝 API 调用失败:', err.message)
-    ElMessage.error('拒绝操作失败')
+    console.warn('[JobAudit] 审核提交失败:', err.message)
+    ElMessage.error('审核操作失败')
   }
 }
 
@@ -472,6 +530,8 @@ onMounted(loadAuditData)
 }
 .filter-date { display: flex; align-items: center; gap: 6px; color: var(--text-secondary); font-size: 13px; white-space: nowrap; }
 .export-button { margin-left: auto; }
+.action-btns { display: flex; gap: 6px; }
+.action-btns :deep(.el-button + .el-button) { margin-left: 0; }
 .employer-cell { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .employer-avatar { width: 36px; height: 36px; flex: 0 0 36px; display: inline-flex; align-items: center; justify-content: center; border-radius: 9px; color: #fff; font-size: 16px; font-weight: 700; }
 .employer-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -486,9 +546,12 @@ onMounted(loadAuditData)
 .audit-detail-dialog :deep(.el-dialog__body) { max-height: 72vh; overflow-y: auto; padding: 24px; }
 .audit-dialog-title { display: flex; align-items: center; gap: 14px; color: var(--text-primary); font-size: 20px; font-weight: 700; }
 .audit-dialog-title .status-badge { font-size: 13px; font-weight: 600; }
-.audit-action-bar { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 20px 24px; margin-bottom: 24px; border-radius: 14px; background: #FFF8E6; }
-.action-title { color: var(--text-primary); font-size: 18px; font-weight: 700; }.action-desc { margin-top: 5px; color: var(--text-secondary); }.risk-tag { display: inline-block; margin-left: 8px; padding: 4px 10px; border-radius: 6px; color: #059669; background: #ECFDF5; font-size: 12px; }.action-buttons { display: flex; gap: 12px; flex-shrink: 0; }.action-buttons .btn { padding: 10px 20px; font-size: 15px; }.action-buttons .btn-success { color: #111827; background: #F3F4F6; border-color: #F3F4F6; }
+.audit-action-bar { padding: 20px 24px; margin-bottom: 24px; border-radius: 14px; background: #FFF8E6; }
+.action-title { color: var(--text-primary); font-size: 18px; font-weight: 700; }.action-desc { margin-top: 5px; color: var(--text-secondary); }.risk-tag { display: inline-block; margin-left: 8px; padding: 4px 10px; border-radius: 6px; color: #059669; background: #ECFDF5; font-size: 12px; }.required-mark { color: #DC2626; }
 .detail-section-title { margin: 20px 0 12px; padding-bottom: 10px; border-bottom: 1px solid var(--border); color: var(--text-primary); font-size: 18px; font-weight: 700; }
-.audit-preview-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }.audit-preview-box { padding: 16px; border: 1px solid #E5E7EB; border-radius: 14px; background: #FAFAFA; }.audit-preview-title { margin-bottom: 10px; color: var(--text-primary); font-size: 16px; font-weight: 700; }.audit-preview-title i { margin-right: 8px; color: var(--primary); }.audit-desc-box,.materials-box { padding: 14px; border-radius: 8px; background: var(--bg-page); color: var(--text-secondary); line-height: 1.7; }.materials-list { display: flex; flex-direction: column; gap: 8px; }.material-item { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid #E5E7EB; border-radius: 8px; background: #fff; }.material-icon { width: 32px; color: var(--primary); font-size: 20px; text-align: center; }.material-info { display: flex; flex: 1; flex-direction: column; gap: 3px; min-width: 0; }.material-info strong { overflow: hidden; color: var(--text-primary); font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }.material-info small { color: var(--text-muted); font-size: 11px; }.benefit-list { display: flex; flex-wrap: wrap; gap: 8px; }.benefit-list span { padding: 4px 10px; border-radius: 12px; color: var(--success); background: #ECFDF5; font-size: 12px; }.benefit-list em { color: var(--text-muted); font-style: normal; font-size: 13px; }.audit-extra { margin-top: 20px; }
-@media (max-width: 800px) { .audit-preview-grid { grid-template-columns: 1fr; }.audit-action-bar { align-items: flex-start; flex-direction: column; }.action-buttons { width: 100%; }.action-buttons .btn { flex: 1; } }
+.audit-preview-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }.audit-preview-box { padding: 16px; border: 1px solid #E5E7EB; border-radius: 14px; background: #FAFAFA; }.audit-preview-title { margin-bottom: 10px; color: var(--text-primary); font-size: 16px; font-weight: 700; }.audit-preview-title i { margin-right: 8px; color: var(--primary); }.audit-desc-box,.materials-box { padding: 14px; border-radius: 8px; background: var(--bg-page); color: var(--text-secondary); line-height: 1.7; }.materials-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }.material-item { display: flex; min-width: 0; flex-direction: column; padding: 12px; border: 1px solid #E5E7EB; border-radius: 10px; background: #fff; }.material-preview { width: 100%; overflow: hidden; border-radius: 8px; background: #111827; }.material-image-preview { height: 180px; }.material-image-preview :deep(.el-image) { width: 100%; height: 100%; cursor: zoom-in; }.material-video-preview { display: flex; align-items: center; height: 220px; }.material-video-preview video { width: 100%; max-height: 100%; background: #111827; }.material-preview-error { display: flex; width: 100%; height: 100%; align-items: center; justify-content: center; flex-direction: column; gap: 8px; color: #9CA3AF; background: #F3F4F6; font-size: 13px; }.material-preview-error i { font-size: 28px; }.material-icon { display: flex; width: 100%; height: 100px; align-items: center; justify-content: center; border-radius: 8px; color: var(--primary); background: #F3F4F6; font-size: 32px; }.material-meta { display: flex; align-items: center; gap: 10px; margin-top: 10px; }.material-info { display: flex; flex: 1; flex-direction: column; gap: 3px; min-width: 0; }.material-info strong { overflow: hidden; color: var(--text-primary); font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }.material-info small { color: var(--text-muted); font-size: 11px; }.material-meta .btn { flex: 0 0 auto; }.benefit-list { display: flex; flex-wrap: wrap; gap: 8px; }.benefit-list span { padding: 4px 10px; border-radius: 12px; color: var(--success); background: #ECFDF5; font-size: 12px; }.benefit-list em { color: var(--text-muted); font-style: normal; font-size: 13px; }.audit-extra { margin-top: 20px; }
+.reject-result { margin-bottom: 20px; padding: 16px; border: 1px solid #FECACA; border-radius: 12px; background: #FEF2F2; }
+.reject-result-title { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; color: #DC2626; font-size: 16px; font-weight: 700; }
+.reject-result-title i { color: #DC2626; }
+@media (max-width: 800px) { .audit-preview-grid,.materials-list { grid-template-columns: 1fr; } }
 </style>

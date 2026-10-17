@@ -27,6 +27,8 @@ import org.springframework.security.core.Authentication;
 
 import com.kuaima.app.admin.dto.BossOrderView;
 import com.kuaima.app.common.Result;
+import com.kuaima.app.common.service.OssStorageService;
+import com.kuaima.app.common.service.RecruitmentMediaPreviewService;
 import com.kuaima.app.domain.boss.entity.BaseOrderItem;
 import com.kuaima.app.domain.boss.entity.BossOrder;
 import com.kuaima.app.domain.boss.repository.BaseOrderItemRespository;
@@ -61,6 +63,8 @@ public class AdminJobController {
     private final JobIndustryRepository jobIndustryRepository;
     private final ReportRepository reportRepository;
     private final InsuranceRepository insuranceRepository;
+    private final OssStorageService ossStorageService;
+    private final RecruitmentMediaPreviewService recruitmentMediaPreviewService;
 
     public AdminJobController(BossOrderRespository orderRepository,
                               BossOrderService bossOrderService,
@@ -69,7 +73,9 @@ public class AdminJobController {
                               JobCategoryRepository jobCategoryRepository,
                               JobIndustryRepository jobIndustryRepository,
                               ReportRepository reportRepository,
-                              InsuranceRepository insuranceRepository) {
+                              InsuranceRepository insuranceRepository,
+                              OssStorageService ossStorageService,
+                              RecruitmentMediaPreviewService recruitmentMediaPreviewService) {
         this.orderRepository = orderRepository;
         this.bossOrderService = bossOrderService;
         this.userRepository = userRepository;
@@ -78,6 +84,8 @@ public class AdminJobController {
         this.jobIndustryRepository = jobIndustryRepository;
         this.reportRepository = reportRepository;
         this.insuranceRepository = insuranceRepository;
+        this.ossStorageService = ossStorageService;
+        this.recruitmentMediaPreviewService = recruitmentMediaPreviewService;
     }
 
     /** 招工列表（全部状态），批量填充雇主名称 */
@@ -236,16 +244,6 @@ public class AdminJobController {
                 long passed = history.stream().filter(item -> !Set.of("待审核", "审核拒绝").contains(item.getOrderStatus())).count();
                 result.put("historyJobs", history.size());
                 result.put("passRate", history.isEmpty() ? null : Math.round(passed * 10000.0 / history.size()) / 100.0);
-                if (employer.getLicenseNo() != null || employer.getLegalRep() != null) {
-                    List<Map<String, Object>> materials = new java.util.ArrayList<>();
-                    if (employer.getLicenseNo() != null && !employer.getLicenseNo().isBlank()) {
-                        materials.add(Map.of("name", "营业执照.pdf"));
-                    }
-                    if (employer.getLegalRep() != null && !employer.getLegalRep().isBlank()) {
-                        materials.add(Map.of("name", "法人身份证.jpg"));
-                    }
-                    result.put("submittedMaterials", materials);
-                }
             }
         }
         // 保险区域：同一订单可能有多名零工的保单，取首条展示险种与保额，并附保单数
@@ -261,16 +259,66 @@ public class AdminJobController {
             result.put("insurance", insuranceInfo);
         }
 
+        result.put("rejectReason", extractRejectReason(order.getOrderRemark()));
         result.put("benefits", extractBenefits(order.getOrderRemark()));
-        result.put("submittedMaterials", result.getOrDefault("submittedMaterials", null));
+        result.put("submittedMaterials", submittedMaterials(order));
         return Result.success(result);
+    }
+
+    private List<Map<String, Object>> submittedMaterials(BossOrder order) {
+        List<Map<String, Object>> materials = new java.util.ArrayList<>();
+        if (order.getImageKeys() != null && !order.getImageKeys().isBlank()) {
+            String[] imageKeys = java.util.Arrays.stream(order.getImageKeys().split(","))
+                    .map(String::trim)
+                    .filter(key -> !key.isBlank())
+                    .toArray(String[]::new);
+            for (int index = 0; index < imageKeys.length; index++) {
+                materials.add(Map.of(
+                        "name", mediaName(imageKeys[index], "岗位图片", index + 1),
+                        "objectKey", imageKeys[index],
+                        "url", ossStorageService.playableUrl(imageKeys[index])
+                ));
+            }
+        }
+        if (order.getVideoKey() != null && !order.getVideoKey().isBlank()) {
+            materials.add(Map.of(
+                    "name", mediaName(order.getVideoKey(), "岗位视频", 1),
+                    "objectKey", order.getVideoKey(),
+                    "url", videoPreviewUrl(order.getVideoKey())
+            ));
+        }
+        return materials;
+    }
+
+    private String mediaName(String objectKey, String prefix, int index) {
+        int extensionIndex = objectKey.lastIndexOf('.');
+        String extension = extensionIndex >= 0 ? objectKey.substring(extensionIndex).toLowerCase() : "";
+        return prefix + index + extension;
+    }
+
+    private String videoPreviewUrl(String objectKey) {
+        try {
+            return recruitmentMediaPreviewService.previewUrl(objectKey);
+        } catch (RuntimeException e) {
+            return ossStorageService.playableUrl(objectKey);
+        }
+    }
+
+    private String extractRejectReason(String remark) {
+        if (remark == null || remark.isBlank()) return null;
+        int index = remark.lastIndexOf("[审核拒绝]");
+        if (index < 0) return null;
+        String reason = remark.substring(index + "[审核拒绝]".length()).trim();
+        return reason.isBlank() ? null : reason;
     }
 
     private List<String> extractBenefits(String remark) {
         if (remark == null || remark.isBlank()) return List.of();
+        int rejectIndex = remark.lastIndexOf("[审核拒绝]");
+        String content = rejectIndex >= 0 ? remark.substring(0, rejectIndex) : remark;
         Set<String> benefitNames = Set.of("包吃住", "包餐", "包工作餐", "中午包饭", "晚上包饭", "交通补贴", "全勤奖",
                 "保险", "加班补助", "提供饮水", "免费培训", "工作轻松", "环境舒适", "有空调", "有风扇", "室内工作", "当日结清", "月结");
-        return java.util.Arrays.stream(remark.split("[,，、;；]"))
+        return java.util.Arrays.stream(content.split("[,，、;；]"))
                 .map(String::trim)
                 .filter(value -> !value.isBlank())
                 .filter(value -> benefitNames.stream().anyMatch(name -> value.equals(name) || value.contains(name)))

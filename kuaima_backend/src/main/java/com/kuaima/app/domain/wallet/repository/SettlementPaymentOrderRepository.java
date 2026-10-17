@@ -1,5 +1,6 @@
 package com.kuaima.app.domain.wallet.repository;
 
+import java.util.List;
 import java.util.Optional;
 
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -15,6 +16,7 @@ public interface SettlementPaymentOrderRepository extends JpaRepository<Settleme
     Optional<SettlementPaymentOrder> findByIdempotencyKey(String idempotencyKey);
     Optional<SettlementPaymentOrder> findByPaymentNo(String paymentNo);
     Optional<SettlementPaymentOrder> findByPaymentNoAndBossId(String paymentNo, Long bossId);
+    List<SettlementPaymentOrder> findByBossIdOrderByCreatedAtDescIdDesc(Long bossId);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select o from SettlementPaymentOrder o where o.paymentNo = :paymentNo")

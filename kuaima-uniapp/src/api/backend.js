@@ -332,6 +332,13 @@ export function getBossWorkerReviews(orderId) {
   });
 }
 
+/** 查询零工对当前企业/老板的评价。 */
+export function getWorkerBossReviews(orderId) {
+  return request({
+    url: `/boss/orders/${normalizeId(orderId, "orderId")}/boss-review`,
+  });
+}
+
 export function listOrderItems(orderId) {
   return request({
     url: `/boss/order/${orderId}/items`,
@@ -446,6 +453,11 @@ export function listExpenseApplications(params = {}) {
     url: `/expenses/applications?${query({ page: 0, size: 20, ...params })}`,
     skipMock: true,
   });
+}
+
+/** 老板端支出明细：购买积分、招工订单结算、账户充值。 */
+export function getBossExpenseDetails() {
+  return request({ url: "/boss/expense-details", skipUserIdHeader: true });
 }
 
 export function uploadExpenseFile(filePath) {
@@ -1568,6 +1580,9 @@ export function getInsurance(id) {
 export function buyInsurance(data) {
   return request({ url: "/insurance", method: "POST", data });
 }
+export function listInsuranceProducts() {
+  return request({ url: "/insurance/products" });
+}
 
 export function listCourses(params = {}) {
   return request({
@@ -1744,4 +1759,12 @@ export function listMissedCalls(userId, params = {}) {
 
 export function readMissedCall(id) {
   return request({ url: `/missed-calls/${id}/read`, method: "PUT" });
+}
+
+/** 登录前读取后台配置的启用协议。 */
+export function getPublicAgreement(type) {
+  return request({
+    url: `/public/agreements?type=${encodeURIComponent(type)}`,
+    skipUserIdHeader: true,
+  });
 }

@@ -8,7 +8,12 @@ import org.springframework.data.repository.query.Param;
 
 import com.kuaima.app.admin.entity.Agreement;
 
+import java.util.Optional;
+
 public interface AgreementRepository extends JpaRepository<Agreement, Long> {
+
+    Optional<Agreement> findFirstByTypeAndEnabledOrderByUpdatedAtDescIdDesc(
+            String type, Boolean enabled);
 
     @Query("""
             select a from Agreement a

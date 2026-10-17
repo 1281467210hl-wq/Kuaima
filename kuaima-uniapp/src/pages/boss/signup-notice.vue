@@ -39,7 +39,6 @@
           <button class="btn-approve" :disabled="operatingId === item.id" @click.stop="approve(item)">通过</button>
           <button class="btn-reject" :disabled="operatingId === item.id" @click.stop="reject(item)">拒绝</button>
         </view>
-        <text v-else class="apply-result">{{ item.status === 'approved' ? '已通过' : '已拒绝' }}</text>
       </view>
       <view v-if="!loading && !loadError && !applies.length" class="page-state">暂无报名通知</view>
     </scroll-view>
@@ -189,7 +188,7 @@ function normalizeApply(message = {}, item = {}, orderMap) {
   return {
     id: Number(message.bizId || item.id), messageId: message.id, read: isRead(message.readFlag), status,
     initial: name.charAt(0), name, tag: worker.skills || (status === "pending" ? "待审核" : status === "approved" ? "已通过" : "已拒绝"),
-    time: formatDateTime(item.applyDate || message.createTime), job: order.orderTitle || order.postion || item.orderTitle || "招工岗位",
+    time: formatDateTime(item.applyDate || message.createTime, true), job: order.orderTitle || order.postion || item.orderTitle || "招工岗位",
     date: formatDateTime(order.startTime || item.workDate), count: Number(order.orderNum || 1), avatarBg: "linear-gradient(135deg, #FF6B35, #FF8C5A)",
   };
 }
@@ -199,7 +198,20 @@ function mapApplyStatus(status) {
   return "pending";
 }
 function isRead(value) { return value === true || value === 1 || value === "已读" || value === "READ" }
-function formatDateTime(value) { return value ? String(value).replace("T", " ").slice(0, 16) : "时间待定" }
+function formatDateTime(value, withSeconds = false) {
+  if (value === null || value === undefined || value === "") return "时间待定";
+  if (typeof value === "number" || /^\d+$/.test(String(value))) {
+    const date = new Date(Number(value));
+    if (!Number.isNaN(date.getTime())) {
+      const pad = (item) => String(item).padStart(2, "0");
+      const result = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+      return withSeconds ? result : result.slice(0, 16);
+    }
+  }
+  const text = String(value).replace("T", " ");
+  const length = withSeconds ? 19 : 16;
+  return text.length >= length ? text.slice(0, length) : text;
+}
 </script>
 
 <style lang="scss" scoped>
@@ -228,5 +240,4 @@ function formatDateTime(value) { return value ? String(value).replace("T", " ").
 .btn-approve::after, .btn-reject::after { border:none; }
 .page-state { padding:120rpx 32rpx; text-align:center; color:#999; font-size:26rpx; }
 .page-state.error { color:#FF6B35; }
-.apply-result { display:block; color:#999; font-size:24rpx; text-align:right; }
 </style>

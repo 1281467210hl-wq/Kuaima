@@ -14,6 +14,7 @@ public final class BossStatus {
     public static final String ORDER_AUDIT_REJECT = "审核拒绝";
     public static final String ORDER_RECRUITING = "招工中";
     public static final String ORDER_RECRUIT_END = "招工结束";
+    public static final String ORDER_WORKING = "工作中";
     public static final String ORDER_PENDING_SETTLE = "待结算";
     public static final String ORDER_COMPLETED = "已完成";
     public static final String ORDER_CANCELED = "取消招工";

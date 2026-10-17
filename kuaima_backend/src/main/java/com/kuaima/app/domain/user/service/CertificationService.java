@@ -100,9 +100,20 @@ public class CertificationService {
 
     @Transactional(readOnly = true)
     public Map<String, Object> publishEligibility(Long userId) {
+        return publishEligibility(userId, false);
+    }
+
+    /**
+     * enterpriseCertifiedByMembership：企业成员（非 OWNER）的企业认证挂在老板账号上，
+     * 只要处于有效企业中即视为企业已认证，本人只需完成实名。
+     */
+    @Transactional(readOnly = true)
+    public Map<String, Object> publishEligibility(Long userId, boolean enterpriseCertifiedByMembership) {
         User user = getUser(userId);
         String realname = resolveStatus(user, REALNAME, user.getRealnameStatus());
-        String enterprise = resolveStatus(user, ENTERPRISE, user.getEnterpriseStatus());
+        String enterprise = enterpriseCertifiedByMembership
+                ? CertificationStatus.APPROVED
+                : resolveStatus(user, ENTERPRISE, user.getEnterpriseStatus());
         List<String> missing = new ArrayList<>();
         // 发布招工的实名口径与人脸认证一致：比对通过且两张认证照片齐全才算完成。
         // 旧流程（姓名/证号人工审核）遗留的 APPROVED 没有人脸照片，不能放行发布。
@@ -120,8 +131,8 @@ public class CertificationService {
                 "missing", missing);
     }
 
-    public void requirePublishEligibility(Long userId) {
-        Map<String, Object> result = publishEligibility(userId);
+    public void requirePublishEligibility(Long userId, boolean enterpriseCertifiedByMembership) {
+        Map<String, Object> result = publishEligibility(userId, enterpriseCertifiedByMembership);
         if (!Boolean.TRUE.equals(result.get("canPublish"))) {
             throw new ForbiddenBusinessException("请先完成人脸实名认证和企业认证");
         }

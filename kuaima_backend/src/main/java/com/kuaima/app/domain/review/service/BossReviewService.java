@@ -14,6 +14,8 @@ import com.kuaima.app.domain.review.repository.BossReviewRepository;
 import com.kuaima.app.domain.user.repository.UserRepository;
 import com.kuaima.app.domain.user.service.CreditScoreService;
 import jakarta.persistence.EntityNotFoundException;
+import java.util.HashMap;
+import java.util.Map;
 
 @Service
 public class BossReviewService {
@@ -82,6 +84,25 @@ public class BossReviewService {
         return reviews.findByItemId(itemId).map(this::view).orElse(null);
     }
 
+    @Transactional(readOnly = true)
+    public java.util.List<ReviewView> listFromWorkers(Long bossId, Long enterpriseId, Long orderId) {
+        BossOrder order = orders.findById(orderId)
+                .orElseThrow(() -> new EntityNotFoundException("订单不存在: " + orderId));
+        boolean accessible = enterpriseId != null
+                ? enterpriseId.equals(order.getEnterpriseId())
+                : bossId != null && bossId.equals(order.getCreateBy());
+        if (!accessible) throw new ForbiddenBusinessException("无权查看其他企业的订单评价");
+        var orderReviews = reviews.findByOrderIdOrderByIdAsc(orderId);
+        Map<Long, String> workerNames = new HashMap<>();
+        users.findAllById(orderReviews.stream().map(BossReview::getWorkerId).toList())
+                .forEach(worker -> workerNames.put(worker.getId(),
+                        worker.getRealName() != null ? worker.getRealName() : worker.getNickname()));
+        return orderReviews.stream()
+                .map(review -> view(review, workerNames.getOrDefault(
+                        review.getWorkerId(), "零工" + review.getWorkerId())))
+                .toList();
+    }
+
     private BaseOrderItem ownedItem(Long workerId, Long itemId, boolean lock) {
         if (!users.existsById(workerId)) throw new EntityNotFoundException("零工不存在: " + workerId);
         BaseOrderItem item = (lock ? items.findByIdForUpdate(itemId) : items.findById(itemId))
@@ -100,7 +121,12 @@ public class BossReviewService {
         return content.isEmpty() ? null : content;
     }
     private ReviewView view(BossReview r) {
-        return new ReviewView(r.getId(), r.getItemId(), r.getOrderId(), r.getBossId(), r.getAttitudeScore(),
-                r.getSettlementScore(), r.getEnvironmentScore(), r.getContent(), r.getCreatedAt(), r.getUpdatedAt());
+        return view(r, "零工" + r.getWorkerId());
+    }
+
+    private ReviewView view(BossReview r, String workerName) {
+        return new ReviewView(r.getId(), r.getItemId(), r.getOrderId(), r.getWorkerId(), r.getBossId(), r.getAttitudeScore(),
+                r.getSettlementScore(), r.getEnvironmentScore(), r.getContent(), r.getCreatedAt(), r.getUpdatedAt(),
+                workerName);
     }
 }

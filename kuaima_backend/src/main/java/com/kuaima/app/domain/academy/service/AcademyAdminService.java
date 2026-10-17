@@ -175,7 +175,6 @@ public class AcademyAdminService {
         return lessonView(lessons.save(entity));
     }
 
-    @Transactional
     public UploadResponse upload(MultipartFile file, String title, String type) {
         if (file == null || file.isEmpty()) throw new IllegalArgumentException("上传文件不能为空");
         if (!StringUtils.hasText(title)) throw new IllegalArgumentException("视频标题不能为空");

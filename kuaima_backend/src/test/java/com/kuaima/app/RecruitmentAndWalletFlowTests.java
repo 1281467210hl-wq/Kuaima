@@ -68,6 +68,10 @@ class RecruitmentAndWalletFlowTests {
         user.setUsername("test_" + UUID.randomUUID().toString().substring(0, 8));
         user.setPassword("no-password");
         user.setRole(role);
+        // 报名要求人脸实名，流程测试统一使用已实名用户
+        user.setRealnameStatus(com.kuaima.app.domain.user.constant.CertificationStatus.APPROVED);
+        user.setRealnameIdCardImageUrl("insurance/realname/id-card.png");
+        user.setRealnameFaceImageUrl("insurance/realname/face.png");
         return userRepository.save(user);
     }
 

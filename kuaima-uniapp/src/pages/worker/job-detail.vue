@@ -157,7 +157,7 @@ import { getCachedLocation, requestCurrentLocation } from "@/utils/location";
 import {
   checkFavoriteJob,
   favoriteJob,
-  getCertificationStatus,
+  getWorkerRealnameStatus,
   getPublicJob,
   applyPublicJob,
   recordJobBrowse,
@@ -284,16 +284,13 @@ const remainingCount = computed(() =>
   Math.max(0, Number(job.value.orderNum || 0) - appliedCount.value),
 );
 onShow(async () => {
-  isRealname.value =
-    ["已通过", "通过", "已认证"].includes(
-      uni.getStorageSync("workerCertStatus"),
-    ) || uni.getStorageSync("workerRealname") === true;
+  isRealname.value = uni.getStorageSync("workerRealname") === true;
   try {
-    const result = await getCertificationStatus();
-    const status = result?.certStatus || result?.status || "未认证";
-    uni.setStorageSync("workerCertStatus", status);
-    isRealname.value = ["已通过", "通过", "已认证"].includes(status);
+    // 与后端报名校验同一口径：人脸比对通过才算实名
+    const result = await getWorkerRealnameStatus();
+    isRealname.value = result?.realnameStatus === "APPROVED";
     if (isRealname.value) uni.setStorageSync("workerRealname", true);
+    else uni.removeStorageSync("workerRealname");
   } catch (_) {}
 });
 onLoad(async (options = {}) => {
@@ -450,6 +447,10 @@ async function submitApplication() {
     uni.showToast({ title: "报名成功", icon: "success" });
   } catch (error) {
     uni.showToast({ title: error?.message || "报名失败", icon: "none" });
+    if (/实名/.test(error?.message || "")) {
+      isRealname.value = false;
+      uni.removeStorageSync("workerRealname");
+    }
   } finally {
     applying.value = false;
   }

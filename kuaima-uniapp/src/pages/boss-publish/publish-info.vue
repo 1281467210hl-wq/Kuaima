@@ -495,11 +495,21 @@ function parseTemplateTaskContent(detail = {}) {
     title,
     desc,
     requirements: detail.requirements || detail.orderRemark || "",
-    benefits: detail.benefits || "",
+    benefits: parseBenefitTags(detail.benefits || detail.orderRemark),
     exp: detail.exp || "",
     images: parseMediaItems(detail.imageKeys, detail.imageUrls),
     video: parseMediaItem(detail.videoKey, detail.videoUrl),
   };
+}
+
+const BENEFIT_TAGS = ["包工作餐", "中午包饭", "晚上包饭", "包吃住", "包餐", "有空调", "有风扇", "室内工作"];
+
+function parseBenefitTags(value) {
+  if (Array.isArray(value)) return value.filter(Boolean);
+  const text = String(value || "").replace(/\[审核拒绝\][\s\S]*$/, "");
+  if (!text) return [];
+  const values = text.split(/[,，、;；\n]/).map((item) => item.trim()).filter(Boolean);
+  return BENEFIT_TAGS.filter((tag) => values.some((item) => item === tag || item.includes(tag)));
 }
 
 function parseMediaItems(keys, urls) {
@@ -842,19 +852,14 @@ export default {
     },
     openWorkTimeSheet() {
       const saved = uni.getStorageSync("workTimeSelection") || {};
-      const rawSlots = saved.restSlots || saved.slots || [];
-      const restSlots = Array.isArray(rawSlots)
-        ? rawSlots.map((slot) => ({
-          start: slot.start || slot.s || "12:00",
-          end: slot.end || slot.e || "13:00",
-        }))
-        : [];
+      const restSlots = normalizeRestSlots(saved);
       this.workTimeDraft = {
         startTime: saved.startTime || saved.start || this.workStartTime.replace("--:--", "08:00"),
         endTime: saved.endTime || saved.end || this.workEndTime.replace("--:--", "18:00"),
         mode: normalizeWorkTimeMode(saved),
         fixed: saved.fixed !== false,
-        checkin: saved.checkin ?? saved.checkinRequired ?? true,
+        checkin: saved.checkin ?? saved.checkinRequired ?? false,
+        checkinCount: Number(saved.checkinCount ?? saved.restCheckinCount ?? 0),
         restSlots: restSlots.length ? restSlots : [{ start: "12:00", end: "13:00" }],
       };
       this.activeSheet = "workTime";
@@ -1173,16 +1178,7 @@ export default {
         }
         if (detail.startTime || detail.endTime) {
           const startDate = String(detail.startTime || detail.endTime).slice(0, 10);
-          const time = {
-            startTime: extractTime(detail.startTime) || "08:00",
-            endTime: extractTime(detail.endTime) || "18:00",
-            mode: normalizeWorkTimeMode(detail),
-            fixed: true,
-            checkin: true,
-            restSlots: normalizeRestSlots(detail),
-            display: formatWorkTime(detail.startTime, detail.endTime),
-            selectedDates: startDate ? [startDate] : [],
-          };
+          const time = buildOrderWorkTime(detail, startDate ? [startDate] : []);
           this.applyWorkTime(time);
           uni.setStorageSync("workTimeSelection", time);
         }
@@ -1219,9 +1215,6 @@ export default {
           });
         }
         this.applyGenderAge(parseGenderAge(detail));
-        const orderStartDate = String(detail.startTime || "").slice(0, 10);
-        const orderEndDate = String(detail.endTime || detail.startTime || "").slice(0, 10);
-        if (orderStartDate) this.applyDateRange(orderStartDate, orderEndDate);
         this.publishType = detail.type || this.publishType;
         if (detail.orderContent) {
           uni.setStorageSync("taskContent", taskContent);
@@ -1235,16 +1228,16 @@ export default {
             display: detail.address,
           });
         }
-        if (detail.startTime || detail.endTime) {
-          const time = {
-            startTime: extractTime(detail.startTime) || "08:00",
-            endTime: extractTime(detail.endTime) || "18:00",
-            mode: normalizeWorkTimeMode(detail),
-            fixed: true,
-            checkin: true,
-            restSlots: normalizeRestSlots(detail),
-            display: formatWorkTime(detail.startTime, detail.endTime),
-          };
+        const orderStartDate = String(detail.startTime || "").slice(0, 10);
+        if (orderStartDate) {
+          // 跨天班次的 endTime 落在次日，日期区间要退回到最后一个工作日
+          let orderEndDate = String(detail.endTime || detail.startTime).slice(0, 10);
+          if (orderEndDate > orderStartDate && isOvernightShift(detail.startTime, detail.endTime)) {
+            orderEndDate = shiftDate(orderEndDate, -1);
+          }
+          if (orderEndDate < orderStartDate) orderEndDate = orderStartDate;
+          // 日期必须和时段一起写入 workTimeSelection，发布页按 selectedDates 取开工日期
+          const time = buildOrderWorkTime(detail, buildDateRange(orderStartDate, orderEndDate));
           this.applyWorkTime(time);
           uni.setStorageSync("workTimeSelection", time);
         }
@@ -1484,8 +1477,8 @@ function normalizeWorkTimeMode(value = {}) {
   }
   if (value.hasRest === false || value.hasBreak === false || value.rest === false || value.breakTime === false) return "none";
   if (value.hasRest === true || value.hasBreak === true || value.rest === true || value.breakTime === true) return "rest";
-  const slots = value.restSlots || value.slots || value.restPeriods;
-  if (Array.isArray(slots) && slots.length) return "rest";
+  const slots = normalizeRestSlots(value);
+  if (slots.length) return "rest";
   const restMinutes = parseDurationMinutes(value.restMinutes);
   if (restMinutes > 0) return "rest";
   const start = extractTime(value.startTime || value.start);
@@ -1500,7 +1493,10 @@ function normalizeWorkTimeMode(value = {}) {
 }
 
 function normalizeRestSlots(value = {}) {
-  const rows = value.restSlots || value.slots || value.restPeriods;
+  let rows = value.restSlots || value.slots || value.restPeriods;
+  if (typeof rows === "string") {
+    try { rows = JSON.parse(rows); } catch (_) { rows = []; }
+  }
   if (!Array.isArray(rows)) return [];
   return rows.map((slot) => ({ start: slot.start || slot.s || "12:00", end: slot.end || slot.e || "13:00" }));
 }
@@ -1568,6 +1564,51 @@ function parseIdList(value) {
     .split(",")
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+function buildOrderWorkTime(detail = {}, selectedDates = []) {
+  const startTime = extractTime(detail.startTime) || "08:00";
+  const endTime = extractTime(detail.endTime) || "18:00";
+  const mode = normalizeWorkTimeMode(detail);
+  const restSlots = normalizeRestSlots(detail);
+  const time = {
+    startTime,
+    endTime,
+    start: startTime,
+    end: endTime,
+    mode,
+    fixed: mode !== "rest" || restSlots.length > 0,
+    checkin: Boolean(detail.restCheckin ?? detail.checkinRequired ?? detail.checkin),
+    checkinRequired: Boolean(detail.restCheckin ?? detail.checkinRequired ?? detail.checkin),
+    checkinCount: Number(detail.restCheckinCount ?? detail.checkinCount ?? 0),
+    restSlots,
+    restMinutes: parseDurationMinutes(detail.restMinutes),
+    display: formatWorkTime(detail.startTime, detail.endTime),
+    selectedDates,
+  };
+  // 日结订单的 duration 是每日实际工时（小时）；后端不存休息时段，只能用总时长反推休息分钟数
+  const workMinutes = detail.type === "daily" ? Number(detail.duration) * 60 : 0;
+  if (workMinutes > 0) {
+    const totalMinutes = timeRangeMinutes(startTime, endTime);
+    time.duration = formatDurationMinutes(workMinutes, true);
+    if (!time.restSlots.length && totalMinutes > workMinutes) {
+      time.mode = "rest";
+      time.restMinutes = totalMinutes - workMinutes;
+    }
+  }
+  return time;
+}
+
+function isOvernightShift(start, end) {
+  const left = timeToMinutes(extractTime(start));
+  const right = timeToMinutes(extractTime(end));
+  return left !== null && right !== null && right <= left;
+}
+
+function shiftDate(value, days) {
+  const date = parseLocalDate(value);
+  date.setDate(date.getDate() + days);
+  return formatLocalDate(date);
 }
 
 function formatWorkTime(start, end) {

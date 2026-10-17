@@ -51,7 +51,7 @@ class CertificationServiceTests {
         CertificationService service = service(approvedBoss());
 
         ForbiddenBusinessException error = assertThrows(ForbiddenBusinessException.class,
-                () -> service.requirePublishEligibility(7L));
+                () -> service.requirePublishEligibility(7L, false));
 
         assertEquals("请先完成人脸实名认证和企业认证", error.getMessage());
     }

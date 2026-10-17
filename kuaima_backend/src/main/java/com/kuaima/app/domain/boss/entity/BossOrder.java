@@ -87,6 +87,21 @@ public class BossOrder extends BaseEntity {
     @Column(comment = "结束时间")
     private Date endTime;
 
+    @Column(name = "rest_mode", length = 10, comment = "休息模式：none无休息/rest有休息")
+    private String restMode;
+
+    @Column(name = "rest_slots", length = 2000, comment = "固定休息时段 JSON")
+    private String restSlots;
+
+    @Column(name = "rest_minutes", comment = "休息总时长（分钟）")
+    private Integer restMinutes;
+
+    @Column(name = "rest_checkin", comment = "是否需要休息打卡")
+    private Boolean restCheckin;
+
+    @Column(name = "rest_checkin_count", comment = "休息打卡次数")
+    private Integer restCheckinCount;
+
     @Column(precision = 18, scale = 2, comment = "工资（元/天）")
     private BigDecimal salary;
 
@@ -152,5 +167,13 @@ public class BossOrder extends BaseEntity {
     /** 展示用视频签名 URL，不落库。 */
     @Transient
     private String videoUrl;
+
+    /** 列表展示用：订单内已完成且可评价的零工数量，不落库。 */
+    @Transient
+    private Long reviewableWorkerCount;
+
+    /** 列表展示用：订单内已评价零工数量，不落库。 */
+    @Transient
+    private Long reviewCount;
 
 }

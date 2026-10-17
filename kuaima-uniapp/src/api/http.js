@@ -214,11 +214,6 @@ function resolveBackendUrl(url, userId, data) {
     const orderId = url.split("/").pop();
     return `/jobs/${orderId}/apply`;
   }
-  if (url === "/worker/wallet" || url.startsWith("/worker/wallet?"))
-    return `/wallet/${userId}`;
-  if (url === "/worker/wallet/records") return `/wallet/${userId}/flows`;
-  if (url === "/worker/wallet/withdraw-records")
-    return `/wallet/${userId}/withdraws`;
   if (
     url === "/worker/notifications" ||
     url.startsWith("/worker/notifications?")

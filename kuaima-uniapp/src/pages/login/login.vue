@@ -154,12 +154,33 @@
         >
       </view>
     </view>
+
+    <view v-if="agreementVisible" class="agreement-mask" @click="closeAgreement">
+      <view class="agreement-modal" @click.stop>
+        <view class="agreement-header">
+          <text class="agreement-title">{{ activeAgreement?.name || "协议内容" }}</text>
+          <text class="agreement-close" @click="closeAgreement">×</text>
+        </view>
+        <scroll-view scroll-y class="agreement-body">
+          <text v-if="agreementLoading" class="agreement-loading">协议加载中…</text>
+          <template v-else>
+            <text class="agreement-content">{{ activeAgreement?.content || "暂未配置协议内容" }}</text>
+            <button
+              v-if="activeAgreement?.fileUrl"
+              class="agreement-file-button"
+              @click="openAgreementFile"
+            >查看协议文件</button>
+          </template>
+        </scroll-view>
+      </view>
+    </view>
   </view>
 </template>
 
 <script setup>
 import { computed, onMounted, ref } from "vue";
 import { wechatLogin, getCurrentUser } from "@/api/auth";
+import { getPublicAgreement } from "@/api/backend";
 
 const pages = getCurrentPages();
 const query = pages[pages.length - 1]?.options || {};
@@ -186,6 +207,13 @@ const loggingIn = ref(false);
 const preparingLogin = ref(false);
 const registrationToken = ref("");
 const preparedLoginResult = ref(null);
+const agreementVisible = ref(false);
+const agreementLoading = ref(false);
+const activeAgreement = ref(null);
+const agreementTypes = {
+  "user-agreement": "用户服务协议",
+  privacy: "隐私协议",
+};
 const isLoginPrepareIncomplete = computed(() => {
   if (!userRole.value) return true;
   if (preparingLogin.value) return false;
@@ -207,10 +235,48 @@ function goBack() {
   registrationToken.value = "";
   preparedLoginResult.value = null;
 }
-function openAgreement(page) {
-  uni.showToast({
-    title: page === "privacy" ? "隐私协议" : "服务协议",
-    icon: "none",
+async function openAgreement(page) {
+  const type = agreementTypes[page] || agreementTypes["user-agreement"];
+  activeAgreement.value = null;
+  agreementLoading.value = true;
+  agreementVisible.value = true;
+  try {
+    const result = await getPublicAgreement(type);
+    activeAgreement.value = result || {
+      name: page === "privacy" ? "隐私协议" : "服务协议",
+      content: "暂未配置协议内容，请稍后再试。",
+    };
+  } catch (error) {
+    activeAgreement.value = {
+      name: page === "privacy" ? "隐私协议" : "服务协议",
+      content: error?.message || "协议加载失败，请稍后再试。",
+    };
+  } finally {
+    agreementLoading.value = false;
+  }
+}
+
+function closeAgreement() {
+  if (!agreementLoading.value) agreementVisible.value = false;
+}
+
+function openAgreementFile() {
+  const fileUrl = activeAgreement.value?.fileUrl;
+  if (!fileUrl) return;
+  uni.downloadFile({
+    url: fileUrl,
+    success(response) {
+      if (response.statusCode !== 200) {
+        uni.showToast({ title: "协议文件下载失败", icon: "none" });
+        return;
+      }
+      uni.openDocument({
+        filePath: response.tempFilePath,
+        showMenu: true,
+        fail: () => uni.showToast({ title: "协议文件打开失败", icon: "none" }),
+      });
+    },
+    fail: () => uni.showToast({ title: "协议文件下载失败", icon: "none" }),
   });
 }
 function handlePhoneLogin(event) {
@@ -712,6 +778,68 @@ async function completeLogin(result) {
   color: #8b6a45;
   font-size: 12px;
   margin-top: 12px;
+}
+.agreement-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 99;
+  display: flex;
+  align-items: flex-end;
+  background: rgba(0, 0, 0, 0.45);
+}
+.agreement-modal {
+  width: 100%;
+  max-height: 82vh;
+  padding: 20px 18px calc(20px + env(safe-area-inset-bottom));
+  border-radius: 18px 18px 0 0;
+  background: #fff;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+}
+.agreement-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+.agreement-title {
+  flex: 1;
+  color: #333;
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+.agreement-close {
+  color: #999;
+  font-size: 28px;
+  line-height: 1;
+  padding: 0 4px;
+}
+.agreement-body {
+  flex: 1;
+  min-height: 240px;
+  max-height: 62vh;
+}
+.agreement-loading,
+.agreement-content {
+  display: block;
+  color: #555;
+  font-size: 13px;
+  line-height: 1.8;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.agreement-loading {
+  color: #999;
+  text-align: center;
+}
+.agreement-file-button {
+  margin: 18px 0 0;
+  background: #ff6b35;
+  color: #fff;
+  font-size: 14px;
 }
 @media (max-width: 430px) {
   .phone-frame {

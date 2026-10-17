@@ -36,6 +36,7 @@ import com.kuaima.app.domain.boss.entity.BossRecruitSettings;
 import com.kuaima.app.domain.message.constant.BizType;
 import com.kuaima.app.domain.message.constant.MessageType;
 import com.kuaima.app.domain.message.service.MessageService;
+import com.kuaima.app.domain.user.constant.CertificationStatus;
 import com.kuaima.app.domain.user.entity.User;
 import com.kuaima.app.domain.user.constant.UserRole;
 import com.kuaima.app.domain.user.repository.UserRepository;
@@ -158,6 +159,7 @@ public class BossOrderService {
         }
         validateOrderCoordinatesRequired(order.getLongitude(), order.getLatitude());
         checkTimeRange(order.getStartTime(), order.getEndTime());
+        normalizeRestSettings(order);
         applyRecruitSettings(order, order);
         // 试工时间仅月结类型有效
         if (!BossType.MONTH.equals(order.getType())) {
@@ -309,6 +311,12 @@ public class BossOrderService {
         if (update.getEndTime() != null) {
             order.setEndTime(update.getEndTime());
         }
+        if (update.getRestMode() != null) order.setRestMode(update.getRestMode());
+        if (update.getRestSlots() != null) order.setRestSlots(update.getRestSlots());
+        if (update.getRestMinutes() != null) order.setRestMinutes(update.getRestMinutes());
+        if (update.getRestCheckin() != null) order.setRestCheckin(update.getRestCheckin());
+        if (update.getRestCheckinCount() != null) order.setRestCheckinCount(update.getRestCheckinCount());
+        normalizeRestSettings(order);
         // 试工时间：仅月结订单可设置
         if (BossType.MONTH.equals(order.getType()) && StringUtils.hasText(update.getTrialDuration())) {
             order.setTrialDuration(update.getTrialDuration());
@@ -324,6 +332,21 @@ public class BossOrderService {
             reconcileOrderAfterHeadcountChange(saved);
         }
         return saved;
+    }
+
+    private void normalizeRestSettings(BossOrder order) {
+        if (!"rest".equalsIgnoreCase(order.getRestMode())) {
+            order.setRestMode("none");
+            order.setRestSlots("[]");
+            order.setRestMinutes(0);
+            order.setRestCheckin(false);
+            order.setRestCheckinCount(0);
+            return;
+        }
+        if (!StringUtils.hasText(order.getRestSlots())) order.setRestSlots("[]");
+        if (order.getRestMinutes() == null || order.getRestMinutes() < 0) order.setRestMinutes(0);
+        if (order.getRestCheckin() == null) order.setRestCheckin(false);
+        if (order.getRestCheckinCount() == null || order.getRestCheckinCount() < 0) order.setRestCheckinCount(0);
     }
 
     /** 订单详情 */
@@ -390,12 +413,18 @@ public class BossOrderService {
 
     /**
      * 订单状态流转：
-     * 招工中 -> 招工结束 -> 待结算 -> 已完成；任意未完成状态 -> 取消招工
+     * 招工中 -> 招工结束 -> 工作中 -> 待结算 -> 已完成；任意未完成状态 -> 取消招工
      */
     @Transactional
     public BossOrder changeOrderStatus(Long id, String targetStatus) {
         BossOrder order = getOrderOrThrow(id);
         String current = order.getOrderStatus();
+
+        if (BossStatus.ORDER_WORKING.equals(current)
+                && BossStatus.ORDER_PENDING_SETTLE.equals(targetStatus)
+                && earlyLeaveCodeEnabled(order)) {
+            throw new IllegalArgumentException("已开启早退码，请由零工输入早退码后完成工作");
+        }
 
         // 兼容修复前已进入“待结算”但尚未生成结算单的历史订单；重复请求保持幂等并补齐结算单。
         if (BossStatus.ORDER_PENDING_SETTLE.equals(current)
@@ -409,8 +438,14 @@ public class BossOrderService {
             case BossStatus.ORDER_PENDING_AUDIT ->
                     targetStatus.equals(BossStatus.ORDER_CANCELED);
             case BossStatus.ORDER_RECRUITING ->
-                    targetStatus.equals(BossStatus.ORDER_RECRUIT_END) || targetStatus.equals(BossStatus.ORDER_CANCELED);
+                    targetStatus.equals(BossStatus.ORDER_RECRUIT_END)
+                            || targetStatus.equals(BossStatus.ORDER_WORKING)
+                            || targetStatus.equals(BossStatus.ORDER_CANCELED);
             case BossStatus.ORDER_RECRUIT_END ->
+                    targetStatus.equals(BossStatus.ORDER_WORKING)
+                            || targetStatus.equals(BossStatus.ORDER_PENDING_SETTLE)
+                            || targetStatus.equals(BossStatus.ORDER_CANCELED);
+            case BossStatus.ORDER_WORKING ->
                     targetStatus.equals(BossStatus.ORDER_PENDING_SETTLE) || targetStatus.equals(BossStatus.ORDER_CANCELED);
             case BossStatus.ORDER_PENDING_SETTLE ->
                     targetStatus.equals(BossStatus.ORDER_COMPLETED) || targetStatus.equals(BossStatus.ORDER_CANCELED);
@@ -449,9 +484,13 @@ public class BossOrderService {
             itemRepository.saveAll(items);
         }
         BossOrder saved = orderRepository.save(order);
-        if (BossStatus.ORDER_PENDING_SETTLE.equals(targetStatus)) {
-            // 老板在订单页“确认全部到岗”后，已录用记录同步进入已到岗，再生成待支付结算单。
+        if (BossStatus.ORDER_WORKING.equals(targetStatus)) {
             markHiredItemsOnWork(saved);
+        }
+        if (BossStatus.ORDER_PENDING_SETTLE.equals(targetStatus)) {
+            // 兼容旧流程直接“招工结束 -> 待结算”，也支持新流程从“工作中 -> 待结算”。
+            markHiredItemsOnWork(saved);
+            markOnWorkItemsPendingSettle(saved);
             createPendingSettlements(saved);
         }
         // 取消招工：通知该订单所有受影响报名者
@@ -491,8 +530,10 @@ public class BossOrderService {
         if (!BossStatus.ORDER_RECRUITING.equals(order.getOrderStatus())) {
             throw new IllegalStateException("该订单当前不可报名");
         }
-        if (!userRepository.existsById(userId)) {
-            throw new EntityNotFoundException("用户不存在: " + userId);
+        User applicant = userRepository.findById(userId)
+                .orElseThrow(() -> new EntityNotFoundException("用户不存在: " + userId));
+        if (!CertificationStatus.isFaceVerified(applicant)) {
+            throw new ForbiddenBusinessException("请先完成实名认证");
         }
         if (itemRepository.existsByOrderIdAndUserId(orderId, userId)) {
             throw new IllegalStateException("您已报名过该订单");
@@ -515,7 +556,7 @@ public class BossOrderService {
         BaseOrderItem item = new BaseOrderItem();
         item.setOrderId(orderId);
         item.setUserId(userId);
-        // 统一走审核流程：抢单后一律为「已报名」，审核通过后才变为「已录用」
+        // 先落「已报名」，自动通过模式再走与老板录用相同的流程，保证录用时间、通知和招满结束一致
         item.setStatus(BossStatus.ITEM_APPLIED);
         item.setRemark(remark);
         item.setTrialRequested(wantTrial);
@@ -528,12 +569,15 @@ public class BossOrderService {
         } catch (DataIntegrityViolationException exception) {
             throw new IllegalStateException("您已报名过该订单");
         }
-        // 通知老板有新的报名待审核
-        String content = userName(userId) + " 报名了您发布的「" + order.getOrderTitle() + "」"
-                + order.getPostion() + "岗位，请及时审核报名信息";
-        messageService.sendToUser(order.getCreateBy(), UserRole.BOSS, MessageType.ORDER_APPLY, "有新的报名待审核",
-                content, BizType.ITEM, saved.getId());
-        return saved;
+        boolean manualReview = "manual".equalsIgnoreCase(order.getSignMode());
+        // 手动审核必须通知老板处理；自动通过只按报名通知开关提醒
+        if (manualReview || !Boolean.FALSE.equals(order.getSignNotify())) {
+            String content = userName(userId) + " 报名了您发布的「" + order.getOrderTitle() + "」"
+                    + order.getPostion() + "岗位" + (manualReview ? "，请及时审核报名信息" : "，已自动录用");
+            messageService.sendToUser(order.getCreateBy(), UserRole.BOSS, MessageType.ORDER_APPLY,
+                    manualReview ? "有新的报名待审核" : "您有新的报名", content, BizType.ITEM, saved.getId());
+        }
+        return manualReview ? saved : hire(saved, order);
     }
 
     /** 老板录用：已报名 -> 已录用 */
@@ -543,12 +587,15 @@ public class BossOrderService {
         if (!BossStatus.ITEM_APPLIED.equals(item.getStatus())) {
             throw new IllegalStateException("仅已报名的记录可以录用");
         }
+        return hire(item, getOrderOrThrow(item.getOrderId()));
+    }
+
+    /** 已报名 -> 已录用：老板手动录用与自动通过共用。 */
+    private BaseOrderItem hire(BaseOrderItem item, BossOrder order) {
         item.setStatus(BossStatus.ITEM_HIRED);
         item.setHireDate(Date.valueOf(LocalDate.now()));
         item.setHireAt(LocalDateTime.now());
         BaseOrderItem saved = itemRepository.save(item);
-        // 录用结果：通知被录用的零工
-        BossOrder order = getOrderOrThrow(item.getOrderId());
         // 已录用/已到岗/已完成人数达到需求人数后，自动结束招工，停止继续报名。
         if (BossStatus.ORDER_RECRUITING.equals(order.getOrderStatus())
                 && order.getOrderNum() != null && order.getOrderNum() > 0) {
@@ -591,7 +638,18 @@ public class BossOrderService {
         return saved;
     }
 
-    /** 用户确认到岗：已录用 -> 已到岗 */
+    /** 老板未开启开工码时手动确认到岗：已录用 -> 已到岗，订单进入工作中。 */
+    @Transactional
+    public BaseOrderItem confirmWorkManually(Long itemId) {
+        BaseOrderItem item = getItemOrThrow(itemId);
+        BossOrder order = getOrderOrThrow(item.getOrderId());
+        if (manualStartCodeEnabled(order)) {
+            throw new IllegalArgumentException("已开启开工码，请由零工输入开工码后开始工作");
+        }
+        return confirmWork(itemId);
+    }
+
+    /** 确认到岗：已录用 -> 已到岗，订单进入工作中。 */
     @Transactional
     public BaseOrderItem confirmWork(Long itemId) {
         BaseOrderItem item = getItemOrThrow(itemId);
@@ -604,28 +662,27 @@ public class BossOrderService {
         BaseOrderItem saved = itemRepository.save(item);
         // 零工确认到岗：通知老板
         BossOrder order = getOrderOrThrow(item.getOrderId());
-        // 招工已结束且所有已录取零工均已确认到岗后，订单进入待结算。
-        if (BossStatus.ORDER_RECRUIT_END.equals(order.getOrderStatus())) {
-            List<BaseOrderItem> items = itemRepository.findByOrderId(order.getId());
-            List<BaseOrderItem> activeHired = items.stream()
-                    .filter(i -> BossStatus.ITEM_HIRED.equals(i.getStatus())
-                            || BossStatus.ITEM_ON_WORK.equals(i.getStatus())
-                            || BossStatus.ITEM_FINISHED.equals(i.getStatus()))
-                    .toList();
-            boolean allArrived = !activeHired.isEmpty()
-                    && activeHired.stream().allMatch(i ->
-                            BossStatus.ITEM_ON_WORK.equals(i.getStatus())
-                                    || BossStatus.ITEM_FINISHED.equals(i.getStatus()));
-            if (allArrived) {
-                order.setOrderStatus(BossStatus.ORDER_PENDING_SETTLE);
-                orderRepository.save(order);
-                createPendingSettlements(order);
-            }
+        if (BossStatus.ORDER_RECRUITING.equals(order.getOrderStatus())
+                || BossStatus.ORDER_RECRUIT_END.equals(order.getOrderStatus())
+                || BossStatus.ORDER_WORKING.equals(order.getOrderStatus())) {
+            order.setOrderStatus(BossStatus.ORDER_WORKING);
+            orderRepository.save(order);
         }
         messageService.sendToUser(order.getCreateBy(), UserRole.BOSS, MessageType.ITEM_WORK_CONFIRM, "零工已到岗",
                 userName(item.getUserId()) + " 已到达「" + order.getOrderTitle() + "」岗位，请留意安排工作。",
                 BizType.ITEM, item.getId());
         return saved;
+    }
+
+    /** 完成：已到岗 -> 待结算（等待老板发起结算；结算成功后才为「已完成」） */
+    @Transactional
+    public BaseOrderItem finishItemManually(Long itemId) {
+        BaseOrderItem item = getItemOrThrow(itemId);
+        BossOrder order = getOrderOrThrow(item.getOrderId());
+        if (earlyLeaveCodeEnabled(order)) {
+            throw new IllegalArgumentException("已开启早退码，请由零工输入早退码后完成工作");
+        }
+        return finishItem(itemId);
     }
 
     /** 完成：已到岗 -> 待结算（等待老板发起结算；结算成功后才为「已完成」） */
@@ -640,6 +697,11 @@ public class BossOrderService {
         item.setFinishAt(LocalDateTime.now());
         BaseOrderItem saved = itemRepository.save(item);
         BossOrder order = getOrderOrThrow(item.getOrderId());
+        if (BossStatus.ORDER_WORKING.equals(order.getOrderStatus())
+                && allActiveWorkersFinished(order)) {
+            order.setOrderStatus(BossStatus.ORDER_PENDING_SETTLE);
+            orderRepository.save(order);
+        }
         if (BossStatus.ORDER_PENDING_SETTLE.equals(order.getOrderStatus())) {
             createPendingSettlements(order);
         }
@@ -934,11 +996,8 @@ public class BossOrderService {
         }
         boolean allArrived = activeItems.stream().allMatch(i ->
                 BossStatus.ITEM_ON_WORK.equals(i.getStatus()) || BossStatus.ITEM_FINISHED.equals(i.getStatus()));
-        order.setOrderStatus(allArrived ? BossStatus.ORDER_PENDING_SETTLE : BossStatus.ORDER_RECRUIT_END);
+        order.setOrderStatus(allArrived ? BossStatus.ORDER_WORKING : BossStatus.ORDER_RECRUIT_END);
         orderRepository.save(order);
-        if (allArrived) {
-            createPendingSettlements(order);
-        }
     }
 
     private void markHiredItemsOnWork(BossOrder order) {
@@ -957,6 +1016,52 @@ public class BossOrderService {
             }
         });
         itemRepository.saveAll(hiredItems);
+    }
+
+    private void markOnWorkItemsPendingSettle(BossOrder order) {
+        List<BaseOrderItem> workingItems = itemRepository.findByOrderId(order.getId()).stream()
+                .filter(item -> BossStatus.ITEM_ON_WORK.equals(item.getStatus()))
+                .toList();
+        Date finishDate = Date.valueOf(LocalDate.now());
+        workingItems.forEach(item -> {
+            item.setStatus(BossStatus.ITEM_PENDING_SETTLE);
+            if (item.getFinishDate() == null) {
+                item.setFinishDate(finishDate);
+                item.setFinishAt(LocalDateTime.now());
+            }
+        });
+        itemRepository.saveAll(workingItems);
+    }
+
+    private boolean allActiveWorkersFinished(BossOrder order) {
+        List<BaseOrderItem> items = itemRepository.findByOrderId(order.getId());
+        boolean hasActive = items.stream().anyMatch(item ->
+                BossStatus.ITEM_HIRED.equals(item.getStatus())
+                        || BossStatus.ITEM_ON_WORK.equals(item.getStatus())
+                        || BossStatus.ITEM_PENDING_SETTLE.equals(item.getStatus())
+                        || BossStatus.ITEM_FINISHED.equals(item.getStatus()));
+        return hasActive && items.stream().noneMatch(item ->
+                BossStatus.ITEM_HIRED.equals(item.getStatus())
+                        || BossStatus.ITEM_ON_WORK.equals(item.getStatus()));
+    }
+
+    private boolean manualStartCodeEnabled(BossOrder order) {
+        return attendanceCodeEnabled(order, true);
+    }
+
+    private boolean earlyLeaveCodeEnabled(BossOrder order) {
+        return attendanceCodeEnabled(order, false);
+    }
+
+    private boolean attendanceCodeEnabled(BossOrder order, boolean work) {
+        if (recruitSettingsRepository == null) return false;
+        var settings = order.getEnterpriseId() != null
+                ? recruitSettingsRepository.findByEnterpriseId(order.getEnterpriseId())
+                : recruitSettingsRepository.findByBossId(order.getCreateBy());
+        return settings.map(work ? BossRecruitSettings::getStartCodeEnabled
+                        : BossRecruitSettings::getEarlyCodeEnabled)
+                .map(Boolean.TRUE::equals)
+                .orElse(Boolean.FALSE);
     }
 
     private int resolveSettlementWorkDays(BaseOrderItem item) {
@@ -979,6 +1084,7 @@ public class BossOrderService {
                 BossStatus.ITEM_APPLIED,
                 BossStatus.ITEM_HIRED,
                 BossStatus.ITEM_ON_WORK,
+                BossStatus.ITEM_PENDING_SETTLE,
                 BossStatus.ITEM_FINISHED);
         Map<Long, Long> countByOrderId = itemRepository
                 .countByOrderIdsAndStatuses(orderIds, activeStatuses)

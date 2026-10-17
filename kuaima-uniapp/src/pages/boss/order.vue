@@ -139,9 +139,23 @@
               </template>
               <template v-else-if="job.status === 'ended'">
                 <text
+                  v-if="!attendance.workCodeEnabled"
                   class="job-btn btn-secondary"
                   @click="confirmArrival(job.id)"
                   >确认到岗</text
+                >
+                <text
+                  class="job-btn btn-link"
+                  @click="navigateTo('order-detail', { id: job.id })"
+                  >详情</text
+                >
+              </template>
+              <template v-else-if="job.status === 'working'">
+                <text
+                  v-if="!attendance.leaveCodeEnabled"
+                  class="job-btn btn-primary"
+                  @click="confirmCompletion(job.id)"
+                  >确认完工</text
                 >
                 <text
                   class="job-btn btn-link"
@@ -162,7 +176,16 @@
                 >
               </template>
               <template v-else-if="job.status === 'completed'">
-                <text class="job-btn btn-primary" @click="openReview(job)">评价</text>
+                <text
+                  v-if="Number(job.reviewCount || 0) < Number(job.reviewableWorkerCount || 0)"
+                  class="job-btn btn-primary"
+                  @click="openReview(job)"
+                >{{ job.reviewCount > 0 ? "继续评价" : "评价" }}</text>
+                <text
+                  v-if="job.status === 'completed'"
+                  class="job-btn btn-secondary"
+                  @click="openReviewView(job)"
+                >查看评价</text>
                 <text class="job-btn btn-link" @click="navigateTo('order-detail', { id: job.id })">详情</text>
               </template>
               <template v-else>
@@ -294,10 +317,10 @@
       @click="showConfirmModal = false"
     >
       <view class="modal-content" @click.stop>
-        <text class="modal-title">确认全部零工已到岗？</text>
+        <text class="modal-title">{{ confirmTargetMode === "completion" ? "确认全部零工已完工？" : "确认全部零工已到岗？" }}</text>
         <text class="modal-subtitle">{{ confirmTargetTitle }}</text>
         <text class="modal-desc"
-          >确认后状态将变更为待结算，可前往结算页面进行付款</text
+          >{{ confirmTargetMode === "completion" ? "确认后状态将变更为待结算，可前往结算页面进行付款" : "确认后订单状态将变更为工作中" }}</text
         >
         <view class="modal-actions">
           <text
@@ -306,7 +329,7 @@
             >再想想</text
           >
           <text class="modal-btn modal-btn-confirm" @click="confirmArrive"
-            >确认到岗</text
+            >{{ confirmTargetMode === "completion" ? "确认完工" : "确认到岗" }}</text
           >
         </view>
       </view>
@@ -327,6 +350,60 @@
         <view class="modal-actions"><text class="modal-btn modal-btn-cancel" @click="closeReview">取消</text><text class="modal-btn modal-btn-confirm" @click="submitReview">{{ reviewSubmitting ? '提交中…' : '提交评价' }}</text></view>
       </view>
     </view>
+
+    <view class="modal-mask" v-if="showReviewViewModal" @click="closeReviewView">
+      <view class="review-modal review-view-modal" @click.stop>
+        <view class="review-head">
+          <text class="review-title">订单评价</text>
+          <text class="review-close" @click="closeReviewView">×</text>
+        </view>
+        <text class="review-order">订单：{{ reviewViewTarget?.title || '' }}</text>
+        <view class="review-tabs">
+          <text
+            :class="['review-tab', { active: reviewViewTab === 'mine' }]"
+            @click="reviewViewTab = 'mine'"
+          >我评零工</text>
+          <text
+            :class="['review-tab', { active: reviewViewTab === 'workers' }]"
+            @click="reviewViewTab = 'workers'"
+          >零工评我</text>
+        </view>
+        <scroll-view scroll-y class="review-list">
+          <view v-if="reviewViewLoading" class="review-empty">评价加载中...</view>
+          <view v-else-if="reviewViewTab === 'mine' && !reviewViewList.length" class="review-empty">暂无我评零工的评价</view>
+          <view v-else-if="reviewViewTab === 'workers' && !workerReviewList.length" class="review-empty">暂无零工评我的评价</view>
+          <view v-if="reviewViewTab === 'mine'" v-for="review in reviewViewList" :key="review.id" class="review-record">
+            <view class="review-record-head">
+              <text class="review-worker">{{ review.workerName || `零工${review.workerId}` }}</text>
+              <text class="review-overall">{{ review.overallScore }}.0 分</text>
+            </view>
+            <view class="review-score-row"><text>综合</text><text class="review-stars">{{ "★".repeat(review.overallScore) }}</text></view>
+            <view class="review-score-row"><text>态度</text><text>{{ review.attitudeScore }} 分</text></view>
+            <view class="review-score-row"><text>效率</text><text>{{ review.efficiencyScore }} 分</text></view>
+            <view class="review-score-row"><text>技能</text><text>{{ review.skillScore }} 分</text></view>
+            <text class="review-content">{{ review.content || "未填写评价内容" }}</text>
+          </view>
+          <view v-if="reviewViewTab === 'workers'" v-for="review in workerReviewList" :key="review.id" class="review-record">
+            <view class="review-record-head">
+              <text class="review-worker">{{ review.workerName || `零工${review.workerId}` }}</text>
+              <text class="review-overall">{{ averageBossReviewScore(review) }} 分</text>
+            </view>
+            <view class="review-score-row"><text>沟通态度</text><text>{{ review.attitudeScore }} 分</text></view>
+            <view class="review-score-row"><text>工资结算</text><text>{{ review.settlementScore }} 分</text></view>
+            <view class="review-score-row"><text>工作环境</text><text>{{ review.environmentScore }} 分</text></view>
+            <text class="review-content">{{ review.content || "未填写评价内容" }}</text>
+          </view>
+        </scroll-view>
+        <view class="modal-actions">
+          <text class="modal-btn modal-btn-cancel" @click="closeReviewView">关闭</text>
+          <text
+            v-if="Number(reviewViewTarget?.reviewCount || 0) < Number(reviewViewTarget?.reviewableWorkerCount || 0)"
+            class="modal-btn modal-btn-confirm"
+            @click="continueReview"
+          >继续评价</text>
+        </view>
+      </view>
+    </view>
   </view>
 </template>
 
@@ -343,6 +420,8 @@ import {
   refreshBossWorkCode,
   switchBossRecruitAccount,
   saveBossWorkerReview,
+  getBossWorkerReviews,
+  getWorkerBossReviews,
 } from "@/api/backend";
 import { handleTokenInvalid } from "@/api/auth";
 
@@ -373,6 +452,7 @@ const statusByBackend = {
   审核拒绝: "rejected",
   招工中: "recruiting",
   招工结束: "ended",
+  工作中: "working",
   待结算: "settling",
   已完成: "completed",
   取消招工: "cancelled",
@@ -402,6 +482,8 @@ function normalizeOrder(order, currentApply = 0) {
     wage,
     recruitCount: Number(order.orderNum || 0),
     currentApply: Number(order.currentApply ?? currentApply ?? 0),
+    reviewCount: Number(order.reviewCount || 0),
+    reviewableWorkerCount: Number(order.reviewableWorkerCount || 0),
     status: statusByBackend[order.orderStatus] || "pending",
     statusText: order.orderStatus || "待审核",
   };
@@ -516,6 +598,7 @@ export default {
         pending: { text: "待审核", class: "status-ended" },
         rejected: { text: "审核拒绝", class: "status-cancelled" },
         ended: { text: "招工结束", class: "status-ended" },
+        working: { text: "工作中", class: "status-recruiting" },
         settling: { text: "待结算", class: "status-settling" },
         completed: { text: "已完成", class: "status-completed" },
         cancelled: { text: "取消招工", class: "status-cancelled" },
@@ -551,8 +634,14 @@ export default {
       showCancelModal: false,
       showConfirmModal: false,
       showReviewModal: false,
+      showReviewViewModal: false,
       reviewSubmitting: false,
       reviewTarget: null,
+      reviewViewTarget: null,
+      reviewViewList: [],
+      workerReviewList: [],
+      reviewViewTab: "mine",
+      reviewViewLoading: false,
       reviewForm: { overallScore: 0, attitudeScore: 0, efficiencyScore: 0, skillScore: 0, content: "" },
       reviewDimensions: [
         { key: "attitudeScore", label: "工作态度" },
@@ -563,6 +652,7 @@ export default {
       cancelTargetTitle: "",
       confirmTargetId: null,
       confirmTargetTitle: "",
+      confirmTargetMode: "arrival",
       loading: false,
       loadingMore: false,
       loadingStats: false,
@@ -610,6 +700,43 @@ export default {
     setReviewScore(key, value) {
       this.reviewForm[key] = value;
     },
+    async openReviewView(job) {
+      this.reviewViewTarget = job;
+      this.reviewViewList = [];
+      this.workerReviewList = [];
+      this.reviewViewTab = "mine";
+      this.reviewViewLoading = true;
+      this.showReviewViewModal = true;
+      try {
+        const [myReviews, workerReviews] = await Promise.all([
+          getBossWorkerReviews(job.id),
+          getWorkerBossReviews(job.id),
+        ]);
+        this.reviewViewList = Array.isArray(myReviews) ? myReviews : [];
+        this.workerReviewList = Array.isArray(workerReviews) ? workerReviews : [];
+        this.reviewViewTarget = { ...job, reviewCount: this.reviewViewList.length };
+        const index = this.jobList.findIndex((item) => item.id === job.id);
+        if (index >= 0) this.jobList.splice(index, 1, this.reviewViewTarget);
+      } catch (error) {
+        this.handleRequestError(error, "评价加载失败");
+      } finally {
+        this.reviewViewLoading = false;
+      }
+    },
+    closeReviewView() {
+      this.showReviewViewModal = false;
+    },
+    continueReview() {
+      if (!this.reviewViewTarget || this.reviewSubmitting) return;
+      this.showReviewViewModal = false;
+      this.openReview(this.reviewViewTarget);
+    },
+    averageBossReviewScore(review) {
+      const scores = [review.attitudeScore, review.settlementScore, review.environmentScore]
+        .map(Number)
+        .filter(Boolean);
+      return scores.length ? (scores.reduce((sum, score) => sum + score, 0) / scores.length).toFixed(1) : "0.0";
+    },
     async submitReview() {
       if (this.reviewSubmitting || !this.reviewTarget) return;
       const required = ["overallScore", "attitudeScore", "efficiencyScore", "skillScore"];
@@ -618,8 +745,20 @@ export default {
       }
       this.reviewSubmitting = true;
       try {
-        await saveBossWorkerReview(this.reviewTarget.id, { ...this.reviewForm, content: this.reviewForm.content.trim() });
+        const reviews = await saveBossWorkerReview(
+          this.reviewTarget.id,
+          { ...this.reviewForm, content: this.reviewForm.content.trim() },
+        );
         this.showReviewModal = false;
+        const updated = {
+          ...this.reviewTarget,
+          reviewCount: Array.isArray(reviews) ? reviews.length : Number(this.reviewTarget.reviewCount || 0),
+        };
+        const index = this.jobList.findIndex((item) => item.id === updated.id);
+        if (index >= 0) this.jobList.splice(index, 1, updated);
+        this.reviewViewTarget = updated;
+        this.reviewViewList = Array.isArray(reviews) ? reviews : [];
+        this.showReviewViewModal = true;
         uni.showToast({ title: "评价提交成功", icon: "success" });
       } catch (error) {
         this.handleRequestError(error, "评价提交失败");
@@ -771,9 +910,12 @@ export default {
         "order-detail",
       ];
 
-      let url = `/pages/boss/${pageName}`;
+      const pageRoutes = {
+        "publish-info": "/pages/boss-publish/publish-info",
+      };
+      let url = pageRoutes[pageName] || `/pages/boss/${pageName}`;
       if (!bossPages.includes(pageName)) {
-        url = `/pages/${pageName}`;
+        url = pageRoutes[pageName] || `/pages/${pageName}`;
       }
 
       const query = Object.entries(params)
@@ -977,16 +1119,30 @@ export default {
       const job = this.jobList.find((j) => j.id === id);
       this.confirmTargetId = id;
       this.confirmTargetTitle = job ? job.title : "";
+      this.confirmTargetMode = "arrival";
+      this.showConfirmModal = true;
+    },
+    confirmCompletion(id) {
+      const job = this.jobList.find((j) => j.id === id);
+      this.confirmTargetId = id;
+      this.confirmTargetTitle = job ? job.title : "";
+      this.confirmTargetMode = "completion";
       this.showConfirmModal = true;
     },
     async confirmArrive() {
       if (!this.confirmTargetId || this.operating) return;
       this.operating = true;
       try {
-        await changeOrderStatus(this.confirmTargetId, "待结算");
+        await changeOrderStatus(
+          this.confirmTargetId,
+          this.confirmTargetMode === "completion" ? "待结算" : "工作中",
+        );
         this.showConfirmModal = false;
         await Promise.all([this.loadOrders(true), this.loadStats()]);
-        uni.showToast({ title: "订单已进入待结算", icon: "success" });
+        uni.showToast({
+          title: this.confirmTargetMode === "completion" ? "订单已进入待结算" : "订单已进入工作中",
+          icon: "success",
+        });
       } catch (error) {
         this.handleRequestError(error, "状态更新失败");
       } finally {
@@ -1555,4 +1711,5 @@ export default {
   color: #fff;
 }
 .review-modal{width:330px;max-width:calc(100% - 40px);background:#fff;border-radius:16px;padding:22px 20px;box-sizing:border-box}.review-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}.review-title{font-size:16px;font-weight:700;color:#333}.review-close{font-size:24px;color:#999;padding:0 4px}.review-order{display:block;font-size:13px;color:#666;margin-bottom:14px;line-height:1.5}.review-block{position:relative;margin-bottom:14px}.review-label{display:block;font-size:13px;color:#333;font-weight:500;margin-bottom:7px}.stars{display:flex;align-items:center;gap:5px}.star{font-size:27px;color:#e0e0e0}.star.active,.small-star.active{color:#ffa14e}.star-label{margin-left:8px;font-size:13px;color:#999}.dimension-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;font-size:13px;color:#666}.small-stars{display:flex;gap:3px}.small-star{font-size:18px;color:#e0e0e0}.review-textarea{width:100%;height:80px;border:1px solid #e5e5e5;border-radius:10px;padding:10px;font-size:13px;box-sizing:border-box}.review-count{position:absolute;right:8px;bottom:6px;font-size:10px;color:#aaa}
+.review-view-modal{display:flex;flex-direction:column;max-height:82vh}.review-tabs{display:flex;gap:8px;margin-bottom:12px}.review-tab{flex:1;height:34px;line-height:34px;border-radius:17px;background:#f7f7f7;color:#666;font-size:13px;text-align:center}.review-tab.active{background:#fff1e6;color:#ff6b35;font-weight:600}.review-list{flex:1;min-height:180px;max-height:50vh;margin-bottom:14px}.review-empty{padding:32px 0;text-align:center;font-size:13px;color:#999}.review-record{padding:12px 0;border-bottom:1px solid #f0f0f0}.review-record:last-child{border-bottom:none}.review-record-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:9px}.review-worker{font-size:14px;font-weight:600;color:#333}.review-overall{font-size:13px;color:#ffa14e;font-weight:600}.review-score-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:5px;font-size:12px;color:#666}.review-stars{color:#ffa14e;letter-spacing:1px}.review-content{display:block;margin-top:7px;font-size:12px;color:#666;line-height:1.6}
 </style>

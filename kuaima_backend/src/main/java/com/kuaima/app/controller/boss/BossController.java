@@ -56,6 +56,8 @@ import com.kuaima.app.domain.enterprise.service.EnterpriseContextService;
 import com.kuaima.app.common.service.OssStorageService;
 import com.kuaima.app.common.service.OssUploadResult;
 import com.kuaima.app.common.service.FfmpegVideoTranscoder;
+import com.kuaima.app.common.service.RecruitmentMediaPreviewService;
+import com.kuaima.app.domain.review.service.WorkerReviewService;
 
 @RestController
 @RequestMapping("/boss")
@@ -75,6 +77,8 @@ public class BossController {
     private final EnterpriseContextService enterpriseContexts;
     private final OssStorageService ossStorageService;
     private final FfmpegVideoTranscoder videoTranscoder;
+    private final RecruitmentMediaPreviewService recruitmentMediaPreviewService;
+    private final WorkerReviewService workerReviewService;
 
     @Autowired
     public BossController(BossOrderService bossOrderService, JobCategoryService jobCategoryService,
@@ -83,7 +87,9 @@ public class BossController {
                           InviteRelationRepository inviteRelationRepository, BossOrderRespository orderRepository,
                           BaseOrderItemRespository itemRepository, BossProfileService bossProfileService,
                           EnterpriseContextService enterpriseContexts, OssStorageService ossStorageService,
-                          FfmpegVideoTranscoder videoTranscoder) {
+                          FfmpegVideoTranscoder videoTranscoder,
+                          RecruitmentMediaPreviewService recruitmentMediaPreviewService,
+                          WorkerReviewService workerReviewService) {
         this.bossOrderService = bossOrderService;
         this.jobCategoryService = jobCategoryService;
         this.certificationService = certificationService;
@@ -97,6 +103,8 @@ public class BossController {
         this.enterpriseContexts = enterpriseContexts;
         this.ossStorageService = ossStorageService;
         this.videoTranscoder = videoTranscoder;
+        this.recruitmentMediaPreviewService = recruitmentMediaPreviewService;
+        this.workerReviewService = workerReviewService;
     }
 
     /** 兼容既有单元测试及其他直接构造调用。 */
@@ -108,13 +116,27 @@ public class BossController {
                           EnterpriseContextService enterpriseContexts, OssStorageService ossStorageService) {
         this(bossOrderService, jobCategoryService, certificationService, walletService, pointsAccountRepository,
                 userCouponRepository, inviteRelationRepository, orderRepository, itemRepository, bossProfileService,
-                enterpriseContexts, ossStorageService, null);
+                enterpriseContexts, ossStorageService, null, null, null);
+    }
+
+    public BossController(BossOrderService bossOrderService, JobCategoryService jobCategoryService,
+                          CertificationService certificationService, WalletService walletService,
+                          PointsAccountRepository pointsAccountRepository, UserCouponRepository userCouponRepository,
+                          InviteRelationRepository inviteRelationRepository, BossOrderRespository orderRepository,
+                          BaseOrderItemRespository itemRepository, BossProfileService bossProfileService,
+                          EnterpriseContextService enterpriseContexts, OssStorageService ossStorageService,
+                          FfmpegVideoTranscoder videoTranscoder,
+                          RecruitmentMediaPreviewService recruitmentMediaPreviewService) {
+        this(bossOrderService, jobCategoryService, certificationService, walletService, pointsAccountRepository,
+                userCouponRepository, inviteRelationRepository, orderRepository, itemRepository, bossProfileService,
+                enterpriseContexts, ossStorageService, videoTranscoder, recruitmentMediaPreviewService, null);
     }
 
     /** 兼容既有单元测试及其他直接构造调用。 */
     public BossController(BossOrderService bossOrderService, JobCategoryService jobCategoryService,
                           CertificationService certificationService) {
-        this(bossOrderService, jobCategoryService, certificationService, null, null, null, null, null, null, null, null, null);
+        this(bossOrderService, jobCategoryService, certificationService,
+                null, null, null, null, null, null, null, null, null);
     }
 
     @Operation(summary = "招工订单运营统计", description = "按订单工作日期及零工报名状态统计当前老板可见订单；跨天订单按开始日期归属")
@@ -142,6 +164,8 @@ public class BossController {
     @PostMapping("/order")
     public Result<BossOrder> createOrder(@RequestBody BossOrder order, Authentication authentication) {
         EnterpriseContextService.Context context = requireEnterprise(authentication, "ORDER_CREATE");
+        // 发布前必须完成人脸实名 + 企业认证；草稿不校验，提交发布时才拦截
+        certificationService.requirePublishEligibility(context.user().getId(), isEnterpriseMember(context));
         order.setCreateBy(context.user().getId());
         order.setEnterpriseId(context.enterprise().getId());
         return Result.success(bossOrderService.createOrder(order));
@@ -150,7 +174,20 @@ public class BossController {
     @Operation(summary = "发布资格查询", description = "查询当前老板个人实名认证和企业认证状态")
     @GetMapping("/publish-eligibility")
     public Result<Map<String, Object>> publishEligibility(Authentication authentication) {
-        return Result.success(certificationService.publishEligibility(requireCurrentBossId(authentication)));
+        Long bossId = requireCurrentBossId(authentication);
+        EnterpriseContextService.Context context = null;
+        try {
+            context = enterpriseContexts == null ? null : enterpriseContexts.require(authentication);
+        } catch (RuntimeException ignored) {
+            // 尚未完成企业认证的老板没有企业上下文，按本人认证状态返回
+        }
+        return Result.success(certificationService.publishEligibility(bossId,
+                context != null && isEnterpriseMember(context)));
+    }
+
+    /** 非 OWNER 的企业成员：企业认证由老板完成，本人无需重复认证企业。 */
+    private boolean isEnterpriseMember(EnterpriseContextService.Context context) {
+        return !"OWNER".equals(context.member().getMemberRole());
     }
 
     /** 修改订单（仅招工中） */
@@ -185,7 +222,19 @@ public class BossController {
                                                Authentication authentication) {
         EnterpriseContextService.Context context = requireEnterprise(authentication, "ORDER_VIEW");
         Page<BossOrder> result = bossOrderService.listOrdersByEnterprise(context.enterprise().getId(), query);
+        fillReviewStatus(result.getContent());
         return Result.success(result.getContent(), result.getNumber(), result.getTotalElements());
+    }
+
+    private void fillReviewStatus(List<BossOrder> orders) {
+        if (workerReviewService == null || orders.isEmpty()) return;
+        var statuses = workerReviewService.statuses(orders.stream().map(BossOrder::getId).toList());
+        orders.forEach(order -> {
+            var status = statuses.get(order.getId());
+            if (status == null) return;
+            order.setReviewableWorkerCount(status.reviewableWorkerCount());
+            order.setReviewCount(status.reviewCount());
+        });
     }
 
     /** 删除订单（仅招工中/已取消） */
@@ -267,17 +316,17 @@ public class BossController {
     }
 
     /** 用户确认到岗 */
-    @Operation(summary = "用户确认到岗", description = "仅「已录用」的记录可确认到岗，状态变为「已到岗」并记录到岗时间")
+    @Operation(summary = "老板确认到岗", description = "未开启开工码时可用；仅「已录用」记录可确认到岗，订单进入工作中")
     @PutMapping("/item/{id}/work")
     public Result<BaseOrderItem> confirmWork(@PathVariable Long id) {
-        return Result.success(bossOrderService.confirmWork(id));
+        return Result.success(bossOrderService.confirmWorkManually(id));
     }
 
     /** 完成 */
-    @Operation(summary = "完成报名记录", description = "仅「已到岗」的记录可完成，状态变为「已完成」并记录完成时间")
+    @Operation(summary = "老板确认完工", description = "未开启早退码时可用；仅「已到岗」记录可确认完工，状态变为「待结算」")
     @PutMapping("/item/{id}/finish")
     public Result<BaseOrderItem> finishItem(@PathVariable Long id) {
-        return Result.success(bossOrderService.finishItem(id));
+        return Result.success(bossOrderService.finishItemManually(id));
     }
 
     /** 取消报名：/boss/item/{id}/cancel?reason=xxx */
@@ -507,7 +556,14 @@ public class BossController {
             uploaded = ossStorageService.uploadResult(file, "insurance/recruitment", "." + extension);
         }
         return Result.success(new OssUploadResult(
-                uploaded.objectKey(), ossStorageService.playableUrl(uploaded.objectKey()), uploaded.fileName()));
+                uploaded.objectKey(), mediaPreviewUrl(uploaded.objectKey(), "video".equalsIgnoreCase(mediaType)),
+                uploaded.fileName()));
+    }
+
+    private String mediaPreviewUrl(String objectKey, boolean video) {
+        return video && recruitmentMediaPreviewService != null
+                ? recruitmentMediaPreviewService.previewUrl(objectKey)
+                : ossStorageService.playableUrl(objectKey);
     }
 
     private OssUploadResult uploadCompatibleVideo(MultipartFile file) {
@@ -551,7 +607,7 @@ public class BossController {
                     .toList());
         }
         if (StringUtils.hasText(order.getVideoKey())) {
-            order.setVideoUrl(ossStorageService.playableUrl(order.getVideoKey()));
+            order.setVideoUrl(mediaPreviewUrl(order.getVideoKey(), true));
         }
     }
 
