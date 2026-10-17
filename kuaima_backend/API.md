@@ -301,18 +301,7 @@ GET /boss/order?type=daily&status=%E6%8B%9B%E5%B7%A5%E4%B8%AD&page=0&size=10
 
 ### 7. 用户报名
 
-- **URL**：`POST /boss/order/{orderId}/apply`
-- **查询参数**：
-
-| 参数 | 类型 | 必填 | 说明 |
-| --- | --- | --- | --- |
-| `userId` | long | 是 | 报名用户 ID |
-| `remark` | string | 否 | 报名备注 |
-| `trial` | boolean | 否 | "我要试工"标记，仅月结(`month`)订单可传 `true` |
-
-- **说明**：订单须为 `招工中`，同一用户不可重复报名；`已录用 + 已到岗 + 已完成` 人数达到招工人数后不可再报名（已招满）。报名状态初始为 `已报名`，记录报名日期，`trialRequested` 保存试工标记。
-
-**错误：** `400 该订单当前不可报名`、`400 您已报名过该订单`、`400 该订单已招满`、`400 仅月结订单可选择试工`、`404 用户不存在: {id}`
+老板端不再提供报名接口（原 `POST /boss/order/{orderId}/apply` 以请求参数 `userId` 识别报名人，可冒用他人身份，已删除）。零工报名统一走 `POST /jobs/{orderId}/apply`，报名人取自登录 JWT，并要求完成人脸实名认证。
 
 ### 8. 老板录用
 

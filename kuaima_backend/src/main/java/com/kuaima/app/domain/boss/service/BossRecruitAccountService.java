@@ -47,7 +47,7 @@ public class BossRecruitAccountService {
         validate(request);
         User owner = userRepository.findByIdForUpdate(ownerUserId)
                 .orElseThrow(() -> new EntityNotFoundException("当前老板账号不存在"));
-        if (!UserRole.BOSS.equals(owner.getRole())) {
+        if (!UserRole.isBossIdentity(owner)) {
             throw new BusinessHttpException(HttpStatus.FORBIDDEN, "当前登录账号不是老板账号");
         }
         String phone = request.phone().trim();

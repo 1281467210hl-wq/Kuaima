@@ -2,12 +2,18 @@ package com.kuaima.app.admin.controller;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.data.domain.PageImpl;
@@ -19,8 +25,13 @@ import com.kuaima.app.domain.coupon.entity.Coupon;
 import com.kuaima.app.domain.coupon.entity.UserCoupon;
 import com.kuaima.app.domain.coupon.repository.CouponRepository;
 import com.kuaima.app.domain.coupon.repository.UserCouponRepository;
+import com.kuaima.app.domain.message.constant.BizType;
+import com.kuaima.app.domain.message.constant.MessageType;
+import com.kuaima.app.domain.message.service.MessageService;
+import com.kuaima.app.domain.user.constant.UserRole;
 import com.kuaima.app.domain.user.entity.User;
 import com.kuaima.app.domain.user.repository.UserRepository;
+import com.kuaima.app.domain.wallet.constant.SettlementStatus;
 import com.kuaima.app.domain.wallet.entity.Settlement;
 import com.kuaima.app.domain.wallet.repository.SettlementRespository;
 import com.kuaima.app.domain.wallet.service.SettlementService;
@@ -105,6 +116,55 @@ class AdminSettlementControllerTests {
         List<java.util.Map<String, Object>> failures = (List<java.util.Map<String, Object>>) data.get("failures");
         assertEquals(2L, failures.get(0).get("id"));
         assertEquals("仅待支付的结算单可以支付", failures.get(0).get("reason"));
+    }
+
+    @Test
+    void remind_shouldSendSettleReminderToOrderBoss() {
+        SettlementRespository settlements = mock(SettlementRespository.class);
+        BossOrderRespository orders = mock(BossOrderRespository.class);
+        UserRepository users = mock(UserRepository.class);
+        MessageService messages = mock(MessageService.class);
+        Settlement settlement = pendingSettlement(SettlementStatus.PENDING);
+        BossOrder order = new BossOrder();
+        order.setId(62L);
+        order.setCreateBy(7L);
+        order.setOrderTitle("电子厂普工");
+        User worker = new User();
+        worker.setNickname("测试零工");
+        when(settlements.findById(5L)).thenReturn(Optional.of(settlement));
+        when(orders.findById(62L)).thenReturn(Optional.of(order));
+        when(users.findById(66L)).thenReturn(Optional.of(worker));
+
+        new AdminSettlementController(settlements, mock(SettlementService.class), users, orders,
+                mock(UserCouponRepository.class), mock(CouponRepository.class), messages).remind(5L);
+
+        verify(messages).sendToUser(eq(7L), eq(UserRole.BOSS), eq(MessageType.SETTLE_REMIND), eq("结算提醒"),
+                eq("您发布的「电子厂普工」岗位，零工 测试零工 的工资尚未结算，需支付 294.00 元，请尽快完成结算。"),
+                eq(BizType.SETTLE), eq(5L));
+    }
+
+    @Test
+    void remind_shouldRejectSettledSettlement() {
+        SettlementRespository settlements = mock(SettlementRespository.class);
+        MessageService messages = mock(MessageService.class);
+        when(settlements.findById(5L)).thenReturn(Optional.of(pendingSettlement(SettlementStatus.PAID)));
+
+        AdminSettlementController controller = new AdminSettlementController(settlements, mock(SettlementService.class),
+                mock(UserRepository.class), mock(BossOrderRespository.class),
+                mock(UserCouponRepository.class), mock(CouponRepository.class), messages);
+
+        assertThrows(IllegalStateException.class, () -> controller.remind(5L));
+        verify(messages, never()).sendToUser(any(), anyString(), anyString(), anyString(), anyString(), anyString(), any());
+    }
+
+    private Settlement pendingSettlement(String status) {
+        Settlement settlement = new Settlement();
+        settlement.setId(5L);
+        settlement.setOrderId(62L);
+        settlement.setWorkerId(66L);
+        settlement.setTotalAmount(new BigDecimal("294"));
+        settlement.setStatus(status);
+        return settlement;
     }
 
     private AdminSettlementController controller(SettlementRespository settlements,

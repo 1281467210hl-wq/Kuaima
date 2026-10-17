@@ -10,6 +10,7 @@ import com.kuaima.app.domain.coupon.entity.Coupon;
 import com.kuaima.app.domain.coupon.entity.UserCoupon;
 import com.kuaima.app.domain.coupon.repository.CouponRepository;
 import com.kuaima.app.domain.coupon.repository.UserCouponRepository;
+import com.kuaima.app.domain.user.constant.CertificationStatus;
 import com.kuaima.app.domain.user.constant.UserRole;
 import com.kuaima.app.domain.user.entity.User;
 import com.kuaima.app.domain.user.repository.UserRepository;
@@ -93,7 +94,45 @@ class AdminCouponAutoDistributionTests {
         assertEquals(1, due.getClaimed());
     }
 
-    private User user(Long id, String role) { User u = new User(); u.setId(id); u.setRole(role); return u; }
+    @Test
+    void workerCouponShouldAcceptUncertifiedUserLastLoggedInAsBoss() {
+        // 复现：用户最后停留在老板端（role=BOSS）但未做企业认证，候选列表把他列为零工
+        User lastOnBossSide = new User(); lastOnBossSide.setId(11L); lastOnBossSide.setRole(UserRole.BOSS);
+        when(users.findById(11L)).thenReturn(Optional.of(lastOnBossSide));
+
+        Coupon coupon = service.create(body("零工", "custom", List.of("11"), 2, "now"));
+
+        assertEquals(1, coupon.getClaimed());
+    }
+
+    @Test
+    void workerCouponShouldRejectEnterpriseCertifiedBoss() {
+        User boss = user(12L, UserRole.USER);
+        boss.setEnterpriseStatus(CertificationStatus.APPROVED);
+        when(users.findById(12L)).thenReturn(Optional.of(boss));
+
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
+                () -> service.create(body("零工", "custom", List.of("12"), 2, "now")));
+
+        assertEquals("指定用户身份与发放对象不匹配: 12", error.getMessage());
+    }
+
+    @Test
+    void allScopeWorkerCouponShouldUseBusinessIdentityInsteadOfLastLoginSide() {
+        User uncertifiedOnBossSide = new User(); uncertifiedOnBossSide.setId(21L); uncertifiedOnBossSide.setRole(UserRole.BOSS);
+        when(users.findAll()).thenReturn(List.of(user(20L, UserRole.BOSS), uncertifiedOnBossSide, user(22L, UserRole.USER)));
+
+        Coupon coupon = service.create(body("零工", "all", List.of(), 10, "now"));
+
+        assertEquals(2, coupon.getClaimed());
+    }
+
+    /** 老板 = 企业认证通过（业务身份），与 role 字段无关。 */
+    private User user(Long id, String role) {
+        User u = new User(); u.setId(id); u.setRole(role);
+        if (UserRole.BOSS.equals(role)) u.setEnterpriseStatus(CertificationStatus.APPROVED);
+        return u;
+    }
     private Map<String,Object> body(String target, String scope, List<String> ids, int total, String mode) {
         Map<String,Object> b = new HashMap<>(); b.put("name", "新人券"); b.put("type", "立减券");
         b.put("target", target); b.put("scope", scope); b.put("assignUsers", ids); b.put("total", total);

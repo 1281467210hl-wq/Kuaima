@@ -39,9 +39,10 @@ class UserRepositoryTests {
 
         Page<User> workers = repository.searchWorkers("USER", null, null, null, null, PageRequest.of(0, 20));
         assertEquals(2, workers.getTotalElements());
-        assertEquals(Set.of("未认证但角色为老板", "待审核老板"),
+        assertEquals(Set.of("新认证老板", "历史认证老板"),
                 Set.copyOf(workers.getContent().stream().map(User::getNickname).toList()));
         assertEquals(2, repository.findWorkerIdentityIds().size());
+        assertEquals(2L, repository.countWorkerIdentities());
     }
 
     private User user(String nickname, String role, String enterpriseStatus, String certType, String certStatus) {

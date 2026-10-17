@@ -117,7 +117,7 @@
         </view>
 
         <!-- 实名提示条 -->
-        <view v-if="!isRealname" class="realname-banner">
+        <view v-if="realnameRequired && !isRealname" class="realname-banner">
           <view class="realname-text"><text>完成</text><strong>实名认证</strong><text>后才能报名</text></view>
           <view class="realname-btn" @click="goRealname">
             <text>实名认证</text>
@@ -138,7 +138,7 @@
           <image :src="shareAltGrayIcon" mode="aspectFit" class="bottom-icon" />
           <text class="bottom-label">分享</text>
         </view>
-        <button class="enroll-btn" :disabled="applying || applied || !isRealname" @click="apply">
+        <button class="enroll-btn" :disabled="applying || applied || (realnameRequired && !isRealname)" @click="apply">
           <view class="enroll-info">
             <view class="enroll-label">{{ applied ? "已报名" : applying ? "报名中…" : "电话报名" }}</view>
             <view class="enroll-count">剩{{ remainingCount }}个名额</view>
@@ -158,6 +158,7 @@ import {
   checkFavoriteJob,
   favoriteJob,
   getWorkerRealnameStatus,
+  isRealnameRequiredForApply,
   getPublicJob,
   applyPublicJob,
   recordJobBrowse,
@@ -189,6 +190,8 @@ const loading = ref(false);
 const loadError = ref(false);
 const appliedCount = ref(0);
 const isRealname = ref(uni.getStorageSync("workerRealname") === true);
+// 后台「实名认证要求」开关；读取失败时按要求处理
+const realnameRequired = ref(true);
 const job = ref({});
 const currentLocation = ref(null);
 const distanceKm = computed(() => {
@@ -252,7 +255,7 @@ const noticeList = computed(() => {
     if (parts.length > 0) list.push(...parts);
   }
   list.push("需年满18周岁，身体健康");
-  list.push("需实名认证通过");
+  if (realnameRequired.value) list.push("需实名认证通过");
   list.push("工作时间内不可擅自离岗");
   list.push("完成工作内容后方可结算薪资");
   list.push("如遇问题请及时联系雇主或客服");
@@ -285,6 +288,7 @@ const remainingCount = computed(() =>
 );
 onShow(async () => {
   isRealname.value = uni.getStorageSync("workerRealname") === true;
+  isRealnameRequiredForApply().then((required) => { realnameRequired.value = required; });
   try {
     // 与后端报名校验同一口径：人脸比对通过才算实名
     const result = await getWorkerRealnameStatus();
@@ -420,7 +424,7 @@ async function toggleFavorite() {
   }
 }
 async function apply() {
-  if (!isRealname.value) return goRealname();
+  if (realnameRequired.value && !isRealname.value) return goRealname();
   const phoneNumber = String(job.value.contactPhone || "").trim();
   if (!/^1\d{10}$/.test(phoneNumber)) {
     uni.showToast({ title: "雇主暂未提供联系电话", icon: "none" });

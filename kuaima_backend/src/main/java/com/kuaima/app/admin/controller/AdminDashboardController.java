@@ -55,7 +55,7 @@ public class AdminDashboardController {
     public Result<Map<String, Object>> stats() {
         Map<String, Object> data = new HashMap<>();
 
-        long workerCount = userRepository.countByRole(UserRole.USER);
+        long workerCount = userRepository.countWorkerIdentities();
         long bossCount = userRepository.countBossIdentities();
         List<BossOrder> allOrders = orderRepository.findAll();
         long orderTotal = countOrdersOnDate(allOrders, new Date());

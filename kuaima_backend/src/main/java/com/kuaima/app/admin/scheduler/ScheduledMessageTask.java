@@ -92,7 +92,7 @@ public class ScheduledMessageTask {
 
         // 短信或 both：向有手机号的用户发送短信
         if ("sms".equals(channel) || "both".equals(channel)) {
-            List<User> users = userRepository.findByRole(UserRole.USER);
+            List<User> users = userRepository.findWorkerIdentities();
             int sent = 0;
             int failed = 0;
             for (User user : users) {

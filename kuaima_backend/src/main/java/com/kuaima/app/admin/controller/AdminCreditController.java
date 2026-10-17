@@ -35,6 +35,7 @@ import com.kuaima.app.domain.user.repository.CreditFlowRepository;
 import com.kuaima.app.domain.user.constant.UserRole;
 import com.kuaima.app.domain.user.constant.UserBusinessCode;
 import com.kuaima.app.domain.user.service.CreditScoreService;
+import com.kuaima.app.domain.user.service.CreditRuleNames;
 import com.kuaima.app.security.model.LoginUser;
 
 import jakarta.persistence.EntityNotFoundException;
@@ -82,7 +83,7 @@ public class AdminCreditController {
         for (User user : candidates) {
             boolean boss = UserRole.isBossIdentity(user);
             String businessId = ensureBusinessId(user, boss);
-            String name = firstText(user.getRealName(), user.getNickname(), user.getUsername(), user.getPhone());
+            String name = displayName(user);
             if (kw != null && !containsAny(kw, businessId, user.getId(), name, user.getUsername(), user.getNickname(), user.getPhone())) continue;
             String scoreType = boss
                     ? CreditScoreService.BOSS_CREDIT : CreditScoreService.WORKER_STAR;
@@ -182,7 +183,7 @@ public class AdminCreditController {
         flow.put("delta", row.getDelta());
         flow.put("beforeScore", row.getBeforeScore());
         flow.put("afterScore", row.getAfterScore());
-        flow.put("ruleCode", row.getRuleCode());
+        flow.put("ruleCode", CreditRuleNames.display(row.getRuleCode(), row.getDelta()));
         flow.put("bizType", row.getBizType());
         flow.put("reason", row.getReason());
         flow.put("timestamp", row.getFlowTimestamp());
@@ -197,7 +198,7 @@ public class AdminCreditController {
         flow.put("delta", row.getDelta());
         flow.put("beforeScore", row.getBeforeScore());
         flow.put("afterScore", row.getAfterScore());
-        flow.put("ruleCode", row.getRuleCode());
+        flow.put("ruleCode", CreditRuleNames.display(row.getRuleCode(), row.getDelta()));
         flow.put("bizType", row.getBizType());
         flow.put("reason", row.getReason());
         flow.put("timestamp", row.getTimestamp());
@@ -311,6 +312,29 @@ public class AdminCreditController {
     private String firstText(String... values) {
         for (String value : values) if (value != null && !value.isBlank()) return value;
         return "-";
+    }
+
+    /**
+     * 历史微信账号曾使用 wx_{openid} 作为 username，该值不是用户名称，不应直接展示。
+     * 普通账号仍可使用 username 兜底；微信账号优先展示脱敏手机号。
+     */
+    private String displayName(User user) {
+        String profileName = firstText(user.getRealName(), user.getNickname());
+        if (!"-".equals(profileName)) return profileName;
+        String username = user.getUsername();
+        if (username != null && !username.isBlank()
+                && !username.toLowerCase(Locale.ROOT).startsWith("wx_")) {
+            return username;
+        }
+        String phone = user.getPhone();
+        if (phone != null && !phone.isBlank()) return maskPhone(phone);
+        return "未设置昵称";
+    }
+
+    private String maskPhone(String phone) {
+        String value = phone == null ? "" : phone.trim();
+        if (value.length() < 7) return value;
+        return value.substring(0, 3) + "****" + value.substring(value.length() - 4);
     }
 
     private boolean containsAny(String keyword, Object... values) {

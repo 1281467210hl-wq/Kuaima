@@ -49,14 +49,7 @@
             <text>{{ verifying ? '验证中...' : '开始验证' }}</text>
           </button>
 
-          <view class="agreement">
-            <view class="checkbox-custom" :class="{ checked: agreed }" @click="agreed = !agreed">
-              <image v-if="agreed" class="checkbox-icon" src="/static/icons/realname/check-small-white.svg" mode="aspectFit" />
-            </view>
-            <text class="agreement-text">
-              您已阅读并同意<text class="agree-link" @click.stop="openAgreement">《快马日结实名认证&人脸验证服务协议》</text><text class="agree-link" @click.stop="openAgreement('publish-rule')">《快马日结信息发布规则》</text>
-            </text>
-          </view>
+          <PublishedAgreement v-model="agreed" />
         </view>
 
         <!-- Step 2 比对中 -->
@@ -173,10 +166,12 @@
 </style>
 <script>
 import { getRealnameStatus, uploadRealnameImage, verifyRealname } from "@/api/backend";
+import PublishedAgreement from "@/components/PublishedAgreement.vue";
 
 const MATCH_HINTS = ["正在提取身份证人脸特征...", "正在提取上传人脸特征...", "特征比对中..."];
 
 export default {
+  components: { PublishedAgreement },
   props: {
     role: { type: String, default: "worker" },
     entryTitle: { type: String, default: "完成实名后开启接单" },
@@ -235,10 +230,6 @@ export default {
     },
     goBack() {
       uni.navigateBack({ fail: () => uni.switchTab({ url: this.homePath }) });
-    },
-    openAgreement(type) {
-      const suffix = type === "publish-rule" ? "?type=publish-rule" : "";
-      uni.navigateTo({ url: `/pages/worker/user-agreement${suffix}` });
     },
     chooseImage(type) {
       if (this.uploading || this.verifying) return;

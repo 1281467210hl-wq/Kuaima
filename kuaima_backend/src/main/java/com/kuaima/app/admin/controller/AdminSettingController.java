@@ -5,6 +5,7 @@ import java.util.List;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -56,7 +57,9 @@ public class AdminSettingController {
     @Operation(summary = "按分类查询设置", description = "按分类 category 返回该分类下全部设置项")
     @GetMapping("/category/{category}")
     public Result<List<AdminSetting>> byCategory(@PathVariable String category) {
-        return Result.success(withLogoPreview(repo.findByCategory(category)));
+        List<AdminSetting> settings = new java.util.ArrayList<>(repo.findByCategory(category));
+        settings.addAll(repo.findByCategoryIsNullAndSettingKeyStartingWith(category + "."));
+        return Result.success(withLogoPreview(settings));
     }
 
     @Operation(summary = "设置详情", description = "按 settingKey 查询单条设置；不存在抛出异常")
@@ -87,8 +90,21 @@ public class AdminSettingController {
     @Operation(summary = "保存/更新设置", description = "按 settingKey 保存或更新设置项，body 为 AdminSetting")
     @PutMapping("/{key}")
     public Result<AdminSetting> save(@PathVariable String key, @RequestBody AdminSetting setting) {
+        AdminSetting existing = repo.findById(key).orElse(null);
         setting.setSettingKey(key);
-        return Result.success(repo.save(setting));
+        // 前端只提交 settingValue/description；category 缺失会导致按分类查询不到，刷新后设置“丢失”
+        if (!StringUtils.hasText(setting.getCategory())) {
+            setting.setCategory(existing != null && StringUtils.hasText(existing.getCategory())
+                    ? existing.getCategory() : categoryOf(key));
+        }
+        if (setting.getDescription() == null && existing != null) setting.setDescription(existing.getDescription());
+        return Result.success(withLogoPreview(repo.save(setting)));
+    }
+
+    /** settingKey 约定为「分类.名称」，如 platform.logo → platform。 */
+    private static String categoryOf(String key) {
+        int dot = key.indexOf('.');
+        return dot > 0 ? key.substring(0, dot) : null;
     }
 
     // ==================== 银行账户设置 ====================

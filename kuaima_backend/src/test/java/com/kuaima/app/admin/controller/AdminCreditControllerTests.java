@@ -160,6 +160,39 @@ class AdminCreditControllerTests {
     }
 
     @Test
+    void listDoesNotExposeLegacyWechatIdAsUserName() {
+        UserRepository users = mock(UserRepository.class);
+        CreditFlowRepository flows = mock(CreditFlowRepository.class);
+        User worker = user(28L, false);
+        worker.setWorkerCode("G0010028");
+        worker.setUsername("wx_3lf3DyLCISHaC123");
+        worker.setPhone("18812344421");
+        when(users.findAll(any(org.springframework.data.domain.Sort.class))).thenReturn(List.of(worker));
+        when(flows.findByUserIdAndScoreTypeOrderByTimestampDesc(28L, CreditScoreService.WORKER_STAR)).thenReturn(List.of());
+
+        var result = new AdminCreditController(users, mock(CreditScoreService.class), flows)
+                .users(null, null, "worker", null, 0, 10, admin());
+
+        assertEquals("188****4421", result.getData().getContent().get(0).get("name"));
+    }
+
+    @Test
+    void listUsesPlaceholderWhenLegacyWechatAccountHasNoProfileOrPhone() {
+        UserRepository users = mock(UserRepository.class);
+        CreditFlowRepository flows = mock(CreditFlowRepository.class);
+        User worker = user(29L, false);
+        worker.setWorkerCode("G0010029");
+        worker.setUsername("wx_syJez8gxKCpB123");
+        when(users.findAll(any(org.springframework.data.domain.Sort.class))).thenReturn(List.of(worker));
+        when(flows.findByUserIdAndScoreTypeOrderByTimestampDesc(29L, CreditScoreService.WORKER_STAR)).thenReturn(List.of());
+
+        var result = new AdminCreditController(users, mock(CreditScoreService.class), flows)
+                .users(null, null, "worker", null, 0, 10, admin());
+
+        assertEquals("未设置昵称", result.getData().getContent().get(0).get("name"));
+    }
+
+    @Test
     void adjustmentCannotDeductBelowZeroButHasNoUpperLimit() {
         UserRepository users = mock(UserRepository.class);
         CreditScoreService scores = mock(CreditScoreService.class);

@@ -217,12 +217,6 @@ export function remindOrderStart(id) {
   return request({ url: `/boss/order/${id}/remind-start`, method: "POST" });
 }
 
-export function applyOrder(orderId, data = {}) {
-  return request({
-    url: `/boss/order/${orderId}/apply?${query(data)}`,
-    method: "POST",
-  });
-}
 
 /** 零工端公开岗位，只返回后端允许展示的“招工中”岗位。 */
 export function listPublicJobs(params = {}) {
@@ -242,6 +236,21 @@ export function getPublicJob(orderId) {
 }
 
 /** 零工身份由 JWT 获取，禁止再提交 userId。 */
+/** 后台「系统设置 - 招工规则」：jobAudit / realNameRequired / minDailyWage / maxJobValidity。 */
+export function getRecruitRules() {
+  return request({ url: "/public/recruit-rules", skipUserIdHeader: true });
+}
+
+/** 是否要求零工实名后才能报名；规则读取失败时按要求处理，最终以后端校验为准。 */
+export async function isRealnameRequiredForApply() {
+  try {
+    const rules = await getRecruitRules();
+    return rules?.realNameRequired !== false;
+  } catch (_) {
+    return true;
+  }
+}
+
 export function applyPublicJob(orderId, data = {}) {
   return request({
     url: `/jobs/${normalizeId(orderId, "orderId")}/apply`,

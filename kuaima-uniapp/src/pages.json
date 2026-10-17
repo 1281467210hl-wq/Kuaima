@@ -5,6 +5,12 @@
       "style": {
         "navigationStyle": "custom"
       }
+    },
+    {
+      "path": "pages/agreement-preview",
+      "style": {
+        "navigationBarTitleText": "协议内容"
+      }
     }
   ],
   "globalStyle": {

@@ -95,11 +95,12 @@ public interface UserRepository extends JpaRepository<User, Long> {
                             @Param("keyword") String keyword,
                             Pageable pageable);
 
-    /** 后台零工列表：支持注册日期范围筛选。 */
+    /** 后台零工列表：USER 是基础身份，企业认证通过的用户同时保留零工身份。 */
     @Query("""
             select u from User u
-            where not (upper(coalesce(u.enterpriseStatus, '')) = 'APPROVED'
-                       or (upper(coalesce(u.certType, '')) = 'ENTERPRISE' and u.certStatus = '已通过'))
+            where (u.role = 'USER'
+                   or upper(coalesce(u.enterpriseStatus, '')) = 'APPROVED'
+                   or (upper(coalesce(u.certType, '')) = 'ENTERPRISE' and u.certStatus = '已通过'))
               and (:status is null or u.status = :status)
               and (:startDate is null or u.date >= :startDate)
               and (:endDate is null or u.date <= :endDate)
@@ -115,8 +116,9 @@ public interface UserRepository extends JpaRepository<User, Long> {
     /** 后台零工在线/离线筛选：由管理端会话管理器提供目标用户 ID 集合。 */
     @Query("""
             select u from User u
-            where not (upper(coalesce(u.enterpriseStatus, '')) = 'APPROVED'
-                       or (upper(coalesce(u.certType, '')) = 'ENTERPRISE' and u.certStatus = '已通过'))
+            where (u.role = 'USER'
+                   or upper(coalesce(u.enterpriseStatus, '')) = 'APPROVED'
+                   or (upper(coalesce(u.certType, '')) = 'ENTERPRISE' and u.certStatus = '已通过'))
               and u.id in :ids
               and (:startDate is null or u.date >= :startDate)
               and (:endDate is null or u.date <= :endDate)
@@ -129,8 +131,29 @@ public interface UserRepository extends JpaRepository<User, Long> {
                                   @Param("endDate") LocalDate endDate,
                                   Pageable pageable);
 
-    @Query("select u.id from User u where not (upper(coalesce(u.enterpriseStatus, '')) = 'APPROVED' or (upper(coalesce(u.certType, '')) = 'ENTERPRISE' and u.certStatus = '已通过'))")
+    @Query("select u.id from User u where u.role = 'USER' or upper(coalesce(u.enterpriseStatus, '')) = 'APPROVED' or (upper(coalesce(u.certType, '')) = 'ENTERPRISE' and u.certStatus = '已通过')")
     List<Long> findWorkerIdentityIds();
+
+    @Query("select u from User u where u.role = 'USER' or upper(coalesce(u.enterpriseStatus, '')) = 'APPROVED' or (upper(coalesce(u.certType, '')) = 'ENTERPRISE' and u.certStatus = '已通过')")
+    List<User> findWorkerIdentities();
+
+    @Query("select count(u) from User u where u.role = 'USER' or upper(coalesce(u.enterpriseStatus, '')) = 'APPROVED' or (upper(coalesce(u.certType, '')) = 'ENTERPRISE' and u.certStatus = '已通过')")
+    long countWorkerIdentities();
+
+    @Query("select count(u) from User u where (u.role = 'USER' or upper(coalesce(u.enterpriseStatus, '')) = 'APPROVED' or (upper(coalesce(u.certType, '')) = 'ENTERPRISE' and u.certStatus = '已通过')) and u.status = :status")
+    long countWorkerIdentitiesByStatus(@Param("status") String status);
+
+    @Query("select count(u) from User u where (u.role = 'USER' or upper(coalesce(u.enterpriseStatus, '')) = 'APPROVED' or (upper(coalesce(u.certType, '')) = 'ENTERPRISE' and u.certStatus = '已通过')) and u.city = :city")
+    long countWorkerIdentitiesByCity(@Param("city") String city);
+
+    @Query("select count(u) from User u where u.date <= :date")
+    long countWorkerIdentitiesByDateLessThanEqual(@Param("date") LocalDate date);
+
+    @Query("select count(u) from User u where u.date >= :startDate and u.date <= :endDate")
+    long countWorkerIdentitiesByDateBetween(@Param("startDate") LocalDate startDate, @Param("endDate") LocalDate endDate);
+
+    @Query(value = "select count(*) from sys_user u where u.`date` >= date_format(current_date, '%Y-%m-01') and u.`date` < date_add(date_format(current_date, '%Y-%m-01'), interval 1 month)", nativeQuery = true)
+    long countCurrentMonthWorkerIdentities();
 
     long countByRoleAndStatus(String role, String status);
 
@@ -157,13 +180,14 @@ public interface UserRepository extends JpaRepository<User, Long> {
     @Query("select u from User u where (u.enterpriseStatus = 'APPROVED' or (upper(coalesce(u.certType,'')) = 'ENTERPRISE' and u.certStatus = '已通过')) and (:keyword is null or u.username like concat('%', :keyword, '%') or u.nickname like concat('%', :keyword, '%') or u.phone like concat('%', :keyword, '%') or u.companyName like concat('%', :keyword, '%'))")
     Page<User> searchBossIdentityRecipients(@Param("keyword") String keyword, Pageable pageable);
 
-    @Query("select u from User u where not (u.enterpriseStatus = 'APPROVED' or (upper(coalesce(u.certType,'')) = 'ENTERPRISE' and u.certStatus = '已通过')) and (:keyword is null or u.username like concat('%', :keyword, '%') or u.nickname like concat('%', :keyword, '%') or u.phone like concat('%', :keyword, '%') or u.companyName like concat('%', :keyword, '%'))")
+    @Query("select u from User u where (u.role = 'USER' or u.enterpriseStatus = 'APPROVED' or (upper(coalesce(u.certType,'')) = 'ENTERPRISE' and u.certStatus = '已通过')) and (:keyword is null or u.username like concat('%', :keyword, '%') or u.nickname like concat('%', :keyword, '%') or u.phone like concat('%', :keyword, '%') or u.companyName like concat('%', :keyword, '%'))")
     Page<User> searchWorkerIdentityRecipients(@Param("keyword") String keyword, Pageable pageable);
 
     @Query("""
             select u from User u
-            where coalesce(u.enterpriseStatus, '') <> 'APPROVED'
-              and not (upper(coalesce(u.certType, '')) = 'ENTERPRISE' and coalesce(u.certStatus, '') = '已通过')
+            where (u.role = 'USER'
+              or upper(coalesce(u.enterpriseStatus, '')) = 'APPROVED'
+              or (upper(coalesce(u.certType, '')) = 'ENTERPRISE' and u.certStatus = '已通过'))
               and (:keyword is null or u.username like concat('%', :keyword, '%') or u.nickname like concat('%', :keyword, '%') or u.phone like concat('%', :keyword, '%') or u.skills like concat('%', :keyword, '%'))
               and (:category is null or u.skills like concat('%', :category, '%'))
               and (:minYears is null or coalesce(u.workYears, 0) >= :minYears)

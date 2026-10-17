@@ -43,13 +43,13 @@
     <div class="batch-action-bar">
       <div class="batch-action-info">
         共 <strong>{{ formatNumber(stats.totalCount) }}</strong> 条结算记录，其中
-        <strong class="warning-text">{{ formatNumber(stats.pendingCount) }}</strong> 条待结算
+        <strong class="warning-text">{{ formatNumber(stats.pendingCount) }}</strong> 条待结算；
+        已勾选 <strong>{{ selectedRows.length }}</strong> 条<template v-if="selectedRows.length">，其中待结算 <strong>{{ selectedPendingRows.length }}</strong> 条</template>
       </div>
       <div class="batch-actions">
-        <el-button v-permission="'permOrder.settlement.settle'" type="primary" :disabled="!pendingRows.length" @click="handleBatchSettle">
-          <i class="fas fa-coins"></i> 批量结算
+        <el-button v-permission="'permOrder.settlement.settle'" type="primary" :disabled="!selectedPendingRows.length" @click="handleBatchSettle">
+          <i class="fas fa-coins"></i> 批量结算{{ selectedPendingRows.length ? `（${selectedPendingRows.length}）` : '' }}
         </el-button>
-        <el-button @click="handleExport"><i class="fas fa-download"></i> 导出报表</el-button>
       </div>
     </div>
 
@@ -86,7 +86,9 @@
         <button class="btn btn-primary btn-sm" @click="handleSearch"><i class="fas fa-search"></i> 查询</button>
         <button class="btn btn-outline btn-sm" @click="handleReset"><i class="fas fa-rotate-left"></i> 重置</button>
         <div class="filter-space"></div>
-        <button class="btn btn-outline btn-sm" @click="handleExport"><i class="fas fa-download"></i> 导出数据</button>
+        <button class="btn btn-outline btn-sm" :disabled="exporting" :title="selectedRows.length ? '导出已勾选的结算记录' : '未勾选时导出当前筛选条件下的全部结算记录'" @click="handleExport">
+          <i :class="exporting ? 'fas fa-spinner fa-spin' : 'fas fa-download'"></i> {{ exporting ? '导出中...' : (selectedRows.length ? `导出所选（${selectedRows.length}）` : '导出报表') }}
+        </button>
       </div>
 
       <el-table
@@ -97,7 +99,7 @@
         :header-cell-style="{ background: '#F9FAFB', color: '#6B7280', fontWeight: 500 }"
         @selection-change="handleSelectionChange"
       >
-        <el-table-column type="selection" width="45" :selectable="isSettleable" />
+        <el-table-column type="selection" width="45" />
         <el-table-column label="结算单号" min-width="110" fixed="left">
           <template #default="{ row }"><span class="settle-id-cell">{{ settlementNo(row) }}</span></template>
         </el-table-column>
@@ -220,7 +222,7 @@
       <template #footer>
         <div class="dialog-footer">
           <el-button @click="detailVisible = false">关闭</el-button>
-          <el-button class="reminder-button" @click="showReminder"><i class="fas fa-comment-dots"></i> 发消息提醒</el-button>
+          <el-button v-if="detailRow.status === '待结算'" class="reminder-button" :loading="reminding" @click="sendReminder"><i v-if="!reminding" class="fas fa-comment-dots"></i> 发消息提醒</el-button>
           <el-button v-if="detailRow.status === '待结算'" v-permission="'permOrder.settlement.settle'" type="primary" @click="openConfirm(detailRow)"><i class="fas fa-check-circle"></i> 财务确认结算</el-button>
         </div>
       </template>
@@ -240,9 +242,9 @@
 </template>
 
 <script setup>
-import { computed, nextTick, onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { batchSettlePay, getSettlementDetail, getSettlementStats, listSettlements, settlePay } from '@/api/settlement'
+import { batchSettlePay, getSettlementDetail, getSettlementStats, listSettlements, remindSettlement, settlePay } from '@/api/settlement'
 
 const cycleFilter = ref('')
 const statusFilter = ref('')
@@ -260,7 +262,8 @@ const pendingSettleRow = ref(null)
 const settlementTable = ref()
 const selectedRows = ref([])
 
-const pendingRows = computed(() => settlementData.value.filter(item => item.status === '待结算'))
+const selectedPendingRows = computed(() => selectedRows.value.filter(isSettleable))
+const exporting = ref(false)
 const detailStatusClass = computed(() => detailRow.value.statusClass || statusClassMap[detailRow.value.status] || 'default')
 
 const statusClassMap = {
@@ -334,20 +337,11 @@ const loadStats = async () => {
 
 const loadSettlements = async () => {
   try {
-    const [start, end] = dateRange.value || []
-    const result = await listSettlements({
-      status: statusFilter.value || undefined,
-      cycle: cycleFilter.value || undefined,
-      startDate: start || undefined,
-      endDate: end || undefined,
-      page: currentPage.value - 1,
-      size: pageSize.value
-    })
-    settlementData.value = rows(result)
-      .map(normalizeSettlement)
-      .filter(item => !methodFilter.value || item.payMethod === methodFilter.value)
+    const result = await listSettlements(filterParams(currentPage.value - 1, pageSize.value))
+    settlementData.value = normalizeRows(result)
     total.value = totalOf(result)
-    await defaultSelectPending()
+    // 换页/筛选后清空勾选，批量结算只处理用户当前明确勾选的记录
+    selectedRows.value = []
   } catch (error) {
     console.warn('[Settlement] API 加载失败:', error)
     settlementData.value = []
@@ -371,11 +365,22 @@ const handleReset = () => {
 
 const isSettleable = row => row.status === '待结算'
 const handleSelectionChange = rows => { selectedRows.value = rows }
-const defaultSelectPending = async () => {
-  await nextTick()
-  settlementTable.value?.clearSelection?.()
-  pendingRows.value.forEach(row => settlementTable.value?.toggleRowSelection?.(row, true))
+const filterParams = (page, size) => {
+  const [start, end] = dateRange.value || []
+  return {
+    status: statusFilter.value || undefined,
+    cycle: cycleFilter.value || undefined,
+    startDate: start || undefined,
+    endDate: end || undefined,
+    page,
+    size
+  }
 }
+
+// 支付方式后端不支持筛选，列表与导出统一在前端过滤
+const normalizeRows = result => rows(result)
+  .map(normalizeSettlement)
+  .filter(item => !methodFilter.value || item.payMethod === methodFilter.value)
 
 const onSizeChange = size => {
   pageSize.value = size
@@ -425,33 +430,67 @@ const confirmSettlement = async () => {
   }
 }
 
-const showReminder = () => ElMessage.info('结算提醒消息功能暂未开放')
+const reminding = ref(false)
+const sendReminder = async () => {
+  if (reminding.value || !detailRow.value?.id) return
+  reminding.value = true
+  try {
+    await remindSettlement(detailRow.value.id)
+    ElMessage.success(`已向雇主${detailRow.value.employerName ? `「${detailRow.value.employerName}」` : ''}发送结算提醒`)
+  } catch (error) {
+    // 错误提示由 request 拦截器统一弹出
+    console.warn('[Settlement] 发送结算提醒失败:', error)
+  } finally {
+    reminding.value = false
+  }
+}
 
-const handleExport = () => {
-  if (!settlementData.value.length) return ElMessage.info('当前没有可导出的结算记录')
-  const headers = ['结算单号', '订单号', '雇主', '零工', '结算金额', '平台服务费', '优惠券抵扣金额', '实付金额', '结算状态', '结算时间']
-  const lines = settlementData.value.map(row => [
-    settlementNo(row), orderNo(row), row.employerName, row.workerName, row.amount,
-    row.platformFee, row.couponAmount, row.actualAmount, row.status, formatDateTime(row.time)
-  ].map(value => `"${String(value ?? '').replaceAll('"', '""')}"`).join(','))
-  const blob = new Blob([`\ufeff${headers.join(',')}\n${lines.join('\n')}`], { type: 'text/csv;charset=utf-8' })
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.href = url
-  link.download = '结算记录.csv'
-  link.click()
-  URL.revokeObjectURL(url)
+const EXPORT_PAGE_SIZE = 500
+
+const fetchAllForExport = async () => {
+  const all = []
+  for (let page = 0; ; page += 1) {
+    const result = await listSettlements(filterParams(page, EXPORT_PAGE_SIZE))
+    const pageRows = rows(result)
+    all.push(...normalizeRows(result))
+    if (pageRows.length < EXPORT_PAGE_SIZE || (page + 1) * EXPORT_PAGE_SIZE >= totalOf(result)) return all
+  }
+}
+
+const handleExport = async () => {
+  if (exporting.value) return
+  exporting.value = true
+  try {
+    // 有勾选导出勾选记录，未勾选导出当前筛选条件下的全部记录
+    const data = selectedRows.value.length ? [...selectedRows.value] : await fetchAllForExport()
+    if (!data.length) return ElMessage.info('当前筛选条件下没有可导出的结算记录')
+    const headers = ['结算单号', '订单号', '雇主', '零工', '结算金额', '平台服务费', '优惠券抵扣金额', '实付金额', '结算状态', '结算时间']
+    const lines = data.map(row => [
+      settlementNo(row), orderNo(row), row.employerName, row.workerName, row.amount,
+      row.platformFee, row.couponAmount, row.actualAmount, row.status, formatDateTime(row.time)
+    ].map(value => `"${String(value ?? '').replaceAll('"', '""')}"`).join(','))
+    const blob = new Blob([`\ufeff${headers.join(',')}\n${lines.join('\n')}`], { type: 'text/csv;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = '结算记录.csv'
+    link.click()
+    URL.revokeObjectURL(url)
+    ElMessage.success(`已导出 ${data.length} 条结算记录`)
+  } catch (error) {
+    console.warn('[Settlement] 导出失败:', error)
+    ElMessage.error('导出失败，请重试')
+  } finally {
+    exporting.value = false
+  }
 }
 
 const handleBatchSettle = async () => {
-  let pending = selectedRows.value.filter(isSettleable)
-  if (!pending.length) {
-    await defaultSelectPending()
-    pending = selectedRows.value
-  }
-  if (!pending.length) return
+  const pending = selectedPendingRows.value
+  if (!pending.length) return ElMessage.info('请先勾选需要结算的待结算记录')
   try {
-    await ElMessageBox.confirm(`将批量确认当前页 ${pending.length} 笔待结算订单，是否继续？`, '批量结算', {
+    const skipped = selectedRows.value.length - pending.length
+    await ElMessageBox.confirm(`将确认结算已勾选的 ${pending.length} 笔待结算订单${skipped ? `（另有 ${skipped} 笔非待结算记录将跳过）` : ''}，是否继续？`, '批量结算', {
       confirmButtonText: '确认结算',
       cancelButtonText: '取消',
       type: 'warning'

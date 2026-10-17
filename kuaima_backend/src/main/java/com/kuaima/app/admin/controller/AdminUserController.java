@@ -235,11 +235,11 @@ public class AdminUserController {
         requireAdmin(authentication);
         YearMonth month = YearMonth.now();
         Map<String, Object> stats = new LinkedHashMap<>();
-        long total = userRepository.countByRole(UserRole.USER);
-        long monthNew = userRepository.countCurrentMonthByRole(UserRole.USER);
+        long total = userRepository.countWorkerIdentities();
+        long monthNew = userRepository.countCurrentMonthWorkerIdentities();
         long online = webSocketSessionManager == null ? 0L
                 : (long) webSocketSessionManager.getOnlineWorkerIds().size();
-        long frozen = userRepository.countByRoleAndStatus(UserRole.USER, "冻结");
+        long frozen = userRepository.countWorkerIdentitiesByStatus("冻结");
         stats.put("total", total);
         stats.put("monthNew", monthNew);
         stats.put("online", online);
@@ -247,10 +247,10 @@ public class AdminUserController {
 
         // 仅返回有可靠历史基准的数据；前端不得自行填充静态百分比。
         Map<String, Object> changes = new LinkedHashMap<>();
-        long previousTotal = userRepository.countByRoleAndDateLessThanEqual(
-                UserRole.USER, month.minusMonths(1).atEndOfMonth());
-        long previousMonthNew = userRepository.countByRoleAndDateBetween(
-                UserRole.USER, month.minusMonths(1).atDay(1), month.minusMonths(1).atEndOfMonth());
+        long previousTotal = userRepository.countWorkerIdentitiesByDateLessThanEqual(
+                month.minusMonths(1).atEndOfMonth());
+        long previousMonthNew = userRepository.countWorkerIdentitiesByDateBetween(
+                month.minusMonths(1).atDay(1), month.minusMonths(1).atEndOfMonth());
         changes.put("total", change(previousTotal, total, "较上月"));
         changes.put("monthNew", change(previousMonthNew, monthNew, "较上月"));
         changes.put("online", null);

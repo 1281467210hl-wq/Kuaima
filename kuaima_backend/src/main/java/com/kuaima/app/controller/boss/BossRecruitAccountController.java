@@ -129,11 +129,11 @@ public class BossRecruitAccountController {
             selected.setCurrent(true);
             AccountView view = toView(selected);
             logService.record(maskLoggingIdentifier(operator.username()), operator.id(), "切换招聘账号",
-                    "账号=" + accountId, ip, "成功", null);
+                    accountLogTarget(accountId), ip, "成功", null);
             return Result.success(view);
         } catch (RuntimeException e) {
             logService.record(maskLoggingIdentifier(operator.username()), operator.id(), "切换招聘账号",
-                    "账号=" + accountId, ip, "失败", safeReason(e));
+                    accountLogTarget(accountId), ip, "失败", safeReason(e));
             throw e;
         }
     }
@@ -182,13 +182,13 @@ public class BossRecruitAccountController {
             QuickLoginResponse response = new QuickLoginResponse(accessToken, target.getId(),
                     target.getUsername(), UserRole.BOSS, target.getPhone(), target.getCertStatus());
             logService.record(maskLoggingIdentifier(operator.username()), operator.id(), "快速切换招聘账号",
-                    "账号=" + accountId + "，目标用户=" + target.getId(), ip, "成功", null);
+                    "手机号=" + BossRecruitAccountService.maskPhone(target.getPhone()), ip, "成功", null);
             Result<QuickLoginResponse> result = Result.success(response);
             result.setMessage("账号切换成功");
             return result;
         } catch (RuntimeException e) {
             logService.record(maskLoggingIdentifier(operator.username()), operator.id(), "快速切换招聘账号",
-                    "账号=" + accountId, ip, "失败", safeReason(e));
+                    accountLogTarget(accountId), ip, "失败", safeReason(e));
             if (isClientFacingError(e)) throw e;
             throw new BusinessHttpException(HttpStatus.INTERNAL_SERVER_ERROR, "快速登录失败");
         }
@@ -219,6 +219,18 @@ public class BossRecruitAccountController {
         return new AccountView(account.getId(), text(account.getName()), account.getAvatar(), phone,
                 text(account.getAuthorizationType()), account.getWorkCode(), account.getLeaveCode(),
                 Boolean.TRUE.equals(account.getCurrent()));
+    }
+
+    /** 日志操作对象：记录目标账号的脱敏手机号，查不到账号或手机号时才退回账号 ID。 */
+    private String accountLogTarget(Long accountId) {
+        if (accountId == null) return "账号=-";
+        String phone = repository.findById(accountId)
+                .map(account -> account.getTargetUserId() != null ? account.getTargetUserId() : account.getOwnerUserId())
+                .flatMap(userRepository::findById)
+                .map(User::getPhone)
+                .map(BossRecruitAccountService::maskPhone)
+                .orElse("");
+        return StringUtils.hasText(phone) ? "手机号=" + phone : "账号=" + accountId;
     }
 
     /** 兼容未执行账号组迁移前 target_user_id 为空的历史主账号：主账号目标即账号组归属用户。 */

@@ -289,16 +289,6 @@ public class BossController {
 
     // ==================== 报名记录 ====================
 
-    /** 用户报名：/boss/order/{orderId}/apply?userId=1&remark=xxx&trial=true（trial 仅月结订单有效） */
-    @Operation(summary = "用户报名岗位", description = "订单须为「招工中」，同一用户不可重复报名；「已录用+已到岗+已完成」人数达到招工人数后不可再报名。trial「我要试工」标记仅月结(month)订单可传 true")
-    @PostMapping("/order/{orderId}/apply")
-    public Result<BaseOrderItem> applyOrder(@PathVariable Long orderId,
-                                            @RequestParam Long userId,
-                                            @RequestParam(required = false) String remark,
-                                            @RequestParam(required = false) Boolean trial) {
-        return Result.success(bossOrderService.applyOrder(orderId, userId, remark, trial));
-    }
-
     /** 老板录用 */
     @Operation(summary = "老板录用零工", description = "仅「已报名」的记录可录用，状态变为「已录用」并记录录用时间")
     @PutMapping("/item/{id}/hire")

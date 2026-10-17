@@ -20,6 +20,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -37,6 +38,11 @@ import com.kuaima.app.domain.coupon.entity.Coupon;
 import com.kuaima.app.domain.coupon.entity.UserCoupon;
 import com.kuaima.app.domain.coupon.repository.CouponRepository;
 import com.kuaima.app.domain.coupon.repository.UserCouponRepository;
+import com.kuaima.app.domain.message.constant.BizType;
+import com.kuaima.app.domain.message.constant.MessageType;
+import com.kuaima.app.domain.message.service.MessageService;
+import com.kuaima.app.domain.user.constant.UserRole;
+import com.kuaima.app.domain.wallet.constant.SettlementStatus;
 import com.kuaima.app.domain.user.entity.User;
 import com.kuaima.app.domain.user.repository.UserRepository;
 import com.kuaima.app.domain.wallet.entity.Settlement;
@@ -58,6 +64,7 @@ public class AdminSettlementController {
     private final BossOrderRespository orderRepository;
     private final UserCouponRepository userCouponRepository;
     private final CouponRepository couponRepository;
+    private final MessageService messageService;
 
     public AdminSettlementController(SettlementRespository settlementRepository,
                                     SettlementService settlementService,
@@ -65,6 +72,19 @@ public class AdminSettlementController {
                                     BossOrderRespository orderRepository,
                                     UserCouponRepository userCouponRepository,
                                     CouponRepository couponRepository) {
+        this(settlementRepository, settlementService, userRepository, orderRepository,
+                userCouponRepository, couponRepository, null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public AdminSettlementController(SettlementRespository settlementRepository,
+                                    SettlementService settlementService,
+                                    UserRepository userRepository,
+                                    BossOrderRespository orderRepository,
+                                    UserCouponRepository userCouponRepository,
+                                    CouponRepository couponRepository,
+                                    MessageService messageService) {
+        this.messageService = messageService;
         this.settlementRepository = settlementRepository;
         this.settlementService = settlementService;
         this.userRepository = userRepository;
@@ -298,6 +318,34 @@ public class AdminSettlementController {
         }
 
         return Result.success(obj);
+    }
+
+    /** 站内消息提醒老板支付待结算工资 */
+    @Operation(summary = "提醒老板结算", description = "仅「待结算」结算单可提醒；向订单发布老板发送一条结算提醒站内消息")
+    @PostMapping("/{id}/remind")
+    public Result<Map<String, Object>> remind(@PathVariable Long id) {
+        if (messageService == null) throw new IllegalStateException("消息服务未配置");
+        Settlement s = settlementRepository.findById(id)
+                .orElseThrow(() -> new jakarta.persistence.EntityNotFoundException("结算单不存在: " + id));
+        if (!SettlementStatus.PENDING.equals(s.getStatus())) {
+            throw new IllegalStateException("仅待结算的结算单可以发送提醒");
+        }
+        BossOrder order = s.getOrderId() == null ? null : orderRepository.findById(s.getOrderId()).orElse(null);
+        if (order == null || order.getCreateBy() == null) {
+            throw new IllegalStateException("未找到该结算单对应的老板");
+        }
+        String workerName = s.getWorkerId() == null ? "零工" : userRepository.findById(s.getWorkerId())
+                .map(w -> StringUtils.hasText(w.getNickname()) ? w.getNickname() : w.getUsername())
+                .filter(StringUtils::hasText).orElse("零工");
+        BigDecimal amount = s.getTotalAmount() != null ? s.getTotalAmount() : BigDecimal.ZERO;
+        String content = "您发布的「" + order.getOrderTitle() + "」岗位，零工 " + workerName
+                + " 的工资尚未结算，需支付 " + amount.setScale(2, RoundingMode.HALF_UP).toPlainString()
+                + " 元，请尽快完成结算。";
+        messageService.sendToUser(order.getCreateBy(), UserRole.BOSS, MessageType.SETTLE_REMIND, "结算提醒",
+                content, BizType.SETTLE, s.getId());
+        Map<String, Object> data = new HashMap<>();
+        data.put("bossId", order.getCreateBy());
+        return Result.success(data);
     }
 
     /** admin 手动结算（模拟支付） */

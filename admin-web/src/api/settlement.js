@@ -26,3 +26,8 @@ export function settlePay(id) {
 export function batchSettlePay(ids) {
   return request.post('/admin/settlements/batch-pay', { ids })
 }
+
+/** 站内消息提醒老板支付待结算工资 */
+export function remindSettlement(id) {
+  return request.post(`/admin/settlements/${id}/remind`)
+}

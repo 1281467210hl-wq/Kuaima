@@ -32,6 +32,7 @@ import com.kuaima.app.domain.user.repository.CreditFlowRepository;
 import com.kuaima.app.domain.user.repository.UserRepository;
 import com.kuaima.app.domain.user.constant.UserRole;
 import com.kuaima.app.domain.user.service.CertificationService;
+import com.kuaima.app.domain.user.service.CreditRuleNames;
 import com.kuaima.app.security.model.LoginUser;
 import com.kuaima.app.common.ForbiddenBusinessException;
 
@@ -159,7 +160,7 @@ public class UserController {
         data.put("creditScore", boss ? score : user.getCreditScore());
         data.put("starScore", boss ? user.getStarScore() : score);
         data.put("scoreType", scoreType);
-        data.put("recentFlows", recentFlows);
+        data.put("recentFlows", recentFlows.stream().map(this::creditFlowView).toList());
         data.put("details", recentFlows.stream().map(flow -> Map.of(
                 "id", flow.getId(),
                 "title", flow.getReason() == null ? "信用分变动" : flow.getReason(),
@@ -174,7 +175,7 @@ public class UserController {
      */
     @Operation(summary = "信用流水分页查询", description = "分页返回 CreditFlow 列表（userId、delta、reason、bizType、timestamp），按 id 倒序")
     @GetMapping("/{id}/credit/flows")
-    public Result<List<CreditFlow>> listCreditFlows(@PathVariable Long id,
+    public Result<List<Map<String, Object>>> listCreditFlows(@PathVariable Long id,
                                                     @RequestParam(defaultValue = "0") int page,
                                                     @RequestParam(defaultValue = "10") int size) {
         // 校验用户存在
@@ -183,7 +184,24 @@ public class UserController {
         int safeSize = Math.min(Math.max(size, 1), 100);
         Pageable pageable = PageRequest.of(safePage, safeSize, Sort.by(Sort.Direction.DESC, "id"));
         Page<CreditFlow> result = creditFlowRepository.findByUserIdOrderByTimestampDesc(id, pageable);
-        return Result.success(result.getContent(), result.getNumber(), result.getTotalElements());
+        return Result.success(result.getContent().stream().map(this::creditFlowView).toList(),
+                result.getNumber(), result.getTotalElements());
+    }
+
+    private Map<String, Object> creditFlowView(CreditFlow flow) {
+        Map<String, Object> view = new java.util.LinkedHashMap<>();
+        view.put("id", flow.getId());
+        view.put("bizNo", flow.getBizNo());
+        view.put("userId", flow.getUserId());
+        view.put("delta", flow.getDelta());
+        view.put("reason", flow.getReason());
+        view.put("bizType", flow.getBizType());
+        view.put("scoreType", flow.getScoreType());
+        view.put("beforeScore", flow.getBeforeScore());
+        view.put("afterScore", flow.getAfterScore());
+        view.put("ruleCode", CreditRuleNames.display(flow.getRuleCode(), flow.getDelta()));
+        view.put("timestamp", flow.getTimestamp());
+        return view;
     }
 
     private User getUserOrThrow(Long id) {
