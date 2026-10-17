@@ -242,6 +242,18 @@ export default {
         uni.showToast({ title: "请输入招聘人数", icon: "none" });
         return;
       }
+      if (!this.form.salaryRange) {
+        uni.showToast({ title: "未填写薪资", icon: "none" });
+        return;
+      }
+      if (!this.form.experience) {
+        uni.showToast({ title: "未填写工作经验", icon: "none" });
+        return;
+      }
+      if (!this.form.education) {
+        uni.showToast({ title: "未填写学历要求", icon: "none" });
+        return;
+      }
       try {
         const data = {
           name: this.form.name.trim(),

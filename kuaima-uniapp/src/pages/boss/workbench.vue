@@ -11,7 +11,7 @@
         </view>
       </view>
       <view class="company-nav">
-        <text class="company-name">晴时科技</text>
+        <text class="company-name">{{ companyName }}</text>
         <!-- 微信小程序右上角由微信绘制原生胶囊（⋯ / ⊙），自绘胶囊会与其重叠，故仅在非小程序端保留 -->
         <!-- #ifndef MP-WEIXIN -->
         <view class="wb-capsule">
@@ -182,11 +182,13 @@
 
 <script>
 import { hasEnterprisePermission } from "@/api/enterprise-context";
+import { getBossProfile } from "@/api/backend";
 export default {
   data() {
     return {
       statusBarHeight: 44,
       currentTime: "13:14",
+      companyName: "我的企业",
     };
   },
   onLoad() {
@@ -198,8 +200,25 @@ export default {
     }
     const now = new Date();
     this.currentTime = `${now.getHours()}:${String(now.getMinutes()).padStart(2, "0")}`;
+    this.loadCompanyName();
+  },
+  onShow() {
+    // 企业切换后回到工作台，刷新企业名称保持与个人中心一致
+    this.loadCompanyName();
   },
   methods: {
+    loadCompanyName() {
+      const cached = uni.getStorageSync("enterpriseName");
+      if (cached) this.companyName = cached;
+      const userId = uni.getStorageSync("userId");
+      if (!userId) return;
+      getBossProfile(userId)
+        .then((p) => {
+          const name = (p && (p.companyName || p.enterpriseName || p.name)) || "";
+          if (name) this.companyName = name;
+        })
+        .catch(() => {});
+    },
     canAccess(code) { return hasEnterprisePermission(code); },
     navigateTo(page) {
       const pages = {
