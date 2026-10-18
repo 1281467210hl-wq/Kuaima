@@ -136,6 +136,13 @@
           </view>
           <text class="other-label">企业认证</text>
         </view>
+        <view class="other-item" @click="navigateTo('invite-inbox')">
+          <view class="other-icon badge-wrap">
+            <image :src="usersIcon" mode="aspectFit" />
+            <view v-if="inviteCount > 0" class="other-badge">{{ inviteCount > 99 ? '99+' : inviteCount }}</view>
+          </view>
+          <text class="other-label">企业邀请</text>
+        </view>
         <view class="other-item" @click="navigateTo('switch-account')">
           <view class="other-icon">
             <image :src="exchangeDarkIcon" mode="aspectFit" />
@@ -247,6 +254,7 @@ import fileInvoiceDollarIcon from '/static/icons/boss-profile/file-invoice-dolla
 import userShieldIcon from '/static/icons/boss-profile/user-shield-orange.svg'
 import exchangeDarkIcon from '/static/icons/boss-profile/exchange-dark.svg'
 import { hasEnterprisePermission } from '@/api/enterprise-context'
+import { getMyInvites } from '@/api/enterprise'
 
 export default {
   data() {
@@ -293,6 +301,7 @@ export default {
         avatar: '',
         enterpriseApproved: false,
       },
+      inviteCount: 0,
     }
   },
   onShow() {
@@ -321,8 +330,10 @@ export default {
           userId ? getBossProfileStats(userId).catch(() => null) : Promise.resolve(null),
           getBossBalance().catch(() => null),
           getBossRewardOverview().catch(() => null),
+          getMyInvites().catch(() => null),
         ])
-        const [currentUser, user, bossProfile, assetSummary, profileStats, walletBalance, rewardOverview] = results
+        const [currentUser, user, bossProfile, assetSummary, profileStats, walletBalance, rewardOverview, myInvites] = results
+        this.inviteCount = Array.isArray(myInvites) ? myInvites.length : 0
         const data = { ...(user || {}), ...(currentUser || {}), ...(bossProfile || {}) }
         const cached = uni.getStorageSync('userInfo') || {}
         const name = data.nickname || data.name || data.realName || cached.nickname || cached.name || '用户'
@@ -381,7 +392,7 @@ export default {
         'sub-account', 'authorize', 'suspend-settle', 'switch-account', 'invite-code', 'blacklist',
         'all-jobs', 'boss-filter', 'settlement', 'contract', 'system-notice', 'missed-call', 
         'signup-notice', 'invite-friend', 'service-chat', 'insurance', 'realname', 'balance', 'recharge',
-        'personal-info', 'points', 'voucher', 'reward'
+        'personal-info', 'points', 'voucher', 'reward', 'invite-inbox'
       ]
       const sharedPageMap = {
         'rule': '/pages/worker/rule',
@@ -716,6 +727,26 @@ export default {
 .other-label {
   font-size: 12px;
   color: #666;
+}
+
+.other-icon.badge-wrap {
+  position: relative;
+}
+
+.other-badge {
+  position: absolute;
+  top: -6px;
+  right: -4px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  box-sizing: border-box;
+  border-radius: 8px;
+  background: #ff4d4f;
+  color: #fff;
+  font-size: 10px;
+  line-height: 16px;
+  text-align: center;
 }
 
 .footer-info {

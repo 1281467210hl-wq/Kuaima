@@ -9,7 +9,7 @@ function query(params) {
 
 export const MEMBER_ROLE_TEXT = { OWNER: "超级管理员", ADMIN: "管理员", STAFF: "成员" };
 export const APPLY_STATUS_TEXT = { PENDING: "待处理", AGREED: "已同意", REFUSED: "已拒绝" };
-export const INVITE_STATUS_TEXT = { PENDING: "待接受", ACCEPTED: "已接受", EXPIRED: "已失效" };
+export const INVITE_STATUS_TEXT = { PENDING: "待接受", ACCEPTED: "已接受", REFUSED: "已拒绝", EXPIRED: "已失效" };
 
 /** 企业成员列表 */
 export function getMembers(keyword) {
@@ -69,6 +69,23 @@ export function remindInvite(inviteId) {
 /** 邀请二维码信息 */
 export function getInviteQr() {
   return request({ url: "/boss/enterprise/invite-qr" });
+}
+
+// -------------------- 被邀请人视角：我收到的企业邀请 --------------------
+
+/** 我的待处理企业邀请（按当前登录手机号匹配） */
+export function getMyInvites() {
+  return request({ url: "/boss/enterprise/invites/my" });
+}
+
+/** 同意企业邀请（同意后成为企业成员） */
+export function acceptInvite(inviteId) {
+  return request({ url: `/boss/enterprise/invites/${inviteId}/accept`, method: "POST" });
+}
+
+/** 拒绝企业邀请 */
+export function refuseInvite(inviteId) {
+  return request({ url: `/boss/enterprise/invites/${inviteId}/refuse`, method: "POST" });
 }
 
 /** 退出企业信息 */

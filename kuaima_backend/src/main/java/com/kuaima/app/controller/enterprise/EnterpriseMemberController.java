@@ -1,5 +1,6 @@
 package com.kuaima.app.controller.enterprise;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -7,6 +8,7 @@ import java.util.Map;
 import org.springframework.data.domain.Page;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -22,12 +24,19 @@ import com.kuaima.app.common.BusinessHttpException;
 import com.kuaima.app.common.Result;
 import com.kuaima.app.common.util.QrCodeUtils;
 import com.kuaima.app.domain.enterprise.constant.WorkbenchPermCodes;
+import com.kuaima.app.domain.enterprise.entity.Enterprise;
+import com.kuaima.app.domain.enterprise.entity.EnterpriseInvite;
 import com.kuaima.app.domain.enterprise.entity.EnterpriseJoinApply;
 import com.kuaima.app.domain.enterprise.entity.EnterpriseMember;
+import com.kuaima.app.domain.enterprise.repository.EnterpriseInviteRepository;
 import com.kuaima.app.domain.enterprise.repository.EnterpriseJoinApplyRepository;
 import com.kuaima.app.domain.enterprise.repository.EnterpriseMemberRepository;
+import com.kuaima.app.domain.enterprise.repository.EnterpriseRepository;
 import com.kuaima.app.domain.enterprise.service.EnterpriseContextService;
 import com.kuaima.app.domain.enterprise.service.EnterpriseMemberService;
+import com.kuaima.app.domain.user.entity.User;
+import com.kuaima.app.domain.user.repository.UserRepository;
+import com.kuaima.app.security.model.LoginUser;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -41,15 +50,24 @@ public class EnterpriseMemberController {
     private final EnterpriseMemberService service;
     private final EnterpriseMemberRepository memberRepo;
     private final EnterpriseJoinApplyRepository applyRepo;
+    private final EnterpriseInviteRepository inviteRepo;
+    private final EnterpriseRepository enterpriseRepo;
+    private final UserRepository userRepo;
 
     public EnterpriseMemberController(EnterpriseContextService context,
                                       EnterpriseMemberService service,
                                       EnterpriseMemberRepository memberRepo,
-                                      EnterpriseJoinApplyRepository applyRepo) {
+                                      EnterpriseJoinApplyRepository applyRepo,
+                                      EnterpriseInviteRepository inviteRepo,
+                                      EnterpriseRepository enterpriseRepo,
+                                      UserRepository userRepo) {
         this.context = context;
         this.service = service;
         this.memberRepo = memberRepo;
         this.applyRepo = applyRepo;
+        this.inviteRepo = inviteRepo;
+        this.enterpriseRepo = enterpriseRepo;
+        this.userRepo = userRepo;
     }
 
     @GetMapping("/members")
@@ -157,6 +175,9 @@ public class EnterpriseMemberController {
         if (!phone.matches("1\\d{10}")) {
             throw new BusinessHttpException(HttpStatus.BAD_REQUEST, "请输入正确的11位手机号");
         }
+        if (userRepo.findByPhone(phone).isEmpty()) {
+            throw new BusinessHttpException(HttpStatus.BAD_REQUEST, "未找到该手机号对应的成员，请先确认对方已注册");
+        }
         var invite = service.createInvite(ctx.enterprise(), ctx.user().getId(),
                 phone, body.getOrDefault("role", "STAFF"));
         return Result.success(Map.of(
@@ -189,6 +210,73 @@ public class EnterpriseMemberController {
     public Result<Void> remind(Authentication auth, @PathVariable Long inviteId) {
         context.require(auth, "MEMBER_WRITE");
         return Result.success();
+    }
+
+    // ==================== 被邀请人视角（不要求企业上下文，按登录人手机号匹配） ====================
+
+    @GetMapping("/invites/my")
+    @Operation(summary = "我的企业邀请（被邀请人视角，按当前登录手机号匹配待处理邀请）")
+    public Result<List<Map<String, Object>>> myInvites(Authentication auth) {
+        User me = requireLoginUser(auth);
+        if (!StringUtils.hasText(me.getPhone())) {
+            return Result.success(List.of());
+        }
+        List<Map<String, Object>> list = new ArrayList<>();
+        for (EnterpriseInvite invite : inviteRepo.findByPhoneAndStatusOrderByIdDesc(me.getPhone().trim(), "PENDING")) {
+            Enterprise enterprise = enterpriseRepo.findById(invite.getEnterpriseId()).orElse(null);
+            User inviter = userRepo.findById(invite.getInviterId()).orElse(null);
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("id", invite.getId());
+            item.put("enterpriseName", enterprise != null ? enterprise.getCompanyName() : "企业");
+            item.put("inviterName", inviter != null && inviter.getNickname() != null ? inviter.getNickname()
+                    : (inviter != null ? inviter.getUsername() : ""));
+            item.put("role", invite.getInviteRole());
+            item.put("status", invite.getStatus());
+            item.put("time", invite.getTimestamp() != null
+                    ? invite.getTimestamp().toLocalDateTime().toString().replace("T", " ").substring(0, 16) : "");
+            list.add(item);
+        }
+        return Result.success(list);
+    }
+
+    @PostMapping("/invites/{inviteId}/accept")
+    @Operation(summary = "被邀请人同意入企邀请（同意后成为企业成员）")
+    public Result<Void> acceptMyInvite(Authentication auth, @PathVariable Long inviteId) {
+        User me = requireLoginUser(auth);
+        EnterpriseInvite invite = requireMyInvite(inviteId, me);
+        Enterprise enterprise = enterpriseRepo.findById(invite.getEnterpriseId())
+                .orElseThrow(() -> new BusinessHttpException(HttpStatus.BAD_REQUEST, "企业不存在"));
+        service.acceptInvite(enterprise, invite, me.getId());
+        return Result.success();
+    }
+
+    @PostMapping("/invites/{inviteId}/refuse")
+    @Operation(summary = "被邀请人拒绝入企邀请")
+    public Result<Void> refuseMyInvite(Authentication auth, @PathVariable Long inviteId) {
+        User me = requireLoginUser(auth);
+        EnterpriseInvite invite = requireMyInvite(inviteId, me);
+        service.refuseInvite(invite);
+        return Result.success();
+    }
+
+    private User requireLoginUser(Authentication auth) {
+        if (auth != null && auth.getPrincipal() instanceof LoginUser login && login.id() != null) {
+            return userRepo.findById(login.id())
+                    .orElseThrow(() -> new BusinessHttpException(HttpStatus.UNAUTHORIZED, "登录用户不存在"));
+        }
+        throw new BusinessHttpException(HttpStatus.UNAUTHORIZED, "未登录或Token无效");
+    }
+
+    private EnterpriseInvite requireMyInvite(Long inviteId, User me) {
+        EnterpriseInvite invite = inviteRepo.findById(inviteId)
+                .orElseThrow(() -> new BusinessHttpException(HttpStatus.BAD_REQUEST, "邀请不存在"));
+        if (me.getPhone() == null || !me.getPhone().trim().equals(invite.getPhone())) {
+            throw new BusinessHttpException(HttpStatus.BAD_REQUEST, "无权处理该邀请");
+        }
+        if (!"PENDING".equals(invite.getStatus())) {
+            throw new BusinessHttpException(HttpStatus.BAD_REQUEST, "该邀请已处理");
+        }
+        return invite;
     }
 
     @GetMapping("/invite-qr")

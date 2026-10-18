@@ -26,6 +26,7 @@ import com.kuaima.app.domain.payroll.entity.PayrollDetail;
 import com.kuaima.app.domain.payroll.entity.PayrollEmployee;
 import com.kuaima.app.domain.payroll.entity.PayrollOrder;
 import com.kuaima.app.domain.payroll.model.BossPayrollCreateRequest;
+import com.kuaima.app.domain.payroll.model.BossPayrollMembersRequest;
 import com.kuaima.app.domain.payroll.repository.PayrollDetailRepository;
 import com.kuaima.app.domain.payroll.repository.PayrollEmployeeRepository;
 import com.kuaima.app.domain.payroll.repository.PayrollOrderRepository;
@@ -124,22 +125,22 @@ public class BossPayrollController {
     @Operation(summary = "草稿-添加/替换发薪人员", description = "body：{members:[{userId,name,phone,job,dailyWage?,attendDays?}]}；整体替换草稿人员明细，保留已设置薪资。仅草稿态可用")
     @PutMapping("/orders/{orderId}/members")
     public Result<PayrollOrder> setOrderMembers(@PathVariable Long orderId,
-                                                @RequestBody Map<String, List<PayrollDetail>> body,
+                                                @RequestBody BossPayrollMembersRequest body,
                                                 Authentication authentication) {
         Long bossId = requireBossId(authentication);
         ownedOrder(orderId, bossId);
-        List<PayrollDetail> members = body == null ? List.of() : body.getOrDefault("members", List.of());
+        List<PayrollDetail> members = body == null || body.getMembers() == null ? List.of() : body.getMembers();
         return Result.success(payrollService.replaceMembers(orderId, members));
     }
 
     @Operation(summary = "草稿-设置薪资", description = "body：{salaries:[{userId,phone,dailyWage(分),attendDays}]}；按人回填日薪与出勤天数并重算金额。仅草稿态可用")
     @PutMapping("/orders/{orderId}/salary")
     public Result<PayrollOrder> setOrderSalary(@PathVariable Long orderId,
-                                               @RequestBody Map<String, List<PayrollDetail>> body,
+                                               @RequestBody BossPayrollMembersRequest body,
                                                Authentication authentication) {
         Long bossId = requireBossId(authentication);
         ownedOrder(orderId, bossId);
-        List<PayrollDetail> salaries = body == null ? List.of() : body.getOrDefault("salaries", List.of());
+        List<PayrollDetail> salaries = body == null || body.getSalaries() == null ? List.of() : body.getSalaries();
         return Result.success(payrollService.setSalaries(orderId, salaries));
     }
 

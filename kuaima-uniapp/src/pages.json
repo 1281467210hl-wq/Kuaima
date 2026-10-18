@@ -1001,6 +1001,12 @@
           }
         },
         {
+          "path": "invite-inbox",
+          "style": {
+            "navigationStyle": "custom"
+          }
+        },
+        {
           "path": "resume",
           "style": {
             "navigationStyle": "custom"

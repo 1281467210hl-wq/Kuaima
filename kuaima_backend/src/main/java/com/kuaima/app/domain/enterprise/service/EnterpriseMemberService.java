@@ -200,6 +200,13 @@ public class EnterpriseMemberService {
         }
     }
 
+    @Transactional
+    public void refuseInvite(EnterpriseInvite invite) {
+        if (!"PENDING".equals(invite.getStatus())) return;
+        invite.setStatus("REFUSED");
+        inviteRepo.save(invite);
+    }
+
     public Map<String, Object> exitInfo(EnterpriseMember member, Enterprise enterprise) {
         return Map.of(
                 "companyName", enterprise.getCompanyName(),

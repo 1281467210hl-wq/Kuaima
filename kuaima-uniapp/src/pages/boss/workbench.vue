@@ -142,7 +142,7 @@
             <text class="wb-grid-desc">企业员工信息管理</text>
           </view>
         </view>
-        <view class="wb-grid-item" @click="navigateTo('project-detail')">
+        <view class="wb-grid-item" @click="goAttendance">
           <view class="wb-grid-icon" style="background: linear-gradient(135deg, #FFB84D, #F09A3E)">
             <image class="grid-svg" src="/static/icons/boss-workbench/user-clock-white.svg" mode="aspectFit" />
           </view>
@@ -183,6 +183,7 @@
 <script>
 import { hasEnterprisePermission } from "@/api/enterprise-context";
 import { getBossProfile } from "@/api/backend";
+import { listProjects } from "@/api/project";
 export default {
   data() {
     return {
@@ -220,6 +221,21 @@ export default {
         .catch(() => {});
     },
     canAccess(code) { return hasEnterprisePermission(code); },
+    goAttendance() {
+      // 考勤打卡页需要项目ID：取当前企业第一个项目进入；无项目则提示先创建
+      listProjects()
+        .then((res) => {
+          const list = Array.isArray(res) ? res : (res && (res.content || res.records)) || [];
+          if (!list.length) {
+            uni.showToast({ title: "暂无项目，请先在项目管理中创建", icon: "none" });
+            return;
+          }
+          uni.navigateTo({ url: `/pages/boss/proj-attendance?id=${list[0].id}` });
+        })
+        .catch(() => {
+          uni.showToast({ title: "项目加载失败，请稍后重试", icon: "none" });
+        });
+    },
     navigateTo(page) {
       const pages = {
         members: "/pages/boss/members",
@@ -234,7 +250,6 @@ export default {
         transfers: "/pages/boss/transfers",
         balance: "/pages/boss/balance",
         "payroll-employees": "/pages/boss/payroll-employees",
-        "project-detail": "/pages/boss/project-detail",
       };
       if (pages[page]) {
         uni.navigateTo({ url: pages[page] });

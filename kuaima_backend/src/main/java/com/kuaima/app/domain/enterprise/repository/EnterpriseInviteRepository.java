@@ -29,6 +29,8 @@ public interface EnterpriseInviteRepository extends JpaRepository<EnterpriseInvi
     List<EnterpriseInvite> findByEnterpriseIdAndPhoneAndStatusOrderByIdDesc(
             Long enterpriseId, String phone, String status);
 
+    List<EnterpriseInvite> findByPhoneAndStatusOrderByIdDesc(String phone, String status);
+
     @Modifying
     @Transactional
     @Query("update EnterpriseInvite i set i.status = 'EXPIRED'" +

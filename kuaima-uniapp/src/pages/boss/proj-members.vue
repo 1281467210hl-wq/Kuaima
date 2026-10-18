@@ -554,7 +554,9 @@ export default {
 .ap-search-input {
   width: 100%;
   box-sizing: border-box;
-  padding: 9px 12px;
+  height: 36px;
+  line-height: 36px;
+  padding: 0 12px;
   background: #f5f5f5;
   border-radius: 10px;
   font-size: 13px;
