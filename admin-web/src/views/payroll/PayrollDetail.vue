@@ -207,18 +207,22 @@ const exportDetails = () => {
   const now = new Date().toISOString().slice(0, 19).replace('T', '_')
 
   const rows = [
-    ['薪单标题', o.title],
-    ['发薪单号', o.orderNo || ''],
-    ['所属公司', o.company],
-    ['所属项目', o.projectName],
-    ['转账类型', ({ wage: '工资', advance: '预支', other: '其他' })[o.type] || o.type || ''],
-    ['发薪人数', `${o.peopleCount ?? 0}`],
-    ['应发总金额(元)', fen2yuan(o.amount)],
-    ['制单人员', o.creator],
-    ['提交时间', o.submitTime],
-    ['状态', statusText(o.status)],
-    ['审核人', o.reviewBy],
-    ['审核时间', o.reviewTime],
+    // 单据头：与下方人员明细统一为横向表格（第 1 行标签、第 2 行数值）
+    ['薪单标题', '发薪单号', '所属公司', '所属项目', '转账类型', '发薪人数', '应发总金额(元)', '制单人员', '提交时间', '状态', '审核人', '审核时间'],
+    [
+      o.title,
+      o.orderNo || '',
+      o.company,
+      o.projectName,
+      ({ wage: '工资', advance: '预支', other: '其他' })[o.type] || o.type || '',
+      `${o.peopleCount ?? 0}`,
+      fen2yuan(o.amount),
+      o.creator,
+      o.submitTime,
+      statusText(o.status),
+      o.reviewBy,
+      o.reviewTime,
+    ],
     [], // 空行分隔
     ['姓名', '手机号', '岗位', '出勤天数', '日薪(元)', '应发金额(元)', '状态'],
   ]
