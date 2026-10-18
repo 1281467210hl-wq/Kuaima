@@ -295,7 +295,7 @@
         <label class="form-label">关联项目</label>
         <select class="form-select" v-model="createForm.projectId">
           <option value="">请选择关联项目</option>
-          <option v-for="p in projects" :key="p.id" :value="p.id">{{ p.name }}</option>
+          <option v-for="p in projectChoices" :key="p.id" :value="p.id">{{ p.name }}</option>
         </select>
       </div>
       <div class="form-group">
@@ -547,6 +547,24 @@ const revFilters = reactive({ keyword: '', submitFrom: '', submitTo: '', reviewF
 const companyOptions = computed(() => [...new Set(payrollList.value.map((x) => x.company).filter((c) => c && c !== '—'))])
 const projectOptions = computed(() => [...new Set(payrollList.value.map((x) => x.projectName).filter((p) => p && p !== '—'))])
 
+/** 关联项目下拉选项：按项目名去重，避免出现同名重复项（后端存在大量同名历史/测试项目） */
+const projectChoices = computed(() => {
+  const seen = new Set()
+  const out = []
+  for (const p of projects.value) {
+    const key = (p.name || '').trim()
+    if (!key || seen.has(key)) continue
+    seen.add(key)
+    out.push(p)
+  }
+  return out
+})
+
+/** 统一错误提示：拦截器已弹过（notified）就不再弹，避免同一错误出现两条提示 */
+const notifyError = (err, fallback) => {
+  if (!err?.notified) ElMessage.error(err?.message || fallback)
+}
+
 const fen2yuan = (fen) => {
   if (fen == null || fen === '') return '0.00'
   const n = Number(fen)
@@ -706,21 +724,21 @@ const submitCreate = async () => {
     handleSearch(); loadTabCounts()
   } catch (err) {
     console.warn('[ProjectSalary] 创建失败:', err.message)
-    ElMessage.error('创建失败，请确认后端服务已启动')
+    notifyError(err, '创建失败，请确认后端服务已启动')
   }
 }
 
 const doApprove = async (row) => {
   try { await approvePayroll(row.id); ElMessage.success('已通过'); loadData() }
-  catch (err) { ElMessage.error('审批失败') }
+  catch (err) { notifyError(err, '审批失败') }
 }
 const doReject = async (row) => {
   try { await rejectPayroll(row.id); ElMessage.success('已驳回'); loadData() }
-  catch (err) { ElMessage.error('驳回失败') }
+  catch (err) { notifyError(err, '驳回失败') }
 }
 const doSubmit = async (row) => {
   try { await submitPayroll(row.id); ElMessage.success('已提交审核'); loadData(); loadTabCounts() }
-  catch (err) { console.warn('[ProjectSalary] 提交失败:', err.message); ElMessage.error(err.message || '提交失败，请先添加人员并设置薪资') }
+  catch (err) { console.warn('[ProjectSalary] 提交失败:', err.message); notifyError(err, '提交失败，请先添加人员并设置薪资') }
 }
 
 // ===== 草稿：项目 / 人员来源 =====
@@ -843,7 +861,7 @@ const confirmAddMembers = async () => {
     loadData(); loadTabCounts()
   } catch (err) {
     console.warn('[ProjectSalary] 添加人员失败:', err.message)
-    ElMessage.error(err.message || '保存人员失败，请确认草稿状态')
+    notifyError(err, '保存人员失败，请确认草稿状态')
   }
 }
 
@@ -868,7 +886,7 @@ const openSetSalary = async (row) => {
     if (!salaryList.value.length) ElMessage.warning('请先添加人员')
   } catch (err) {
     console.warn('[ProjectSalary] 薪资明细加载失败:', err.message)
-    ElMessage.error('人员明细加载失败')
+    notifyError(err, '人员明细加载失败')
   }
 }
 
@@ -886,7 +904,7 @@ const confirmSetSalary = async () => {
     loadData(); loadTabCounts()
   } catch (err) {
     console.warn('[ProjectSalary] 设置薪资失败:', err.message)
-    ElMessage.error(err.message || '保存薪资失败，请确认草稿状态')
+    notifyError(err, '保存薪资失败，请确认草稿状态')
   }
 }
 
@@ -1021,7 +1039,7 @@ const openTransferDetail = async (row) => {
   } catch (err) {
     console.warn('[ProjectSalary] 转账明细加载失败:', err.message)
     trDetail.value = { ...trDetail.value, details: [] }
-    ElMessage.error('转账明细加载失败')
+    notifyError(err, '转账明细加载失败')
   }
 }
 const trDetailStatusText = (s) => ({ success: '已到账', processing: '处理中', failed: '失败' }[s] || s || '—')
@@ -1103,7 +1121,7 @@ const saveAccount = async () => {
     loadAccounts()
   } catch (err) {
     console.warn('[ProjectSalary] 保存账户失败:', err.message)
-    ElMessage.error('保存失败，请检查账户信息（商户号需唯一、老板需存在）')
+    notifyError(err, '保存失败，请检查账户信息（商户号需唯一、老板需存在）')
   }
 }
 
@@ -1125,7 +1143,7 @@ const confirmDeleteAccount = async () => {
     loadAccounts()
   } catch (err) {
     console.warn('[ProjectSalary] 删除账户失败:', err.message)
-    ElMessage.error('删除失败')
+    notifyError(err, '删除失败')
   }
 }
 

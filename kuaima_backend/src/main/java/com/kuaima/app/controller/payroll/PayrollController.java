@@ -7,6 +7,7 @@ import java.util.Optional;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -24,6 +25,7 @@ import com.kuaima.app.common.Result;
 import com.kuaima.app.domain.boss.repository.BossMerchantAccountRepository;
 import com.kuaima.app.domain.payroll.entity.PayrollDetail;
 import com.kuaima.app.domain.payroll.entity.PayrollOrder;
+import com.kuaima.app.domain.payroll.model.BossPayrollMembersRequest;
 import com.kuaima.app.domain.payroll.model.PayrollCreateRequest;
 import com.kuaima.app.domain.payroll.service.PayrollService;
 import com.kuaima.app.security.model.LoginUser;
@@ -56,7 +58,8 @@ public class PayrollController {
             @RequestParam(required = false) String keyword,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size) {
-        Page<PayrollOrder> result = payrollService.listOrders(tab, status, projectId, keyword, PageRequest.of(page, size));
+        Page<PayrollOrder> result = payrollService.listOrders(tab, status, projectId, keyword,
+                PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "id")));
         return Result.success(result.getContent(), page, result.getTotalElements());
     }
 
@@ -96,16 +99,16 @@ public class PayrollController {
     @PutMapping("/{id}/members")
     @Operation(summary = "草稿-添加/替换发薪人员", description = "body：{members:[{userId,name,phone,job,dailyWage?,attendDays?}]}")
     public Result<PayrollOrder> setMembers(@PathVariable Long id,
-                                           @RequestBody Map<String, List<PayrollDetail>> body) {
-        List<PayrollDetail> members = body == null ? List.of() : body.getOrDefault("members", List.of());
+                                           @RequestBody BossPayrollMembersRequest body) {
+        List<PayrollDetail> members = body == null || body.getMembers() == null ? List.of() : body.getMembers();
         return Result.success(payrollService.replaceMembers(id, members));
     }
 
     @PutMapping("/{id}/salary")
     @Operation(summary = "草稿-设置薪资", description = "body：{salaries:[{userId,phone,dailyWage(分),attendDays}]}")
     public Result<PayrollOrder> setSalary(@PathVariable Long id,
-                                          @RequestBody Map<String, List<PayrollDetail>> body) {
-        List<PayrollDetail> salaries = body == null ? List.of() : body.getOrDefault("salaries", List.of());
+                                          @RequestBody BossPayrollMembersRequest body) {
+        List<PayrollDetail> salaries = body == null || body.getSalaries() == null ? List.of() : body.getSalaries();
         return Result.success(payrollService.setSalaries(id, salaries));
     }
 

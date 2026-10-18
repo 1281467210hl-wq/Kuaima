@@ -36,6 +36,7 @@ SQL_SCRIPTS = [
     "db/boss_balance_schema.sql",
     "db/enterprise_schema.sql",
     "db/boss_payroll_employees_schema.sql",
+    "db/payroll_fix_actor_name.sql",
 ]
 
 

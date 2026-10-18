@@ -58,10 +58,11 @@ request.interceptors.response.use(
           ElMessage.error('登录已过期，请重新登录')
           router.push('/login')
         }
-        return Promise.reject(new Error(body.message || '未授权'))
+        return Promise.reject(Object.assign(new Error(body.message || '未授权'), { notified: true }))
       }
       ElMessage.error(body.message || '请求失败')
-      return Promise.reject(new Error(body.message || '请求失败'))
+      // notified：拦截器已弹过提示，页面 catch 不必再弹一次（避免出现「请求失败 (400)」+ 英文 axios 文案两条）
+      return Promise.reject(Object.assign(new Error(body.message || '请求失败'), { notified: true }))
     }
     // 非标准响应（例如代理层直接返回）
     return resp.data
@@ -82,11 +83,13 @@ request.interceptors.response.use(
       } else {
         ElMessage.error(`请求失败 (${status})`)
       }
+      err.notified = true
     } else if (err.message?.includes('Network Error')) {
       // 后端未启动时静默一些，不频繁弹窗
       console.warn('[API] 后端服务未启动: ' + err.config?.url)
     } else {
       ElMessage.error(err.message || '网络异常')
+      err.notified = true
     }
     return Promise.reject(err)
   }
