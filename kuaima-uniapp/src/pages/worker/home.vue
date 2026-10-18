@@ -166,6 +166,7 @@ import { request, USE_MOCK } from "@/api/http";
 import {
   applyPublicJob,
   getWorkerRealnameStatus,
+  isRealnameRequiredForApply,
   listPublicJobs,
   reverseGeocode,
 } from "@/api/backend";
@@ -602,14 +603,15 @@ function openDetail(job) {
 }
 
 async function applyJob(job) {
-  // 报名须完成人脸实名，与后端 /realname/status 口径一致
-  if (uni.getStorageSync("workerRealname") !== true) {
+  // 后台开启「实名认证要求」时，报名须完成人脸实名，与后端 /realname/status 口径一致
+  const realnameRequired = await isRealnameRequiredForApply();
+  if (realnameRequired && uni.getStorageSync("workerRealname") !== true) {
     try {
       const result = await getWorkerRealnameStatus();
       if (result?.realnameStatus === "APPROVED") uni.setStorageSync("workerRealname", true);
     } catch (_) {}
   }
-  if (uni.getStorageSync("workerRealname") !== true) {
+  if (realnameRequired && uni.getStorageSync("workerRealname") !== true) {
     uni.showToast({ title: "请先完成实名认证", icon: "none" });
     return uni.navigateTo({ url: "/pages/worker/realname" });
   }

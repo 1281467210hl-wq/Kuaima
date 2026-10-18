@@ -164,9 +164,14 @@ const formRef = ref(null)
 const loading = ref(false)
 const captchaCode = ref('')
 
+// 仅本地开发（npm run dev）可通过 .env.development.local 预填账号，打包产物中始终为空
+const devLogin = import.meta.env.DEV
+  ? { username: import.meta.env.VITE_DEV_LOGIN_USERNAME || '', password: import.meta.env.VITE_DEV_LOGIN_PASSWORD || '' }
+  : { username: '', password: '' }
+
 const form = reactive({
-  username: 'admin',
-  password: 'admin123',
+  username: devLogin.username,
+  password: devLogin.password,
   captcha: '',
   remember: true
 })

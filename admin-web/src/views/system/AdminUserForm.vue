@@ -182,7 +182,7 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { getAdminUser, createAdminUser, updateAdminUser, deleteAdminUser } from '@/api/system'
+import { getAdminUser, createAdminUser, updateAdminUser, deleteAdminUser, adminPasswordProblem } from '@/api/system'
 
 const router = useRouter()
 const route = useRoute()
@@ -499,7 +499,8 @@ const validate = () => {
   }
   if (!isEdit.value) {
     if (!form.password) return '请设置登录密码'
-    if (form.password.length < 8) return '密码至少8位'
+    const passwordProblem = adminPasswordProblem(form.password)
+    if (passwordProblem) return passwordProblem
     if (form.password !== form.password2) return '两次输入的密码不一致'
   }
   return ''

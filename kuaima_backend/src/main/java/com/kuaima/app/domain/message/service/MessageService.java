@@ -116,7 +116,7 @@ public class MessageService {
     @Transactional
     public void broadcastToUsers(String type, String title, String content, String bizType, Long bizId,
             Map<String, ?> variables) {
-        List<User> users = userRepository.findByRole(UserRole.USER);
+        List<User> users = userRepository.findWorkerIdentities();
         if (users.isEmpty()) {
             return;
         }

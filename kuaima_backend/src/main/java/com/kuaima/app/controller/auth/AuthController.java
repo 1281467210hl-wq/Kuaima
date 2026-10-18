@@ -226,7 +226,8 @@ public class AuthController {
             User newUser = new User();
             newUser.setUsername(phone);
             newUser.setPassword(passwordEncoder.encode(java.util.UUID.randomUUID().toString()));
-            newUser.setRole(role);
+            // role 是本次登录端；用户持久化身份始终从零工开始，企业认证通过后再额外获得老板资格。
+            newUser.setRole(UserRole.USER);
             newUser.setOpenid(info.openid());
             String rawNickname = info.nickname() != null ? info.nickname() : dto.getNickname();
             // 新用户尚未完成企业认证，业务身份统一按零工处理；登录端 role 只代表本次会话端。

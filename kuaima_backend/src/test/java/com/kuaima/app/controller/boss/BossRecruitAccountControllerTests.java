@@ -206,7 +206,9 @@ class BossRecruitAccountControllerTests {
         BossRecruitAccount target = account(5L, 7L, false);
         target.setTargetUserId(31L);
         when(userRepository.findByIdForUpdate(7L)).thenReturn(Optional.of(user(7L)));
-        when(userRepository.findById(31L)).thenReturn(Optional.of(user(31L)));
+        User targetUser = user(31L);
+        targetUser.setPhone("13800000031");
+        when(userRepository.findById(31L)).thenReturn(Optional.of(targetUser));
         when(repository.findById(5L)).thenReturn(Optional.of(target));
         when(repository.findByOwnerUserIdOrderByIdAsc(7L)).thenReturn(List.of(original, target));
         when(jwtUtil.generateAccessToken("boss-31", UserRole.BOSS, 31L, 7L)).thenReturn("new-token");
@@ -223,7 +225,30 @@ class BossRecruitAccountControllerTests {
         assertEquals("账号切换成功", result.getMessage());
         verify(jwtUtil).generateAccessToken("boss-31", UserRole.BOSS, 31L, 7L);
         verify(logService).record(eq("boss"), eq(31L), eq("快速切换招聘账号"),
-                eq("账号=5，目标用户=31"), eq("192.0.2.1"), eq("成功"), any());
+                eq("手机号=138****0031"), eq("192.0.2.1"), eq("成功"), any());
+    }
+
+    @Test
+    void switchingAccount_shouldAuditTargetPhoneInsteadOfAccountId() {
+        BossRecruitAccountRepository repository = mock(BossRecruitAccountRepository.class);
+        UserRepository userRepository = mock(UserRepository.class);
+        AdminLogService logService = mock(AdminLogService.class);
+        BossRecruitAccountController controller = new BossRecruitAccountController(repository,
+                userRepository, mock(BossRecruitAccountService.class), logService, mock(JwtUtil.class));
+        BossRecruitAccount first = account(1L, 7L, true);
+        BossRecruitAccount second = account(2L, 7L, false);
+        second.setTargetUserId(32L);
+        User targetUser = user(32L);
+        targetUser.setPhone("13900000032");
+        when(repository.findByIdAndOwnerUserId(2L, 7L)).thenReturn(Optional.of(second));
+        when(repository.findById(2L)).thenReturn(Optional.of(second));
+        when(repository.findByOwnerUserIdOrderByIdAsc(7L)).thenReturn(List.of(first, second));
+        when(userRepository.findById(32L)).thenReturn(Optional.of(targetUser));
+
+        controller.current(new SwitchAccountRequest(2L), bossAuthentication(7L), new MockHttpServletRequest());
+
+        verify(logService).record(eq("boss"), eq(7L), eq("切换招聘账号"),
+                eq("手机号=139****0032"), any(), eq("成功"), any());
     }
 
     @Test

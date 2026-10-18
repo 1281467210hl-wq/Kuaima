@@ -27,12 +27,14 @@ public final class UserRole {
                 || ("ENTERPRISE".equalsIgnoreCase(user.getCertType()) && "已通过".equals(user.getCertStatus())));
     }
 
-    /** 业务身份判断：完成企业认证才是老板，否则统一视为零工；与当前登录角色无关。 */
+    /** 业务身份判断：完成企业认证后额外具备老板身份；与当前登录角色无关。 */
     public static boolean isBossIdentity(User user) {
         return hasApprovedEnterprise(user);
     }
 
     public static boolean isWorkerIdentity(User user) {
-        return user != null && !isBossIdentity(user);
+        // 零工是平台用户的基础身份。企业认证不会移除零工资格，
+        // 因此不能再用 !isBossIdentity，否则老板+零工用户会从零工业务中消失。
+        return user != null && (USER.equals(user.getRole()) || isBossIdentity(user));
     }
 }

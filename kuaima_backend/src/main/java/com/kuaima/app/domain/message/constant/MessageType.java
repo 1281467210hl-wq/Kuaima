@@ -38,6 +38,9 @@ public final class MessageType {
     /** 工资结算到账 -> 收款零工 USER */
     public static final String SETTLE_PAID = "SETTLE_PAID";
 
+    /** 后台提醒老板支付待结算工资 -> 订单发布老板 BOSS */
+    public static final String SETTLE_REMIND = "SETTLE_REMIND";
+
     /** 提现打款失败已退回 -> 提现零工 USER */
     public static final String WITHDRAW_FAIL = "WITHDRAW_FAIL";
 

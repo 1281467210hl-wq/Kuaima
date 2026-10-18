@@ -112,8 +112,8 @@ public class BossHomeService {
                 scheduleDay(owners, today.plusDays(1), "明天"),
                 scheduleDay(owners, today.plusDays(2), "后天"));
         long nearbyWorkers = StringUtils.hasText(resolvedCity)
-                ? userRepository.countByRoleAndCity(UserRole.USER, resolvedCity)
-                : userRepository.countByRole(UserRole.USER);
+                ? userRepository.countWorkerIdentitiesByCity(resolvedCity)
+                : userRepository.countWorkerIdentities();
         // 当前数据模型没有报名响应分钟字段，不能伪造“最快接单时间”，暂无可靠数据时返回 0。
         return new Overview(resolvedCity, nearbyWorkers, 0, account.getId(), toAccount(account, bossId), days);
     }

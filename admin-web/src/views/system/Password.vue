@@ -16,8 +16,8 @@
           <div class="password-tips-content">
             <div class="password-tips-title">密码安全建议</div>
             <div class="password-tips-list">
-              · 密码长度建议 8-20 位<br />
-              · 需包含大写字母、小写字母和数字<br />
+              · 密码长度 8-50 位，须同时包含字母和数字<br />
+              · 建议混合大小写字母和符号，安全性更高<br />
               · 避免使用生日、手机号等个人信息<br />
               · 不要与其他网站使用相同密码
             </div>
@@ -88,30 +88,6 @@
             </div>
           </el-form-item>
 
-          <el-form-item label="手机验证码" prop="smsCode">
-            <div class="sms-row">
-              <div class="password-input-wrap" style="flex:1;">
-                <i class="fas fa-mobile-alt input-icon"></i>
-                <input
-                  type="text"
-                  v-model="form.smsCode"
-                  class="password-input"
-                  placeholder="请输入手机验证码"
-                  maxlength="6"
-                />
-              </div>
-              <button
-                type="button"
-                class="sms-btn"
-                :disabled="smsCounting > 0"
-                @click="sendSms"
-              >
-                <i :class="smsCounting > 0 ? 'fas fa-clock' : 'fas fa-paper-plane'"></i>
-                {{ smsBtnText }}
-              </button>
-            </div>
-          </el-form-item>
-
           <div class="password-actions">
             <el-button type="primary" :loading="submitting" @click="submitChange">
               <i class="fas fa-check" style="margin-right:4px;"></i> 确认修改
@@ -149,12 +125,11 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted, onBeforeUnmount } from 'vue'
+import { ref, reactive, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
-import { listLogs } from '@/api/system'
-import request from '@/api/request'
+import { adminPasswordProblem, changeOwnPassword, listLogs } from '@/api/system'
 
 const router = useRouter()
 const userStore = useUserStore()
@@ -169,8 +144,7 @@ const showConfirm = ref(false)
 const form = reactive({
   oldPassword: '',
   newPassword: '',
-  confirmPassword: '',
-  smsCode: ''
+  confirmPassword: ''
 })
 
 const matchVisible = ref(false)
@@ -179,12 +153,6 @@ const strengthClass = ref('')
 const strengthLabel = ref('请输入密码')
 
 const loginHistory = ref([])
-
-// 短信倒计时
-const smsCounting = ref(0)
-let smsTimer = null
-
-const smsBtnText = computed(() => (smsCounting.value > 0 ? `${smsCounting.value}s 后重发` : '获取验证码'))
 
 const validateConfirm = (rule, value, callback) => {
   if (!value) {
@@ -202,13 +170,18 @@ const rules = {
   oldPassword: [{ required: true, message: '请输入当前密码', trigger: 'blur' }],
   newPassword: [
     { required: true, message: '请输入新密码', trigger: 'blur' },
-    { min: 8, max: 20, message: '密码长度需 8-20 位', trigger: 'blur' }
+    {
+      validator: (rule, value, callback) => {
+        const problem = adminPasswordProblem(value)
+        problem ? callback(new Error(problem)) : callback()
+      },
+      trigger: 'blur'
+    }
   ],
   confirmPassword: [
     { required: true, message: '请确认新密码', trigger: 'blur' },
     { validator: validateConfirm, trigger: 'blur' }
-  ],
-  smsCode: [{ required: true, message: '请输入手机验证码', trigger: 'blur' }]
+  ]
 }
 
 const calcStrength = (pwd) => {
@@ -249,19 +222,6 @@ const formatTime = (t) => {
   return String(t).replace('T', ' ').substring(0, 16)
 }
 
-const sendSms = () => {
-  if (smsCounting.value > 0) return
-  ElMessage.success('验证码已发送，请查收短信')
-  smsCounting.value = 60
-  smsTimer = setInterval(() => {
-    smsCounting.value -= 1
-    if (smsCounting.value <= 0) {
-      clearInterval(smsTimer)
-      smsTimer = null
-    }
-  }, 1000)
-}
-
 const loadLoginHistory = async () => {
   try {
     const res = await listLogs({ page: 0, size: 50 })
@@ -284,17 +244,10 @@ const submitChange = async () => {
     return
   }
 
-  const adminId = Number(userStore.userInfo.adminId)
-  if (!adminId) {
-    ElMessage.error('未获取到管理员ID，无法修改密码')
-    return
-  }
-
   submitting.value = true
   try {
-    await request.put(`/admin/admin-users/${adminId}/reset-password`, {
-      newPassword: form.newPassword
-    })
+    // 后端校验原密码；原来调用 reset-password 不校验原密码，且普通管理员无权重置自己
+    await changeOwnPassword(form.oldPassword, form.newPassword)
     ElMessage.success('密码修改成功！下次登录请使用新密码')
     resetForm()
     // 2 秒后跳转登录
@@ -303,7 +256,8 @@ const submitChange = async () => {
       router.push('/login')
     }, 2000)
   } catch (e) {
-    ElMessage.error('密码修改失败：' + (e?.message || '请稍后重试'))
+    // 错误原因（如原密码不正确）由 request 拦截器统一提示
+    console.warn('[Password] 修改密码失败:', e)
   } finally {
     submitting.value = false
   }
@@ -313,7 +267,6 @@ const resetForm = () => {
   form.oldPassword = ''
   form.newPassword = ''
   form.confirmPassword = ''
-  form.smsCode = ''
   matchVisible.value = false
   strengthClass.value = ''
   strengthLabel.value = '请输入密码'
@@ -324,12 +277,6 @@ onMounted(() => {
   loadLoginHistory()
 })
 
-onBeforeUnmount(() => {
-  if (smsTimer) {
-    clearInterval(smsTimer)
-    smsTimer = null
-  }
-})
 </script>
 
 <style scoped>
@@ -440,39 +387,6 @@ onBeforeUnmount(() => {
   border: none;
   padding: 4px;
   z-index: 1;
-}
-
-.sms-row {
-  display: flex;
-  gap: 12px;
-  width: 100%;
-}
-
-.sms-btn {
-  width: 130px;
-  flex-shrink: 0;
-  height: 48px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: #fff;
-  color: var(--text-primary);
-  font-size: 13px;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  transition: all 0.2s;
-}
-
-.sms-btn:hover:not(:disabled) {
-  border-color: var(--primary);
-  color: var(--primary);
-}
-
-.sms-btn:disabled {
-  opacity: 0.7;
-  cursor: not-allowed;
 }
 
 .password-strength {

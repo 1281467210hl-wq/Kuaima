@@ -89,7 +89,7 @@
           <div class="settings-section-title" style="margin-top:28px;">
             <i class="fas fa-university"></i> 平台服务费收取账号
           </div>
-          <div class="account-desc">服务费将从订单结算金额中扣除，收取至以下指定账户</div>
+          <div class="account-desc">老板结算时在零工工资之外支付的平台服务费，收取至以下指定账户</div>
 
           <div class="account-tabs">
             <div
@@ -273,7 +273,10 @@
 
           <div class="settings-section-title">
             <i class="fas fa-users-cog"></i> 账号列表
-            <button class="btn btn-primary btn-sm" style="margin-left:auto;" @click="goAddAdmin">
+            <button class="btn btn-outline btn-sm" style="margin-left:auto;" @click="router.push('/admin/password')">
+              <i class="fas fa-key"></i> 修改我的密码
+            </button>
+            <button class="btn btn-primary btn-sm" style="margin-left:8px;" @click="goAddAdmin">
               新建账号
             </button>
           </div>
@@ -372,15 +375,8 @@
           <div class="settings-form-grid">
             <div class="toggle-row full-width">
               <div class="toggle-label">
-                <span class="toggle-label-title">日结模式</span>
-                <span class="toggle-label-desc">订单完成后当日结算至零工账户</span>
-              </div>
-              <el-switch v-model="rulesForm.dailySettle" />
-            </div>
-            <div class="toggle-row full-width">
-              <div class="toggle-label">
                 <span class="toggle-label-title">平台服务费</span>
-                <span class="toggle-label-desc">从每笔订单中扣除一定比例作为平台服务费</span>
+                <span class="toggle-label-desc">按零工工资的一定比例，向老板加收平台服务费；零工工资全额到账</span>
               </div>
               <el-switch v-model="rulesForm.platformFeeEnabled" />
             </div>
@@ -388,17 +384,13 @@
               <label class="form-label">服务费比例（%）</label>
               <el-input-number v-model="rulesForm.feeRate" :min="0" :max="100" :step="0.5" controls-position="right" style="width:100%;" />
             </div>
-            <div class="form-group">
-              <label class="form-label">最低结算金额（元）</label>
-              <el-input-number v-model="rulesForm.minSettleAmount" :min="0" :step="10" controls-position="right" style="width:100%;" />
-            </div>
             <div class="form-group full-width">
               <label class="form-label">结算规则公式</label>
               <div class="rule-formula">
-                <span class="comment">// 结算金额计算公式</span><br>
-                <span class="highlight">结算金额</span> = <span class="highlight">订单金额</span> × (1 - <span class="highlight">服务费率</span>)<br>
-                <span class="comment">// 示例：订单280元，服务费率5%</span><br>
-                <span class="highlight">结算金额</span> = 280 × (1 - 0.05) = 266 元
+                <span class="comment">// 老板支付金额计算公式（零工工资全额到账）</span><br>
+                <span class="highlight">老板支付</span> = <span class="highlight">零工工资</span> × (1 + <span class="highlight">服务费率</span>)<br>
+                <span class="comment">// 示例：零工工资280元，服务费率{{ formulaExample.rateText }}%</span><br>
+                <span class="highlight">老板支付</span> = 280 + {{ formulaExample.fee }} = {{ formulaExample.total }} 元，零工到账 280 元
               </div>
             </div>
           </div>
@@ -521,10 +513,10 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, watch } from 'vue'
+import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { getSettingsByCategory, saveSetting, getBankAccount, saveBankAccount, getWalletAccount, saveWalletAccount, uploadFile, resetAdminPassword, updateAdminUser } from '@/api/system'
+import { getSettingsByCategory, saveSetting, getBankAccount, saveBankAccount, getWalletAccount, saveWalletAccount, uploadFile, resetAdminPassword, adminPasswordProblem, updateAdminUser } from '@/api/system'
 import request from '@/api/request'
 
 const router = useRouter()
@@ -732,10 +724,15 @@ const rulesForm = reactive({
   realNameRequired: true,
   minDailyWage: 150,
   maxJobValidity: 30,
-  dailySettle: true,
   platformFeeEnabled: true,
-  feeRate: 5,
-  minSettleAmount: 50
+  feeRate: 5
+})
+
+// 与后端 SettlementService 一致：服务费 = 工资 × 费率，四舍五入到分，由老板额外支付
+const formulaExample = computed(() => {
+  const rate = rulesForm.platformFeeEnabled ? Math.max(0, Number(rulesForm.feeRate) || 0) : 0
+  const fee = Math.round(280 * rate) / 100
+  return { rateText: rate, fee: fee.toFixed(2), total: (280 + fee).toFixed(2) }
 })
 
 const adminUsers = ref([])
@@ -851,10 +848,8 @@ const applyRulesSettings = (list) => {
   if ('rules.realNameRequired' in map) rulesForm.realNameRequired = map['rules.realNameRequired'] === 'true' || map['rules.realNameRequired'] === true
   if ('rules.minDailyWage' in map) rulesForm.minDailyWage = Number(map['rules.minDailyWage']) || rulesForm.minDailyWage
   if ('rules.maxJobValidity' in map) rulesForm.maxJobValidity = Number(map['rules.maxJobValidity']) || rulesForm.maxJobValidity
-  if ('rules.dailySettle' in map) rulesForm.dailySettle = map['rules.dailySettle'] === 'true' || map['rules.dailySettle'] === true
   if ('rules.platformFeeEnabled' in map) rulesForm.platformFeeEnabled = map['rules.platformFeeEnabled'] === 'true' || map['rules.platformFeeEnabled'] === true
   if ('rules.feeRate' in map) rulesForm.feeRate = Number(map['rules.feeRate']) || rulesForm.feeRate
-  if ('rules.minSettleAmount' in map) rulesForm.minSettleAmount = Number(map['rules.minSettleAmount']) || rulesForm.minSettleAmount
 }
 
 const loadPlatformSettings = async () => {
@@ -869,21 +864,16 @@ const loadPlatformSettings = async () => {
 }
 
 const loadRulesSettings = async () => {
-  try {
-    const res = await getSettingsByCategory('security')
-    const d = res?.data
-    const list = Array.isArray(d) ? d : (d?.content || d?.list || [])
-    if (Array.isArray(list)) applyRulesSettings(list)
-  } catch (e) {
-    console.warn('[Settings] 加载规则设置失败:', e)
-  }
-  try {
-    const res = await getSettingsByCategory('points')
-    const d = res?.data
-    const list = Array.isArray(d) ? d : (d?.content || d?.list || [])
-    if (Array.isArray(list)) applyRulesSettings(list)
-  } catch (e) {
-    console.warn('[Settings] 加载积分设置失败:', e)
+  // security/points 为历史分类；saveRules 写入的是 rules.*，放在最后读取，以最新保存的值为准
+  for (const [category, label] of [['security', '规则'], ['points', '积分'], ['rules', '规则']]) {
+    try {
+      const res = await getSettingsByCategory(category)
+      const d = res?.data
+      const list = Array.isArray(d) ? d : (d?.content || d?.list || [])
+      if (Array.isArray(list)) applyRulesSettings(list)
+    } catch (e) {
+      console.warn(`[Settings] 加载${label}设置失败:`, e)
+    }
   }
 }
 
@@ -930,10 +920,8 @@ const saveRules = async () => {
     await saveSetting('rules.realNameRequired', String(rulesForm.realNameRequired), '实名认证要求')
     await saveSetting('rules.minDailyWage', String(rulesForm.minDailyWage), '最低日薪标准')
     await saveSetting('rules.maxJobValidity', String(rulesForm.maxJobValidity), '最长招工有效期')
-    await saveSetting('rules.dailySettle', String(rulesForm.dailySettle), '日结模式')
     await saveSetting('rules.platformFeeEnabled', String(rulesForm.platformFeeEnabled), '平台服务费')
     await saveSetting('rules.feeRate', String(rulesForm.feeRate), '服务费比例')
-    await saveSetting('rules.minSettleAmount', String(rulesForm.minSettleAmount), '最低结算金额')
     ElMessage.success('规则配置保存成功')
   } catch (e) {
     console.warn('[Settings] 保存规则失败:', e)
@@ -946,10 +934,8 @@ const resetRules = () => {
   rulesForm.realNameRequired = true
   rulesForm.minDailyWage = 150
   rulesForm.maxJobValidity = 30
-  rulesForm.dailySettle = true
   rulesForm.platformFeeEnabled = true
   rulesForm.feeRate = 5
-  rulesForm.minSettleAmount = 50
   ElMessage.info('已恢复为默认设置')
 }
 
@@ -962,20 +948,28 @@ const goEditAdmin = (row) => {
   router.push(`/admin/admin-user/form?mode=edit&id=${row.id}`)
 }
 
-/** 重置密码：默认重置为 123456（仅限自己创建的账号） */
+/** 重置密码：由操作人输入新密码（超级管理员可重置所有账号，普通管理员仅限自己创建的账号） */
 const handleResetPassword = async (row) => {
+  let newPassword
   try {
-    await ElMessageBox.confirm(
-      `确定要将账号「${row.name || row.username}」的密码重置为 123456 吗？`,
+    const { value } = await ElMessageBox.prompt(
+      `请为账号「${row.name || row.username}」设置新密码，重置后请告知对方尽快自行修改。`,
       '重置密码',
-      { type: 'warning', confirmButtonText: '重置', cancelButtonText: '取消' }
+      {
+        confirmButtonText: '重置',
+        cancelButtonText: '取消',
+        inputType: 'password',
+        inputPlaceholder: '8-50 位，同时包含字母和数字',
+        inputValidator: value => adminPasswordProblem(value) || true
+      }
     )
+    newPassword = value
   } catch {
     return
   }
   try {
-    await resetAdminPassword(row.id, '123456')
-    ElMessage.success('密码已重置为 123456')
+    await resetAdminPassword(row.id, newPassword)
+    ElMessage.success('密码已重置')
   } catch (e) {
     console.warn('[Settings] 重置密码失败:', e)
   }

@@ -52,6 +52,8 @@ public class SecurityConfig {
                 .requestMatchers("/service/faqs").permitAll()
                 .requestMatchers("/uploads/**").permitAll()
                 .requestMatchers("/public/**").permitAll()
+                // 零工首页定位后的逆地理编码是只读位置服务，不应因登录态失效阻断地址展示。
+                .requestMatchers(org.springframework.http.HttpMethod.GET, "/location/reverse-geocode").permitAll()
                 // 支付回调：微信/支付宝异步通知，无 JWT
                 .requestMatchers(org.springframework.http.HttpMethod.POST, "/boss/balance/recharge/callback").permitAll()
                 // 放行 Swagger / OpenAPI 文档相关路径

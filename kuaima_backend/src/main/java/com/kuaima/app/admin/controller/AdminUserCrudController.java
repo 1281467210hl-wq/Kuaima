@@ -51,6 +51,14 @@ public class AdminUserCrudController {
         return null;
     }
 
+    /** 管理员密码规则（新建 / 编辑 / 重置 / 修改共用）：8-50 位，同时包含字母和数字；不符合时返回提示文案。 */
+    static String passwordProblem(String password) {
+        if (password == null || password.length() < 8) return "密码至少8位";
+        if (password.length() > 50) return "密码不能超过50位";
+        if (!password.matches(".*[A-Za-z].*") || !password.matches(".*\\d.*")) return "密码必须同时包含字母和数字";
+        return null;
+    }
+
     /** 当前登录账号是否为超级管理员 */
     private boolean currentIsSuperAdmin() {
         Long currentId = currentAdminId();
@@ -93,6 +101,8 @@ public class AdminUserCrudController {
         if (repo.existsByUsername(admin.getUsername())) {
             return Result.error(400, "账号已存在");
         }
+        String problem = passwordProblem(admin.getPassword());
+        if (problem != null) return Result.error(400, problem);
         admin.setPassword(passwordEncoder.encode(admin.getPassword()));
         admin.setCreatedBy(currentAdminId());
         admin.setCreateTime(LocalDateTime.now());
@@ -148,6 +158,8 @@ public class AdminUserCrudController {
         if (patch.getAllowLogin() != null && canOperate) existing.setAllowLogin(patch.getAllowLogin());
         if (patch.getReceiveNotifications() != null && canOperate) existing.setReceiveNotifications(patch.getReceiveNotifications());
         if (patch.getPassword() != null && !patch.getPassword().isBlank() && canOperate) {
+            String problem = passwordProblem(patch.getPassword());
+            if (problem != null) return Result.error(400, problem);
             existing.setPassword(passwordEncoder.encode(patch.getPassword()));
         }
         existing.setUpdateTime(LocalDateTime.now());
@@ -155,7 +167,7 @@ public class AdminUserCrudController {
     }
 
     /** 重置密码 */
-    @Operation(summary = "重置密码", description = "重置管理员密码；超级管理员可重置所有账号，普通管理员只能重置自己创建的账号")
+    @Operation(summary = "重置密码", description = "由操作人指定新密码（newPassword 必填，8-50 位且含字母和数字）；超级管理员可重置所有账号，普通管理员只能重置自己创建的账号")
     @PutMapping("/{id}/reset-password")
     public Result<AdminUser> resetPassword(@PathVariable Long id, @RequestBody java.util.Map<String, String> body) {
         AdminUser existing = repo.findById(id).orElseThrow();
@@ -165,10 +177,35 @@ public class AdminUserCrudController {
         if (!canOperate) {
             return Result.error(403, "只能重置自己创建的账号的密码");
         }
-        String pwd = body.getOrDefault("newPassword", "123456");
+        // 不再默认重置为 123456：弱口令且所有被重置账号相同
+        String pwd = body == null ? null : body.get("newPassword");
+        String problem = passwordProblem(pwd);
+        if (problem != null) return Result.error(400, problem);
         existing.setPassword(passwordEncoder.encode(pwd));
         existing.setUpdateTime(LocalDateTime.now());
         return Result.success(repo.save(existing));
+    }
+
+    /** 当前登录管理员修改自己的密码 */
+    @Operation(summary = "修改本人密码", description = "body：{oldPassword, newPassword}；校验旧密码，新密码 8-50 位且含字母和数字，且不能与旧密码相同")
+    @PutMapping("/me/password")
+    public Result<Void> changeOwnPassword(@RequestBody java.util.Map<String, String> body) {
+        Long currentId = currentAdminId();
+        if (currentId == null) return Result.error(401, "请先登录");
+        AdminUser me = repo.findById(currentId).orElse(null);
+        if (me == null) return Result.error(404, "管理员不存在");
+        String oldPassword = body == null ? null : body.get("oldPassword");
+        String newPassword = body == null ? null : body.get("newPassword");
+        if (oldPassword == null || !passwordEncoder.matches(oldPassword, me.getPassword())) {
+            return Result.error(400, "原密码不正确");
+        }
+        String problem = passwordProblem(newPassword);
+        if (problem != null) return Result.error(400, problem);
+        if (newPassword.equals(oldPassword)) return Result.error(400, "新密码不能与原密码相同");
+        me.setPassword(passwordEncoder.encode(newPassword));
+        me.setUpdateTime(LocalDateTime.now());
+        repo.save(me);
+        return Result.success();
     }
 
     @Operation(summary = "删除管理员", description = "删除管理员账号；超级管理员账号不可删除；超级管理员可删除所有账号，普通管理员只能删除自己创建的账号")

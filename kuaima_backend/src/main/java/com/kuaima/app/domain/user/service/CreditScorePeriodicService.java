@@ -37,7 +37,7 @@ public class CreditScorePeriodicService {
     public void processWorkerMonthlyCompletion(YearMonth month) {
         LocalDateTime start = month.atDay(1).atStartOfDay();
         LocalDateTime end = month.plusMonths(1).atDay(1).atStartOfDay();
-        for (User user : users.findByRole("USER")) {
+        for (User user : users.findWorkerIdentities()) {
             if (user.getId() == null) continue;
             List<BaseOrderItem> records = items.findByUserId(user.getId());
             int total = 0, completed = 0;

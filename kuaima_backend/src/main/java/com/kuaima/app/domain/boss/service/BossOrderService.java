@@ -64,6 +64,7 @@ public class BossOrderService {
     private final BossCouponService bossCouponService;
     private CreditScoreService creditScoreService;
     private final AdminSettingRepository adminSettingRepository;
+    private final RecruitRuleSettings recruitRules;
     private final BossAddressRepository bossAddressRepository;
 
     public BossOrderService(BossOrderRespository orderRepository,
@@ -111,6 +112,7 @@ public class BossOrderService {
         this.recruitSettingsRepository = recruitSettingsRepository;
         this.bossCouponService = bossCouponService;
         this.adminSettingRepository = adminSettingRepository;
+        this.recruitRules = new RecruitRuleSettings(adminSettingRepository);
         this.bossAddressRepository = bossAddressRepository;
     }
 
@@ -159,6 +161,7 @@ public class BossOrderService {
         }
         validateOrderCoordinatesRequired(order.getLongitude(), order.getLatitude());
         checkTimeRange(order.getStartTime(), order.getEndTime());
+        validateRecruitRules(order);
         normalizeRestSettings(order);
         applyRecruitSettings(order, order);
         // 试工时间仅月结类型有效
@@ -166,9 +169,12 @@ public class BossOrderService {
             order.setTrialDuration(null);
         }
         assignBusinessOrderNo(order);
-        order.setOrderStatus(BossStatus.ORDER_PENDING_AUDIT);
+        // 后台关闭「招工审核」时，发布即上架，等同于审核通过
+        boolean auditRequired = recruitRules.jobAuditEnabled();
+        order.setOrderStatus(auditRequired ? BossStatus.ORDER_PENDING_AUDIT : BossStatus.ORDER_RECRUITING);
         BossOrder saved = orderRepository.save(order);
         if (bossCouponService != null) bossCouponService.redeem(saved.getCreateBy(), order.getUserCouponId(), saved);
+        if (!auditRequired) broadcastPublished(saved);
         return saved;
     }
 
@@ -213,11 +219,41 @@ public class BossOrderService {
         }
         order.setOrderStatus(BossStatus.ORDER_RECRUITING);
         BossOrder saved = orderRepository.save(order);
-        // 审核通过后，广播给全部员工
+        broadcastPublished(saved);
+        return saved;
+    }
+
+    /** 岗位上架（审核通过或免审核发布）后，广播给全部员工。 */
+    private void broadcastPublished(BossOrder saved) {
         messageService.broadcastToUsers(MessageType.ORDER_PUBLISH, "新岗位发布",
                 jobSummary(saved) + "，快来报名吧！", BizType.ORDER, saved.getId(),
                 java.util.Map.of("orderTitle", String.valueOf(saved.getOrderTitle()), "position", String.valueOf(saved.getPostion()), "salary", String.valueOf(saved.getSalary())));
-        return saved;
+    }
+
+    /** 后台「招工规则」：折算日薪不低于最低日薪；开工日到最后工作日（含首尾）不超过最长有效期。 */
+    private void validateRecruitRules(BossOrder order) {
+        recruitRules.minDailyWage().ifPresent(min -> {
+            if (order.getSalary() != null && order.getSalary().compareTo(min) < 0) {
+                throw new IllegalArgumentException("日薪不能低于平台最低标准 " + min.stripTrailingZeros().toPlainString() + " 元");
+            }
+        });
+        recruitRules.maxJobValidityDays().ifPresent(maxDays -> {
+            long days = workDays(order.getStartTime(), order.getEndTime());
+            if (days > maxDays) {
+                throw new IllegalArgumentException("招工有效期不能超过 " + maxDays + " 天");
+            }
+        });
+    }
+
+    /** 跨夜班收工时间落在次日，不额外计入一个工作日。 */
+    private long workDays(java.util.Date start, java.util.Date end) {
+        if (start == null || end == null) return 0;
+        java.time.ZoneId zone = java.time.ZoneId.of("Asia/Shanghai");
+        java.time.LocalDateTime from = start.toInstant().atZone(zone).toLocalDateTime();
+        java.time.LocalDateTime to = end.toInstant().atZone(zone).toLocalDateTime();
+        LocalDate lastDay = to.toLocalTime().isAfter(from.toLocalTime()) ? to.toLocalDate() : to.toLocalDate().minusDays(1);
+        if (lastDay.isBefore(from.toLocalDate())) lastDay = from.toLocalDate();
+        return java.time.temporal.ChronoUnit.DAYS.between(from.toLocalDate(), lastDay) + 1;
     }
 
     /** admin 审核拒绝 */
@@ -327,6 +363,7 @@ public class BossOrderService {
             validateOrderCoordinates(order.getLongitude(), order.getLatitude());
         }
         checkTimeRange(order.getStartTime(), order.getEndTime());
+        validateRecruitRules(order);
         BossOrder saved = orderRepository.save(order);
         if (update.getOrderNum() != null) {
             reconcileOrderAfterHeadcountChange(saved);
@@ -532,7 +569,7 @@ public class BossOrderService {
         }
         User applicant = userRepository.findById(userId)
                 .orElseThrow(() -> new EntityNotFoundException("用户不存在: " + userId));
-        if (!CertificationStatus.isFaceVerified(applicant)) {
+        if (recruitRules.realnameRequired() && !CertificationStatus.isFaceVerified(applicant)) {
             throw new ForbiddenBusinessException("请先完成实名认证");
         }
         if (itemRepository.existsByOrderIdAndUserId(orderId, userId)) {
@@ -854,8 +891,8 @@ public class BossOrderService {
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         String city = userRepository.findById(userId).map(User::getCity).filter(StringUtils::hasText).orElse("");
         long nearbyWorkers = StringUtils.hasText(city)
-                ? userRepository.countByRoleAndCity(UserRole.USER, city)
-                : userRepository.countByRole(UserRole.USER);
+                ? userRepository.countWorkerIdentitiesByCity(city)
+                : userRepository.countWorkerIdentities();
         return new com.kuaima.app.domain.boss.model.BossHomeModels.BossStats(
                 totalOrders, recruitingCount, applicantCount, totalSpent,
                 nearbyWorkers, 0, city);

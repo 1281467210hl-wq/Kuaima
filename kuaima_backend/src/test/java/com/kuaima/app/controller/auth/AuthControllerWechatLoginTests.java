@@ -183,7 +183,7 @@ class AuthControllerWechatLoginTests {
         when(userRepository.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
         WechatLoginDto dto = dto("phone-code"); dto.setRole(UserRole.BOSS);
         controller.wechatLogin(dto);
-        verify(userRepository).save(argThat(u -> "零工03".equals(u.getNickname())));
+        verify(userRepository).save(argThat(u -> "零工03".equals(u.getNickname()) && UserRole.USER.equals(u.getRole())));
     }
 
     @Test
