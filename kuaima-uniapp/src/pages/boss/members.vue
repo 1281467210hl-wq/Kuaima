@@ -21,8 +21,8 @@
         <input type="text" v-model="keyword" placeholder="搜索成员" @confirm="loadMembers" />
       </view>
 
-      <!-- 功能列表 -->
-      <view class="wb-card">
+      <!-- 功能列表（从工作台「员工列表」进入时 src=staff，隐藏功能卡，与原型一致） -->
+      <view class="wb-card" v-if="src !== 'staff'">
         <view class="wb-row" @click="navigateTo('member-apply-list')">
           <view class="wb-row-icon" style="background: linear-gradient(135deg, #FFB84D, #F09A3E)"><image class="row-svg" src="/static/icons/boss-members/file-signature-white.svg" mode="aspectFit" /></view>
           <view class="wb-row-main"><text class="wb-row-title">申请列表</text></view>
@@ -69,12 +69,14 @@ export default {
     return {
       statusBarHeight: 44,
       keyword: "",
+      src: "",
       members: [],
       loading: false,
       nameCache: {},
     };
   },
-  onLoad() {
+  onLoad(options) {
+    this.src = (options && options.src) || "";
     try {
       const info = uni.getSystemInfoSync();
       this.statusBarHeight = info.statusBarHeight || 44;
@@ -105,7 +107,8 @@ export default {
       return m.title ? `${roleText} · ${m.title}` : roleText;
     },
     goDetail(m) {
-      uni.navigateTo({ url: `/pages/boss/member-detail?id=${m.id}&name=${encodeURIComponent(this.memberName(m))}` });
+      const suffix = this.src === "staff" ? "&src=staff" : "";
+      uni.navigateTo({ url: `/pages/boss/member-detail?id=${m.id}&name=${encodeURIComponent(this.memberName(m))}${suffix}` });
     },
     navigateTo(page) {
       uni.navigateTo({ url: `/pages/boss/${page}` });

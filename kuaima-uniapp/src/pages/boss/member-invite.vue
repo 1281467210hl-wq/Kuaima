@@ -92,11 +92,12 @@
           <image class="wb-modal-close-ico" src="/static/icons/boss-points/xmark-gray.svg" mode="aspectFit" @click="closeQr" />
         </view>
         <view class="qr-box">
-          <view class="qr-img">
+          <view class="qr-img" @click="goCreateEmployee">
             <image v-if="qrImageUrl" class="qr-image" :src="qrImageUrl" mode="aspectFit" />
           </view>
           <text class="qr-code-text">邀请码 {{ qrInfo.inviteCode || '—' }}</text>
           <text class="qr-tip">请使用微信「扫一扫」识别二维码\n扫码后填写信息提交入企申请</text>
+          <text class="qr-create-link" @click="goCreateEmployee">没有微信？点此创建员工 ›</text>
         </view>
         <view class="wb-modal-footer">
           <view class="wb-btn-outline wb-btn-row" @click="saveQr">
@@ -186,6 +187,11 @@ export default {
     },
     closeQr() {
       this.qrModalShow = false;
+    },
+    /** 进入「创建员工」：与原型一致，从邀请二维码处可直接新建员工 */
+    goCreateEmployee() {
+      this.closeQr();
+      uni.navigateTo({ url: "/pages/boss/member-edit" });
     },
     saveQr() {
       if (!this.qrImageUrl) return;
@@ -648,6 +654,14 @@ export default {
   line-height: 18px;
   display: block;
   white-space: pre-line;
+}
+
+.qr-create-link {
+  display: block;
+  margin-top: 14px;
+  font-size: 12.5px;
+  color: #FF6B35;
+  font-weight: 500;
 }
 
 .wb-modal-footer {

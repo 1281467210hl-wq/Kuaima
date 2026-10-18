@@ -133,7 +133,7 @@
         <text>员工管理</text>
       </view>
       <view class="wb-grid">
-        <view class="wb-grid-item" @click="navigateTo('payroll-employees')">
+        <view class="wb-grid-item" @click="navigateTo('members-staff')">
           <view class="wb-grid-icon" style="background: linear-gradient(135deg, #FF8C5A, #FF6B35)">
             <image class="grid-svg" src="/static/icons/boss-workbench/user-group-white.svg" mode="aspectFit" />
           </view>
@@ -239,6 +239,7 @@ export default {
     navigateTo(page) {
       const pages = {
         members: "/pages/boss/members",
+        "members-staff": "/pages/boss/members?src=staff",
         projects: "/pages/boss/projects",
         resume: "/pages/boss/resume",
         position: "/pages/boss/position",
