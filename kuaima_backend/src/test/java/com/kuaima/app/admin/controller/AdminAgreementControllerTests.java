@@ -103,6 +103,24 @@ class AdminAgreementControllerTests {
     }
 
     @Test
+    void downloadUrlShouldUseAgreementFileName() {
+        AgreementRepository agreements = mock(AgreementRepository.class);
+        Agreement agreement = agreement(5L, "FILE");
+        agreement.setFileObjectKey("insurance/agreement/uuid.pdf");
+        agreement.setFileName("快马日结隐私协议.pdf");
+        when(agreements.findById(5L)).thenReturn(Optional.of(agreement));
+        OssStorageService storage = mock(OssStorageService.class);
+        when(storage.downloadUrl("insurance/agreement/uuid.pdf", "快马日结隐私协议.pdf"))
+                .thenReturn("https://oss.example.com/signed.pdf");
+
+        var data = new AdminAgreementController(agreements, mock(AdminUserRepository.class), storage)
+                .downloadUrl(5L).getData();
+
+        assertEquals("https://oss.example.com/signed.pdf", data.get("url"));
+        assertEquals("快马日结隐私协议.pdf", data.get("fileName"));
+    }
+
+    @Test
     void publicLatestShouldReturnEnabledInputAgreement() {
         AgreementRepository agreements = mock(AgreementRepository.class);
         Agreement agreement = agreement(2L, "INPUT");

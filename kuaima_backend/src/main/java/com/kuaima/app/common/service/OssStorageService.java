@@ -12,6 +12,7 @@ import com.aliyun.oss.model.ObjectMetadata;
 import com.aliyun.oss.model.ResponseHeaderOverrides;
 import com.kuaima.app.common.ForbiddenBusinessException;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.ContentDisposition;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
@@ -234,6 +235,20 @@ public class OssStorageService {
 
     /** 生成自定义有效期的临时地址，单位为秒。 */
     public String playableUrl(String value, long expirationSeconds) {
+        return signedUrl(value, expirationSeconds, ContentDisposition.inline().build());
+    }
+
+    /** 私有 Bucket 附件下载地址：保留业务上传时的原始文件名。 */
+    public String downloadUrl(String value, String fileName) {
+        String fallbackName = value == null ? "" : value.substring(value.lastIndexOf('/') + 1);
+        String downloadName = StringUtils.hasText(fileName) ? fileName.trim() : fallbackName;
+        ContentDisposition disposition = ContentDisposition.attachment()
+                .filename(downloadName, StandardCharsets.UTF_8)
+                .build();
+        return signedUrl(value, signedUrlExpirationSeconds, disposition);
+    }
+
+    private String signedUrl(String value, long expirationSeconds, ContentDisposition contentDisposition) {
         if (expirationSeconds <= 0) throw new IllegalArgumentException("签名有效期必须大于 0 秒");
         if (!StringUtils.hasText(value) || !StringUtils.hasText(endpoint)
                 || !StringUtils.hasText(bucketName) || !StringUtils.hasText(accessKeyId)
@@ -247,7 +262,7 @@ public class OssStorageService {
                 new GeneratePresignedUrlRequest(bucketName, objectKey, HttpMethod.GET);
         request.setExpiration(expires);
         ResponseHeaderOverrides responseHeaders = new ResponseHeaderOverrides();
-        responseHeaders.setContentDisposition("inline");
+        responseHeaders.setContentDisposition(contentDisposition.toString());
         request.setResponseHeaders(responseHeaders);
         return getPreviewClient().generatePresignedUrl(request).toString()
                 .replaceFirst("^http://", "https://");

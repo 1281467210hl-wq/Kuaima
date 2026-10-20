@@ -140,7 +140,9 @@ public class AdminAgreementController {
         if (!"FILE".equals(agreement.getContentMode()) || !StringUtils.hasText(agreement.getFileObjectKey())) {
             throw new IllegalArgumentException("该协议未上传附件");
         }
-        return Result.success(Map.of("url", ossStorageService.playableUrl(agreement.getFileObjectKey())));
+        return Result.success(Map.of(
+                "url", ossStorageService.downloadUrl(agreement.getFileObjectKey(), agreement.getFileName()),
+                "fileName", agreement.getFileName()));
     }
 
     private void apply(Agreement agreement, AgreementRequest request) {

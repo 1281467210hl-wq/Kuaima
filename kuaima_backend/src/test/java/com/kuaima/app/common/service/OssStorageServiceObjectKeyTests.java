@@ -87,6 +87,27 @@ class OssStorageServiceObjectKeyTests {
         assertNull(captor.getValue().getResponseHeaders().getContentType());
     }
 
+    @Test
+    void downloadUrlShouldSignAttachmentWithOriginalFileName() throws Exception {
+        OssStorageService service = configured();
+        field(service, "accessKeyId", "test-key");
+        field(service, "accessKeySecret", "test-secret");
+        objectField(service, "signedUrlExpirationSeconds", 3600L);
+        field(service, "domain", "https://files.example.com");
+        OSS previewClient = mock(OSS.class);
+        objectField(service, "previewClient", previewClient);
+        when(previewClient.generatePresignedUrl(any(GeneratePresignedUrlRequest.class)))
+                .thenReturn(new URL("https://resume-storage.example.com/insurance/agreement/a.pdf?Expires=1"));
+
+        service.downloadUrl("insurance/agreement/a.pdf", "快马日结隐私协议.pdf");
+
+        ArgumentCaptor<GeneratePresignedUrlRequest> captor =
+                ArgumentCaptor.forClass(GeneratePresignedUrlRequest.class);
+        verify(previewClient).generatePresignedUrl(captor.capture());
+        assertEquals("attachment; filename=\"________.pdf\"; filename*=UTF-8''%E5%BF%AB%E9%A9%AC%E6%97%A5%E7%BB%93%E9%9A%90%E7%A7%81%E5%8D%8F%E8%AE%AE.pdf",
+                captor.getValue().getResponseHeaders().getContentDisposition());
+    }
+
     private OssStorageService configured() throws Exception {
         OssStorageService service = new OssStorageService();
         field(service, "endpoint", "oss-cn-beijing.aliyuncs.com");
