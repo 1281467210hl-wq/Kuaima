@@ -186,7 +186,13 @@ export default {
       return;
       // #endif
 
-      // #ifndef MP-WEIXIN
+      // App 的隐私同意由启动时的原生隐私弹窗处理，定位权限由系统弹窗申请，直接打开地图选点
+      // #ifdef APP-PLUS
+      this.openLocationPicker();
+      return;
+      // #endif
+
+      // #ifdef H5
       uni.showToast({ title: "请在下方手动填写地址", icon: "none" });
       // #endif
     },
@@ -230,7 +236,7 @@ export default {
       // #endif
     },
     openLocationPicker() {
-      // #ifdef MP-WEIXIN
+      // #ifdef MP-WEIXIN || APP-PLUS
       const options = {
         success: ({ name, address, latitude, longitude }) => {
           const region = extractBossAddressRegion(address);
@@ -283,7 +289,14 @@ export default {
         content: "请在设置中允许使用位置信息，然后重新选择招工地址。",
         confirmText: "去设置",
         success: ({ confirm }) => {
-          if (confirm) uni.openSetting();
+          if (!confirm) return;
+          // App 没有 openSetting，需跳转系统的应用权限设置页
+          // #ifdef APP-PLUS
+          uni.openAppAuthorizeSetting();
+          // #endif
+          // #ifndef APP-PLUS
+          uni.openSetting();
+          // #endif
         },
       });
     },

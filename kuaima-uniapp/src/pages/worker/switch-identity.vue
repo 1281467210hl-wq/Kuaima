@@ -28,6 +28,7 @@ import { ref } from "vue";
 import { onLoad } from "@dcloudio/uni-app";
 import AppNavBar from "@/components/AppNavBar.vue";
 import { wechatLogin } from "@/api/auth";
+import { switchRole as switchRoleApi } from "@/api/backend";
 import { USE_MOCK } from "@/api/http";
 import defaultBossAvatar from "/static/avatars/default-boss-avatar.png";
 import defaultWorkerAvatar from "/static/avatars/default-worker-avatar.png";
@@ -86,9 +87,14 @@ function switchRole() {
   return;
   // #endif
 
-  // #ifdef H5
-  switching.value = false;
-  uni.showToast({ title: "请在微信小程序中完成身份切换", icon: "none" });
+  // App / H5 没有微信 code：用当前登录态调用 switch-role 签发目标身份的 JWT（返回结构与登录一致）
+  // #ifndef MP-WEIXIN
+  switchRoleApi(role)
+    .then((result) => finishSwitch(result))
+    .catch((error) => {
+      switching.value = false;
+      uni.showToast({ title: error.message || "身份切换失败", icon: "none" });
+    });
   // #endif
 }
 

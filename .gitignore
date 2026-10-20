@@ -42,3 +42,10 @@ Thumbs.db
 
 # ============ Maven wrapper ============
 .mvn/wrapper/maven-wrapper.jar
+
+# Android / iOS 签名证书与密码：丢失或泄露都会导致严重后果，禁止提交
+*.keystore
+*.jks
+*.p12
+*.mobileprovision
+keystore-password.txt

@@ -1,8 +1,8 @@
 spring:
   datasource:
-    url: jdbc:mysql://43.131.225.64:3306/kuaima?useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai&allowMultiQueries=true
+    url: jdbc:mysql://192.168.2.6:3306/kuaima?useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai&allowMultiQueries=true
     username: user
-    password: 5QndiwN9LkcD99st
+    password: zhUTA5rp228hjKSW
     driver-class-name: com.mysql.cj.jdbc.Driver
     hikari:
       connection-timeout: 10000
@@ -35,6 +35,9 @@ aliyun:
     # 开发环境使用固定验证码，生产环境配置必须保持 false
     mock-enabled: true
     mock-code: "000000"
+    # 固定验证码模式下允许 App 短信登录的测试手机号（逗号分隔）；留空则拒绝所有短信登录。
+    # 固定验证码等于知道手机号就能登录，严禁填写真实用户手机号。
+    mock-login-phones: ${KUAIMA_SMS_MOCK_LOGIN_PHONES:}
     # 验证码有效期（秒）
     code-expiration: 300
     # 重发间隔限制（秒）

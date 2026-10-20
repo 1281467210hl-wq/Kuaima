@@ -31,6 +31,8 @@ public class BossRealnameController {
 
     /** 置信度阈值（0-100）：达到阈值判定为同一人 */
     private static final double PASS_CONFIDENCE = 80.0;
+    /** 与上传限制一致（10MB），读取后以 Base64 提交人脸比对。 */
+    private static final long MAX_FACE_IMAGE_BYTES = 10L * 1024 * 1024;
 
     private final UserRepository userRepository;
     private final FaceCompareService faceCompareService;
@@ -93,10 +95,15 @@ public class BossRealnameController {
         if (idCardImageUrl == null) throw new IllegalArgumentException("请上传身份证人像面");
         if (faceImageUrl == null) throw new IllegalArgumentException("请上传人脸图片");
 
-        // Bucket 为私有读写：先转成限时签名 URL，再交给阿里云人脸比对服务拉取图片。
-        double confidence = faceCompareService.compare(
-                ossStorageService.playableUrl(idCardImageUrl),
-                ossStorageService.playableUrl(faceImageUrl));
+        // 优先由后端读取私有 Bucket 中的图片内容直接提交比对：阿里云按 URL 拉图要求上海地域 OSS，
+        // 签名 URL 跨地域时会拉取失败；读不到内容（如外部链接）时才回退为限时签名 URL。
+        byte[] idCardImage = ossStorageService.readObjectBytes(idCardImageUrl, MAX_FACE_IMAGE_BYTES);
+        byte[] faceImage = ossStorageService.readObjectBytes(faceImageUrl, MAX_FACE_IMAGE_BYTES);
+        double confidence = idCardImage != null && faceImage != null
+                ? faceCompareService.compareImages(idCardImage, faceImage)
+                : faceCompareService.compare(
+                        ossStorageService.playableUrl(idCardImageUrl),
+                        ossStorageService.playableUrl(faceImageUrl));
         boolean passed = confidence >= PASS_CONFIDENCE;
         User user = currentUser(authentication);
         user.setRealnameIdCardImageUrl(idCardImageUrl);

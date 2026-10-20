@@ -632,10 +632,12 @@ export function switchRole(role) {
   });
 }
 
-export function cancelAccount(userId, reason) {
+/** 注销当前登录账号：后端按登录态识别账号，不再传 userId（旧接口可被用来注销他人账号）。 */
+export function cancelAccount(reason) {
   return request({
-    url: `/auth/cancel?${query({ userId, reason })}`,
+    url: `/auth/cancel?${query({ reason })}`,
     method: "POST",
+    skipUserIdHeader: true,
   });
 }
 

@@ -84,7 +84,7 @@
           }}</text></view
         >
         <view class="mobile-login-card"
-          ><text class="login-title">{{ phoneRequired ? "绑定手机号" : "手机号一键登录" }}</text
+          ><text class="login-title">{{ loginTitle }}</text
           >
           <!-- #ifdef MP-WEIXIN -->
           <button
@@ -114,12 +114,39 @@
           </button>
           <!-- #endif -->
           <!-- #ifndef MP-WEIXIN -->
+          <!-- App / H5 没有微信手机号快捷登录，改用短信验证码登录 -->
+          <view class="sms-form">
+            <view class="sms-field">
+              <input
+                v-model="smsPhone"
+                class="sms-input"
+                type="number"
+                maxlength="11"
+                placeholder="请输入手机号"
+              />
+            </view>
+            <view class="sms-field">
+              <input
+                v-model="smsCode"
+                class="sms-input"
+                type="number"
+                maxlength="6"
+                placeholder="请输入验证码"
+              />
+              <text
+                class="sms-send"
+                :class="{ disabled: smsCountdown > 0 || smsSending }"
+                @click="sendLoginCode"
+                >{{ smsCountdown > 0 ? `${smsCountdown}s 后重发` : smsSending ? "发送中…" : "获取验证码" }}</text
+              >
+            </view>
+          </view>
           <button
             class="phone-input-btn"
             :disabled="loggingIn"
-            @click="doLogin()"
+            @click="doSmsLogin"
           >
-            {{ loggingIn ? "登录中…" : "手机号快捷登录" }}
+            {{ loggingIn ? "登录中…" : "登录" }}
           </button>
           <!-- #endif -->
           <text class="divider-line" @click="goBack">切换身份</text
@@ -178,8 +205,8 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from "vue";
-import { wechatLogin, getCurrentUser } from "@/api/auth";
+import { computed, onMounted, onUnmounted, ref } from "vue";
+import { wechatLogin, getCurrentUser, sendSmsLoginCode, smsLogin } from "@/api/auth";
 import { getPublicAgreement } from "@/api/backend";
 
 const pages = getCurrentPages();
@@ -220,6 +247,92 @@ const isLoginPrepareIncomplete = computed(() => {
   if (preparedLoginResult.value) return false;
   if (registrationToken.value) return false;
   return !!errorMessage.value;
+});
+
+// ===== App / H5 短信验证码登录 =====
+const PHONE_PATTERN = /^1[3-9]\d{9}$/;
+const smsPhone = ref("");
+const smsCode = ref("");
+const smsCountdown = ref(0);
+const smsSending = ref(false);
+let smsTimer = null;
+
+const loginTitle = computed(() => {
+  // #ifdef MP-WEIXIN
+  return phoneRequired.value ? "绑定手机号" : "手机号一键登录";
+  // #endif
+  // #ifndef MP-WEIXIN
+  return "手机号验证码登录";
+  // #endif
+});
+
+function startSmsCountdown(seconds = 60) {
+  smsCountdown.value = seconds;
+  clearInterval(smsTimer);
+  smsTimer = setInterval(() => {
+    smsCountdown.value -= 1;
+    if (smsCountdown.value <= 0) {
+      clearInterval(smsTimer);
+      smsTimer = null;
+    }
+  }, 1000);
+}
+
+async function sendLoginCode() {
+  if (smsCountdown.value > 0 || smsSending.value) return;
+  const phone = smsPhone.value.trim();
+  if (!PHONE_PATTERN.test(phone)) {
+    flowMessage.value = "";
+    errorMessage.value = "请输入正确的手机号";
+    return;
+  }
+  smsSending.value = true;
+  errorMessage.value = "";
+  try {
+    await sendSmsLoginCode(phone);
+    flowMessage.value = "验证码已发送";
+    startSmsCountdown();
+  } catch (e) {
+    flowMessage.value = "";
+    errorMessage.value = e.message || "验证码发送失败";
+  } finally {
+    smsSending.value = false;
+  }
+}
+
+async function doSmsLogin() {
+  if (loggingIn.value) return;
+  if (!agreed.value) {
+    flowMessage.value = "";
+    errorMessage.value = "请先阅读并同意服务协议及隐私协议";
+    return;
+  }
+  const phone = smsPhone.value.trim();
+  const code = smsCode.value.trim();
+  if (!PHONE_PATTERN.test(phone)) {
+    errorMessage.value = "请输入正确的手机号";
+    return;
+  }
+  if (!/^\d{4,6}$/.test(code)) {
+    errorMessage.value = "请输入验证码";
+    return;
+  }
+  loggingIn.value = true;
+  errorMessage.value = "";
+  flowMessage.value = "";
+  try {
+    const role = selectedRole.value === "boss" ? "BOSS" : "USER";
+    const result = await smsLogin({ phone, code, role });
+    await completeLogin(result);
+  } catch (e) {
+    errorMessage.value = e.message || "登录失败";
+    loggingIn.value = false;
+  }
+}
+
+onUnmounted(() => {
+  clearInterval(smsTimer);
+  smsTimer = null;
 });
 
 function confirmRole() {
@@ -846,5 +959,37 @@ async function completeLogin(result) {
     width: 100%;
     height: 100vh;
   }
+}
+
+/* App / H5 短信验证码登录表单 */
+.sms-form {
+  width: 100%;
+  margin-bottom: 16px;
+}
+.sms-field {
+  display: flex;
+  align-items: center;
+  height: 48px;
+  padding: 0 16px;
+  margin-bottom: 12px;
+  border-radius: 24px;
+  background: #f5f6f8;
+  box-sizing: border-box;
+}
+.sms-input {
+  flex: 1;
+  height: 48px;
+  font-size: 15px;
+  color: #333;
+}
+.sms-send {
+  flex-shrink: 0;
+  margin-left: 12px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #ff6b35;
+}
+.sms-send.disabled {
+  color: #bbb;
 }
 </style>

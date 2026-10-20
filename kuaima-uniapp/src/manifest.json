@@ -6,6 +6,84 @@
     "versionName" : "0.1.0",
     "versionCode" : "100",
     "transformPx" : false,
+    "app-plus" : {
+        "usingComponents" : true,
+        "nvueStyleCompiler" : "uni-app",
+        "compilerVersion" : 3,
+        "splashscreen" : {
+            "alwaysShowBeforeRender" : true,
+            "waiting" : true,
+            "autoclose" : true,
+            "delay" : 0
+        },
+        "modules" : {
+            "Geolocation" : {},
+            "Maps" : {},
+            "VideoPlayer" : {}
+        },
+        "privacy" : {
+            "prompt" : "template",
+            "template" : {
+                "title" : "服务协议和隐私政策",
+                "message" : "　　请你务必审慎阅读、充分理解「服务协议」和「隐私政策」各条款，包括但不限于：为了向你提供附近岗位推荐、招工地址选择、实名认证、工资结算等服务，我们需要收集你的设备信息、位置信息、身份信息等个人信息。<br/>　　你可阅读<a href=\"https://TODO-replace-before-release.example.com/user-agreement\">《服务协议》</a>和<a href=\"https://TODO-replace-before-release.example.com/privacy\">《隐私政策》</a>了解详细信息。如你同意，请点击「同意」开始接受我们的服务。",
+                "buttonAccept" : "同意",
+                "buttonRefuse" : "暂不同意"
+            }
+        },
+        "distribute" : {
+            "android" : {
+                "packagename" : "xyz.taifang.ke",
+                "permissions" : [
+                    "<uses-permission android:name=\"android.permission.INTERNET\"/>",
+                    "<uses-permission android:name=\"android.permission.ACCESS_NETWORK_STATE\"/>",
+                    "<uses-permission android:name=\"android.permission.ACCESS_WIFI_STATE\"/>",
+                    "<uses-permission android:name=\"android.permission.ACCESS_COARSE_LOCATION\"/>",
+                    "<uses-permission android:name=\"android.permission.ACCESS_FINE_LOCATION\"/>",
+                    "<uses-permission android:name=\"android.permission.CAMERA\"/>",
+                    "<uses-permission android:name=\"android.permission.READ_EXTERNAL_STORAGE\"/>",
+                    "<uses-permission android:name=\"android.permission.READ_MEDIA_IMAGES\"/>",
+                    "<uses-permission android:name=\"android.permission.READ_MEDIA_VIDEO\"/>",
+                    "<uses-permission android:name=\"android.permission.WRITE_EXTERNAL_STORAGE\" android:maxSdkVersion=\"28\"/>",
+                    "<uses-permission android:name=\"android.permission.VIBRATE\"/>"
+                ],
+                "abiFilters" : [ "armeabi-v7a", "arm64-v8a" ],
+                "minSdkVersion" : 21,
+                "targetSdkVersion" : 34
+            },
+            "ios" : {
+                "dSYMs" : false,
+                "privacyDescription" : {
+                    "NSLocationWhenInUseUsageDescription" : "用于推荐附近岗位、计算与工作地点的距离及选择招工地址",
+                    "NSCameraUsageDescription" : "用于实名认证拍照、上传岗位图片和视频",
+                    "NSPhotoLibraryUsageDescription" : "用于选择实名认证照片、岗位图片和视频"
+                }
+            },
+            "sdkConfigs" : {
+                "geolocation" : {
+                    "amap" : {
+                        "name" : "amap",
+                        "__platform__" : [ "ios", "android" ],
+                        "appkey_ios" : "",
+                        "appkey_android" : ""
+                    }
+                },
+                "maps" : {
+                    "amap" : {
+                        "name" : "amap",
+                        "appkey_ios" : "",
+                        "appkey_android" : ""
+                    }
+                }
+            },
+            "icons" : {
+                "android" : {},
+                "ios" : {}
+            },
+            "splashscreen" : {
+                "androidStyle" : "common"
+            }
+        }
+    },
     "h5" : {
         "title" : "快马日结"
     },

@@ -85,7 +85,7 @@
         </view>
       </view>
       <view class="add-label">自动加入</view>
-      <text class="add-text">订单结算后，未差评或未拉黑的零工都将自动加入人才库。</text>
+      <text class="add-text">零工报名您的岗位后，将自动加入人才库。</text>
       <view class="add-label">订单加入</view>
       <text class="add-text">您可在「订单-更多」，手动将零工加入人才库。</text>
       <view class="add-label">面对面邀请加入</view>

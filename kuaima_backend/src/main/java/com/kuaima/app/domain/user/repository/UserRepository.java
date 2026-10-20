@@ -61,6 +61,13 @@ public interface UserRepository extends JpaRepository<User, Long> {
     /** 按手机号查询（可能多个用户共用同一手机号） */
     List<User> findByPhone(String phone);
 
+    /**
+     * 只取账号状态：登录态校验每个请求都会调用，避免加载整条用户记录。
+     * 历史数据 status 可能为空，按「正常」返回；否则空值与「用户不存在」无法区分，会误踢老用户下线。
+     */
+    @Query("select coalesce(u.status, '正常') from User u where u.id = :id")
+    Optional<String> findStatusById(@Param("id") Long id);
+
     /** 查询尚未绑定微信、可登录老板端的授权员工子账号。 */
     @Query("""
             select u from User u

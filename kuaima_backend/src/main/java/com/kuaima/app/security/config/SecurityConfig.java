@@ -47,6 +47,8 @@ public class SecurityConfig {
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers(org.springframework.http.HttpMethod.OPTIONS, "/**").permitAll()
                 .requestMatchers("/auth/wechat/login", "/admin/auth/login").permitAll()
+                // App 短信登录：登录前调用，接口内部有手机号 / IP 限流和测试手机号白名单
+                .requestMatchers(org.springframework.http.HttpMethod.POST, "/auth/sms/login", "/auth/sms/login/send").permitAll()
                 .requestMatchers("/pay/wechat/notify").permitAll()
                 .requestMatchers("/ws/**").permitAll()
                 .requestMatchers("/service/faqs").permitAll()

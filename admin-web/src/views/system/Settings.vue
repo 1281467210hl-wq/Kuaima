@@ -273,10 +273,7 @@
 
           <div class="settings-section-title">
             <i class="fas fa-users-cog"></i> 账号列表
-            <button class="btn btn-outline btn-sm" style="margin-left:auto;" @click="router.push('/admin/password')">
-              <i class="fas fa-key"></i> 修改我的密码
-            </button>
-            <button class="btn btn-primary btn-sm" style="margin-left:8px;" @click="goAddAdmin">
+            <button class="btn btn-primary btn-sm" style="margin-left:auto;" @click="goAddAdmin">
               新建账号
             </button>
           </div>

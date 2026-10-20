@@ -32,7 +32,8 @@ CREATE TABLE IF NOT EXISTS `talent_pool` (
   KEY `idx_tp_boss` (`boss_id`),
   KEY `idx_tp_worker` (`worker_id`),
   KEY `idx_tp_type` (`type`),
-  KEY `idx_tp_favorite` (`favorite`)
+  KEY `idx_tp_favorite` (`favorite`),
+  UNIQUE KEY `uk_talent_pool_boss_worker` (`boss_id`, `worker_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='老板人才库';
 
 CREATE TABLE IF NOT EXISTS `talent_hire` (

@@ -13,7 +13,7 @@
       <view class="company-nav">
         <text class="company-name">{{ companyName }}</text>
         <!-- 微信小程序右上角由微信绘制原生胶囊（⋯ / ⊙），自绘胶囊会与其重叠，故仅在非小程序端保留 -->
-        <!-- #ifndef MP-WEIXIN -->
+        <!-- #ifdef H5 -->
         <view class="wb-capsule">
           <view class="cap-btn"><image class="cap-svg" src="/static/icons/boss-profile/ellipsis.svg" mode="aspectFit" /></view>
           <view class="cap-divider"></view>

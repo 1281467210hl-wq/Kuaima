@@ -120,6 +120,34 @@ class BossRealnameControllerTests {
         assertEquals("insurance/realname/face.png", user.getRealnameFaceImageUrl());
     }
 
+    @Test
+    void verifyShouldSendImageContentWhenObjectsReadableFromOss() {
+        UserRepository users = mock(UserRepository.class);
+        FaceCompareService faceCompare = mock(FaceCompareService.class);
+        User user = new User();
+        user.setId(5L);
+        when(users.findById(5L)).thenReturn(Optional.of(user));
+        when(users.save(user)).thenReturn(user);
+        byte[] idBytes = {1, 2, 3};
+        byte[] faceBytes = {4, 5, 6};
+        com.kuaima.app.common.service.OssStorageService oss =
+                mock(com.kuaima.app.common.service.OssStorageService.class);
+        when(oss.readObjectBytes(org.mockito.ArgumentMatchers.eq("insurance/realname/id.png"), org.mockito.ArgumentMatchers.anyLong()))
+                .thenReturn(idBytes);
+        when(oss.readObjectBytes(org.mockito.ArgumentMatchers.eq("insurance/realname/face.png"), org.mockito.ArgumentMatchers.anyLong()))
+                .thenReturn(faceBytes);
+        when(faceCompare.compareImages(idBytes, faceBytes)).thenReturn(95d);
+
+        var data = new BossRealnameController(users, faceCompare, oss).verify(Map.of(
+                "idCardImageUrl", "insurance/realname/id.png",
+                "faceImageUrl", "insurance/realname/face.png"), login()).getData();
+
+        // 直接传图片内容，不再依赖签名 URL（避免阿里云跨地域拉图失败）
+        assertEquals(Boolean.TRUE, data.get("passed"));
+        org.mockito.Mockito.verify(faceCompare, org.mockito.Mockito.never())
+                .compare(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString());
+    }
+
     private BossRealnameController controller(UserRepository users, FaceCompareService faceCompare) {
         com.kuaima.app.common.service.OssStorageService oss =
                 mock(com.kuaima.app.common.service.OssStorageService.class);

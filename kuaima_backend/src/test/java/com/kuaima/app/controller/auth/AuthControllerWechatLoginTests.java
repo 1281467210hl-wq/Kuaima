@@ -51,6 +51,19 @@ class AuthControllerWechatLoginTests {
     }
 
     @Test
+    void cancelledUser_shouldNotLoginAgainByWechat() {
+        User cancelled = user(10L, "13800000000");
+        cancelled.setStatus("注销");
+        when(userRepository.findByOpenid("openid-1")).thenReturn(Optional.of(cancelled));
+
+        var result = controller.wechatLogin(dto(null));
+
+        // 注销后不能再用微信登录拿到新 token，否则注销形同虚设
+        assertEquals(403, result.getCode());
+        verify(jwtUtil, never()).generateAccessToken(any(), any(), any());
+    }
+
+    @Test
     void oldUser_shouldLoginDirectly() {
         User oldUser = user(10L, "13800000000");
         when(userRepository.findByOpenid("openid-1")).thenReturn(Optional.of(oldUser));

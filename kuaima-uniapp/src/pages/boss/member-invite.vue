@@ -5,7 +5,7 @@
       <view class="wb-back" @click="goBack"><text class="back-ico">‹</text></view>
       <text class="wb-title">邀请新成员</text>
       <!-- 微信小程序原生胶囊已占右上角，自绘胶囊会与其重叠，仅在非小程序端保留 -->
-      <!-- #ifndef MP-WEIXIN -->
+      <!-- #ifdef H5 -->
       <view class="wb-capsule">
         <view class="cap-btn"><text class="cap-ico">⋯</text></view>
         <view class="cap-divider"></view>
@@ -197,6 +197,28 @@ export default {
       if (!this.qrImageUrl) return;
       // base64 data URL → 写入临时文件再保存相册
       if (this.qrImageUrl.startsWith("data:image")) {
+        // #ifdef APP-PLUS
+        // App 没有 wx.env / 小程序文件系统，用原生 Bitmap 落盘后再保存相册
+        const bitmap = new plus.nativeObj.Bitmap(`qr_invite_${Date.now()}`);
+        const appPath = `_doc/qr_invite_${Date.now()}.png`;
+        bitmap.loadBase64Data(this.qrImageUrl, () => {
+          bitmap.save(appPath, { overwrite: true }, () => {
+            bitmap.clear();
+            uni.saveImageToPhotosAlbum({
+              filePath: appPath,
+              success: () => uni.showToast({ title: "二维码已保存到相册", icon: "success" }),
+              fail: () => uni.showToast({ title: "保存失败，请在系统设置中允许访问相册", icon: "none" }),
+            });
+          }, () => {
+            bitmap.clear();
+            uni.showToast({ title: "保存失败", icon: "none" });
+          });
+        }, () => {
+          bitmap.clear();
+          uni.showToast({ title: "保存失败", icon: "none" });
+        });
+        return;
+        // #endif
         const base64 = this.qrImageUrl.split(",")[1];
         const fs = uni.getFileSystemManager();
         const tempPath = `${wx.env.USER_DATA_PATH || "/usrdata"}/qr_invite_${Date.now()}.png`;

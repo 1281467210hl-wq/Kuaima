@@ -555,7 +555,14 @@ function handleLocationError(error) {
       content: "请在设置中开启位置权限后重新选择",
       confirmText: "去设置",
       success: ({ confirm }) => {
-        if (confirm) uni.openSetting({});
+        if (!confirm) return;
+        // App 没有 openSetting，需跳转系统的应用权限设置页
+        // #ifdef APP-PLUS
+        uni.openAppAuthorizeSetting();
+        // #endif
+        // #ifndef APP-PLUS
+        uni.openSetting({});
+        // #endif
       },
     });
     return;

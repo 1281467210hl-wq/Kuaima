@@ -46,6 +46,8 @@ import com.kuaima.app.domain.wallet.entity.Settlement;
 import com.kuaima.app.domain.wallet.constant.SettlementStatus;
 import com.kuaima.app.domain.wallet.repository.SettlementRespository;
 import com.kuaima.app.domain.coupon.service.BossCouponService;
+import com.kuaima.app.domain.talentpool.entity.TalentPool;
+import com.kuaima.app.domain.talentpool.repository.TalentPoolRepository;
 import com.kuaima.app.admin.entity.AdminSetting;
 import com.kuaima.app.admin.repository.AdminSettingRepository;
 
@@ -66,6 +68,7 @@ public class BossOrderService {
     private final AdminSettingRepository adminSettingRepository;
     private final RecruitRuleSettings recruitRules;
     private final BossAddressRepository bossAddressRepository;
+    private TalentPoolRepository talentPoolRepository;
 
     public BossOrderService(BossOrderRespository orderRepository,
                             BaseOrderItemRespository itemRepository,
@@ -128,6 +131,12 @@ public class BossOrderService {
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     public void setCreditScoreService(CreditScoreService creditScoreService) {
         this.creditScoreService = creditScoreService;
+    }
+
+    /** 报名成功后立即进入对应老板的人才库；可选注入以兼容旧版单元测试构造方式。 */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setTalentPoolRepository(TalentPoolRepository talentPoolRepository) {
+        this.talentPoolRepository = talentPoolRepository;
     }
 
     // ==================== 订单管理 ====================
@@ -606,6 +615,7 @@ public class BossOrderService {
         } catch (DataIntegrityViolationException exception) {
             throw new IllegalStateException("您已报名过该订单");
         }
+        addApplicantToTalentPool(order, applicant);
         boolean manualReview = "manual".equalsIgnoreCase(order.getSignMode());
         // 手动审核必须通知老板处理；自动通过只按报名通知开关提醒
         if (manualReview || !Boolean.FALSE.equals(order.getSignNotify())) {
@@ -615,6 +625,39 @@ public class BossOrderService {
                     manualReview ? "有新的报名待审核" : "您有新的报名", content, BizType.ITEM, saved.getId());
         }
         return manualReview ? saved : hire(saved, order);
+    }
+
+    private void addApplicantToTalentPool(BossOrder order, User applicant) {
+        if (talentPoolRepository == null || order == null || order.getCreateBy() == null
+                || applicant == null || applicant.getId() == null) return;
+        if (talentPoolRepository.findByBossIdAndWorkerId(order.getCreateBy(), applicant.getId()).isPresent()) return;
+
+        TalentPool talent = new TalentPool();
+        talent.setBossId(order.getCreateBy());
+        talent.setWorkerId(applicant.getId());
+        talent.setName(firstText(applicant.getNickname(), applicant.getRealName(), applicant.getPhone(), "零工"));
+        talent.setPhone(maskPhone(applicant.getPhone()));
+        talent.setType("new");
+        talent.setExperience(applicant.getWorkYears() == null ? "首单新人" : applicant.getWorkYears() + "年经验");
+        talent.setWorkYears(applicant.getWorkYears());
+        talent.setCategory(order.getPostion());
+        talent.setGoodRate("无");
+        talent.setCompletedOrders(0);
+        talent.setSkills(applicant.getSkills());
+        talent.setFavorite(false);
+        talent.setSource("order");
+        talentPoolRepository.save(talent);
+    }
+
+    private String firstText(String... values) {
+        for (String value : values) if (StringUtils.hasText(value)) return value.trim();
+        return "零工";
+    }
+
+    private String maskPhone(String phone) {
+        if (!StringUtils.hasText(phone)) return null;
+        String value = phone.trim();
+        return value.length() >= 7 ? value.substring(0, 3) + "****" + value.substring(value.length() - 4) : value;
     }
 
     /** 老板录用：已报名 -> 已录用 */

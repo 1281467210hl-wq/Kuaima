@@ -11,8 +11,12 @@ import org.springframework.stereotype.Repository;
 
 import com.kuaima.app.domain.talentpool.entity.TalentPool;
 
+import java.util.Optional;
+
 @Repository
 public interface TalentPoolRepository extends JpaRepository<TalentPool, Long> {
+
+    Optional<TalentPool> findByBossIdAndWorkerId(Long bossId, Long workerId);
 
     @Query("SELECT t FROM TalentPool t WHERE t.bossId = :bossId AND " +
            "(:keyword IS NULL OR t.name LIKE %:keyword% OR t.skills LIKE %:keyword% OR t.category LIKE %:keyword%) AND " +

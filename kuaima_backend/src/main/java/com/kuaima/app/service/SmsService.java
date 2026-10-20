@@ -51,6 +51,16 @@ public class SmsService {
     @Value("${aliyun.sms.mock-code:000000}")
     private String mockCode;
 
+    /**
+     * 固定验证码模式下允许短信登录的测试手机号（逗号分隔）。
+     * 固定验证码等于「知道手机号就能登录」，不能对真实用户开放；为空时固定验证码模式下拒绝所有短信登录。
+     */
+    @Value("${aliyun.sms.mock-login-phones:}")
+    private String mockLoginPhones;
+
+    /** 同一验证码允许输错的次数，超过即作废，防止 6 位验证码被暴力猜中。 */
+    static final int MAX_FAILED_ATTEMPTS = 5;
+
     private Client client;
 
     /** 内存验证码存储：phone -> {code, expireAt, sentAt} */
@@ -61,6 +71,11 @@ public class SmsService {
 
     @PostConstruct
     public void init() {
+        if (mockEnabled) {
+            System.err.println("[SmsService] 警告：已开启固定验证码（aliyun.sms.mock-enabled=true），"
+                    + "不会发送真实短信；生产环境必须关闭。允许短信登录的测试手机号数量："
+                    + mockLoginPhoneSet().size());
+        }
         try {
             Config config = new Config()
                     .setAccessKeyId(accessKeyId)
@@ -117,7 +132,7 @@ public class SmsService {
                 }
             }
             codeStore.put(phone, new CodeEntry(code, now,
-                    now + TimeUnit.SECONDS.toMillis(codeExpiration), null));
+                    now + TimeUnit.SECONDS.toMillis(codeExpiration), null, 0));
             dailyCountStore.put(phone, new DailyCount(today, dailyCount.count() + 1));
             System.out.println("[SmsService] " + (mockEnabled ? "开发环境模拟验证码已登记" : "验证码已发送")
                     + "，phone=" + maskPhone(phone));
@@ -153,24 +168,43 @@ public class SmsService {
                 result[0] = VerifyResult.EXPIRED_OR_USED;
                 return entry;
             }
+            if (entry.failedAttempts >= MAX_FAILED_ATTEMPTS) {
+                result[0] = VerifyResult.EXPIRED_OR_USED;
+                return entry;
+            }
             if (entry.code.equals(code)) {
                 result[0] = VerifyResult.OK;
-                return new CodeEntry(entry.code, entry.sentAt, entry.expireAt, now);
+                return new CodeEntry(entry.code, entry.sentAt, entry.expireAt, now, entry.failedAttempts);
             }
             result[0] = VerifyResult.INVALID;
-            return entry;
+            return new CodeEntry(entry.code, entry.sentAt, entry.expireAt, entry.usedAt, entry.failedAttempts + 1);
         });
         return result[0];
     }
 
     public enum VerifyResult { OK, NOT_FOUND, INVALID, EXPIRED_OR_USED }
 
+    public boolean isMockEnabled() {
+        return mockEnabled;
+    }
+
+    /** 真实短信模式下所有手机号都可登录；固定验证码模式下仅白名单内的测试手机号可登录。 */
+    public boolean isLoginAllowed(String phone) {
+        return !mockEnabled || mockLoginPhoneSet().contains(phone);
+    }
+
+    private java.util.Set<String> mockLoginPhoneSet() {
+        if (mockLoginPhones == null || mockLoginPhones.isBlank()) return java.util.Set.of();
+        return java.util.Arrays.stream(mockLoginPhones.split("[,，\\s]+"))
+                .map(String::trim).filter(v -> !v.isEmpty()).collect(java.util.stream.Collectors.toSet());
+    }
+
     private String maskPhone(String phone) {
         if (phone == null || phone.length() < 7) return "***";
         return phone.substring(0, 3) + "****" + phone.substring(phone.length() - 4);
     }
 
-    private record CodeEntry(String code, long sentAt, long expireAt, Long usedAt) {}
+    private record CodeEntry(String code, long sentAt, long expireAt, Long usedAt, int failedAttempts) {}
 
     private record DailyCount(String day, int count) {}
 

@@ -30,7 +30,7 @@
           </view>
           <view class="info-row">
             <text class="info-label">账户余额</text>
-            <text class="balance-value">{{ showBalance ? `¥${formatYuan(account.balanceFen ?? account.balance)}` : '¥ **,***.**' }}</text>
+            <text class="balance-value">{{ showBalance ? `¥${formatAccountBalance(account)}` : '¥ **,***.**' }}</text>
           </view>
         </view>
 
@@ -173,10 +173,16 @@ export default {
       if (n.length <= 6) return n;
       return `${n.slice(0, 5)}**${n.slice(-3)}`;
     },
-    formatYuan(fen) {
-      const n = Number(fen || 0);
-      const yuan = n / 100;
-      return yuan.toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    formatAccountBalance(account) {
+      const yuan = Number(account?.balanceYuan);
+      if (Number.isFinite(yuan)) {
+        return yuan.toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      }
+      const fen = Number(account?.balanceFen ?? account?.balance);
+      return (Number.isFinite(fen) ? fen / 100 : 0).toLocaleString("zh-CN", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      });
     },
 
     // ---------- 充值弹窗 ----------

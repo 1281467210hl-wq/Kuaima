@@ -249,7 +249,8 @@ export default {
       uni.showToast({ title: "正在获取当前位置...", icon: "loading" });
     },
     chooseAddressLocation() {
-      // #ifdef MP-WEIXIN
+      // App 端依赖 manifest 中配置的高德地图 Key
+      // #ifdef MP-WEIXIN || APP-PLUS
       uni.chooseLocation({
         success: ({ name, address, latitude, longitude }) => {
           const region = extractBossAddressRegion(address);
@@ -266,8 +267,8 @@ export default {
         fail: (error) => { if (!String(error?.errMsg || "").includes("cancel")) uni.showToast({ title: "地图选点失败", icon: "none" }); },
       });
       // #endif
-      // #ifndef MP-WEIXIN
-      uni.showToast({ title: "请在微信小程序中使用地图选点", icon: "none" });
+      // #ifdef H5
+      uni.showToast({ title: "请在微信小程序或 App 中使用地图选点", icon: "none" });
       // #endif
     },
     zoomIn() {

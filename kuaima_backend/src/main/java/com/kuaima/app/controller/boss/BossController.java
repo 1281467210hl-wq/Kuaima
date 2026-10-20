@@ -424,13 +424,19 @@ public class BossController {
     }
 
     /** 老板个人页资产汇总：余额、积分、未使用券包和已发放邀请奖励金。 */
-    @Operation(summary = "老板资产汇总", description = "返回 balance(分)、points、couponCount、rewardAmount(分)；仅允许当前老板查询本人")
+    @Operation(summary = "老板资产汇总", description = "返回 balanceFen(分)、balanceYuan(元)、points、couponCount、rewardAmount(分)；仅允许当前老板查询本人")
     @GetMapping("/profile/{userId}/assets")
     public Result<Map<String, Object>> getBossProfileAssets(@PathVariable Long userId, Authentication authentication) {
         Long current = requireCurrentBossId(authentication);
         if (!current.equals(userId)) throw new ForbiddenBusinessException("只能查询当前老板账号资产");
         Map<String, Object> data = new HashMap<>();
-        data.put("balance", walletService.getOrCreateWallet(userId, UserRole.BOSS).getBalance());
+        java.math.BigDecimal walletBalance = walletService.getOrCreateWallet(userId, UserRole.BOSS).getBalance();
+        if (walletBalance == null) walletBalance = java.math.BigDecimal.ZERO;
+        long balanceFen = walletBalance.movePointRight(2).longValue();
+        // balance 保留原有元单位，避免影响旧调用方；新调用方使用带单位后缀的字段。
+        data.put("balance", walletBalance);
+        data.put("balanceFen", balanceFen);
+        data.put("balanceYuan", walletBalance.setScale(2, java.math.RoundingMode.HALF_UP).toPlainString());
         data.put("points", pointsAccountRepository.findFirstByUserIdAndRoleOrderByIdDesc(userId, UserRole.BOSS)
                 .map(a -> a.getBalance() == null ? 0 : a.getBalance()).orElse(0));
         Date now = new Date(System.currentTimeMillis());

@@ -4,6 +4,20 @@ export function wechatLogin(data) {
   return request({ url: "/auth/wechat/login", method: "POST", data, skipUserIdHeader: true });
 }
 
+/** App / H5 短信登录：发送登录验证码（无需登录）。 */
+export function sendSmsLoginCode(phone) {
+  return request({
+    url: `/auth/sms/login/send?phone=${encodeURIComponent(phone)}`,
+    method: "POST",
+    skipUserIdHeader: true,
+  });
+}
+
+/** App / H5 短信登录：data = { phone, code, role: BOSS | USER }，返回结构与微信登录一致。 */
+export function smsLogin(data) {
+  return request({ url: "/auth/sms/login", method: "POST", data, skipUserIdHeader: true });
+}
+
 export function getCurrentUser() {
   return request({ url: "/auth/me" });
 }

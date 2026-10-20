@@ -28,6 +28,9 @@ aliyun:
     template-code: SMS_470990050
     mock-enabled: true
     mock-code: "000000"
+    # 固定验证码模式下允许 App 短信登录的测试手机号（逗号分隔）；留空则拒绝所有短信登录。
+    # 固定验证码等于知道手机号就能登录，严禁填写真实用户手机号。
+    mock-login-phones: ${KUAIMA_SMS_MOCK_LOGIN_PHONES:}
     code-expiration: 300
     resend-interval: 60
 

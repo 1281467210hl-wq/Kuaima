@@ -5,8 +5,8 @@ const ENABLE_ORDER_REQUEST_LOG =
 const ENABLE_AUTH_TOKEN_LOG =
   import.meta.env.VITE_ENABLE_AUTH_TOKEN_LOG === "true";
 
-// H5 开发环境通过 Vite 代理访问 /api；微信开发者工具不支持该相对代理地址。
-// #ifdef MP-WEIXIN
+// H5 开发环境通过 Vite 代理访问 /api；微信小程序和 App 没有该代理，相对地址会请求失败，必须用完整后端地址。
+// #ifdef MP-WEIXIN || APP-PLUS
 // 地址由 .env.development/.env.test/.env.production 统一控制。
 BASE_URL = import.meta.env.VITE_MP_API_BASE_URL || "http://127.0.0.1:8080";
 // #endif

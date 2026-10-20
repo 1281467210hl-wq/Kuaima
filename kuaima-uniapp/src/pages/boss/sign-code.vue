@@ -5,7 +5,7 @@
       <view class="wb-back" @click="goBack"><text class="back-icon">‹</text></view>
       <view class="wb-title" style="color: #4a3500">{{ signLabel }}</view>
       <!-- 微信小程序原生胶囊已占右上角，自绘胶囊会与其重叠，仅在非小程序端保留 -->
-      <!-- #ifndef MP-WEIXIN -->
+      <!-- #ifdef H5 -->
       <view class="wb-capsule">
         <view class="cap-btn"><text class="cap-ico">⋯</text></view>
         <view class="cap-divider"></view>

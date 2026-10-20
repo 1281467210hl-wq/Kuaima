@@ -194,6 +194,10 @@ public class AuthController {
 
         // 新老用户只能由 openid 查询结果判断，不能用手机号是否为空判断。
         User user = userRepository.findByOpenid(info.openid()).orElse(null);
+        if (user != null && !isActiveAccount(user)) {
+            // 与短信登录一致：注销 / 冻结 / 禁用的账号不能再签发登录态
+            return Result.error(403, "该账号已注销或被冻结，如有疑问请联系客服");
+        }
         if (user == null) {
             if (!StringUtils.hasText(dto.getPhoneCode())) {
                 Map<String, Object> data = new HashMap<>();
@@ -324,23 +328,134 @@ public class AuthController {
     }
 
     /**
-     * 注销账号（软删除）：POST /auth/cancel?userId={id}&reason={reason}
-     * 仅将 User.status 置为「注销」，不物理删除，保留历史数据
+     * 注销账号（软删除）：POST /auth/cancel?reason={reason}
+     * 只能注销当前登录账号；仅将 User.status 置为「注销」，不物理删除，保留历史数据。
+     * 注销后旧 token 由 JwtAuthenticationFilter 拦截，微信 / 短信登录也会拒绝。
      */
-    @Operation(summary = "账号注销", description = "软删除：将 User.status 置为「注销」并记录注销原因，不物理删除，保留历史数据")
+    @Operation(summary = "账号注销", description = "只能注销当前登录账号（JWT 识别）；userId 参数仅为兼容旧客户端，与当前登录账号不一致时拒绝。软删除：status 置为「注销」并记录原因")
     @PostMapping("/cancel")
     @Transactional
-    public Result<User> cancel(@RequestParam Long userId,
-                               @RequestParam(required = false) String reason) {
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new EntityNotFoundException("用户不存在: " + userId));
+    public Result<Map<String, Object>> cancel(@RequestParam(required = false) Long userId,
+                                              @RequestParam(required = false) String reason,
+                                              Authentication authentication) {
+        Long currentId = currentUserId(authentication);
+        if (currentId == null) return Result.error(401, "未登录或登录已过期");
+        // 原接口直接按请求参数 userId 注销，任何已登录用户都能注销他人账号
+        if (userId != null && !userId.equals(currentId)) {
+            return Result.error(403, "只能注销当前登录的账号");
+        }
+        User user = userRepository.findById(currentId)
+                .orElseThrow(() -> new EntityNotFoundException("用户不存在: " + currentId));
         user.setStatus("注销");
         if (StringUtils.hasText(reason)) {
+            String trimmed = reason.trim();
+            String safeReason = trimmed.length() > 100 ? trimmed.substring(0, 100) : trimmed;
             user.setRemark(StringUtils.hasText(user.getRemark())
-                    ? user.getRemark() + "；注销原因：" + reason
-                    : "注销原因：" + reason);
+                    ? user.getRemark() + "；注销原因：" + safeReason
+                    : "注销原因：" + safeReason);
         }
-        return Result.success(userRepository.save(user));
+        userRepository.save(user);
+        Map<String, Object> data = new HashMap<>();
+        data.put("userId", currentId);
+        data.put("status", "注销");
+        return Result.success(data);
+    }
+
+    // ==================== App 短信验证码登录 ====================
+
+    /** 匿名发送登录验证码的单 IP 每日上限：手机号维度已有 60 秒重发和每日上限，这里再防止换号刷短信。 */
+    static final int SMS_LOGIN_SEND_LIMIT_PER_IP = 30;
+    private final java.util.concurrent.ConcurrentHashMap<String, int[]> smsLoginSendByIp = new java.util.concurrent.ConcurrentHashMap<>();
+    private volatile String smsLoginSendDay = java.time.LocalDate.now().toString();
+
+    public record SmsLoginRequest(String phone, String code, String role) {}
+
+    @Operation(summary = "发送登录验证码", description = "无需登录；App 短信登录用。手机号 60 秒重发、每日上限，并按 IP 限制每日发送次数；固定验证码模式下仅测试手机号可用")
+    @PostMapping("/sms/login/send")
+    public Result<Void> sendSmsLoginCode(@RequestParam String phone, jakarta.servlet.http.HttpServletRequest request) {
+        String normalized = phone == null ? "" : phone.trim();
+        if (!smsService.isLoginAllowed(normalized)) {
+            return Result.error(403, "当前为测试阶段，仅允许测试手机号登录");
+        }
+        if (!allowSmsLoginSend(com.kuaima.app.admin.interceptor.AdminLogInterceptor.clientIp(request))) {
+            return Result.error(429, "验证码发送过于频繁，请稍后再试");
+        }
+        String err = smsService.sendCode(normalized);
+        return err == null ? Result.success() : Result.error(400, err);
+    }
+
+    /**
+     * 短信验证码登录：账号匹配与令牌签发和微信登录保持一致。
+     * 注意：短信校验只证明手机号归属，不能视为实名认证，不修改实名状态。
+     */
+    @Operation(summary = "短信验证码登录", description = "body：{phone, code, role(BOSS/USER)}；同一手机号已有账号则登录该账号，否则按零工身份注册新账号")
+    @PostMapping("/sms/login")
+    @Transactional
+    public Result<Map<String, Object>> smsLogin(@RequestBody SmsLoginRequest body) {
+        String phone = body == null || body.phone() == null ? "" : body.phone().trim();
+        String code = body == null || body.code() == null ? "" : body.code().trim();
+        String role = body != null && StringUtils.hasText(body.role()) ? body.role().trim() : UserRole.USER;
+        if (!UserRole.isValid(role)) {
+            return Result.error(400, "身份不合法：仅支持 BOSS(老板) / USER(员工)");
+        }
+        if (!phone.matches("^1[3-9]\\d{9}$")) return Result.error(400, "手机号格式不正确");
+        if (!StringUtils.hasText(code)) return Result.error(400, "请输入验证码");
+        if (!smsService.isLoginAllowed(phone)) {
+            return Result.error(403, "当前为测试阶段，仅允许测试手机号登录");
+        }
+        SmsService.VerifyResult verify = smsService.verifyCodeResult(phone, code);
+        if (verify != SmsService.VerifyResult.OK) {
+            return Result.error(400, verify == SmsService.VerifyResult.INVALID
+                    ? "验证码错误" : "验证码已失效，请重新获取");
+        }
+
+        List<User> samePhone = userRepository.findByPhone(phone);
+        List<User> activeMain = samePhone.stream()
+                .filter(u -> u.getParentUserId() == null && isActiveAccount(u)).toList();
+        if (activeMain.size() > 1) {
+            return Result.error(409, "该手机号关联多个账号，请联系客服处理");
+        }
+        User user = activeMain.isEmpty() ? null : activeMain.get(0);
+        if (user == null && UserRole.BOSS.equals(role)) {
+            // 老板端：手机号只对应老板授权的员工子账号时，登录该子账号（与微信登录绑定子账号的规则一致）
+            List<User> subAccounts = samePhone.stream()
+                    .filter(u -> u.getParentUserId() != null && isActiveAccount(u)).toList();
+            if (subAccounts.size() > 1) {
+                return Result.error(409, "该手机号关联多个老板授权账号，请联系老板确认后重新授权");
+            }
+            user = subAccounts.isEmpty() ? null : subAccounts.get(0);
+        }
+        if (user == null && samePhone.stream().anyMatch(u -> !isActiveAccount(u))) {
+            return Result.error(403, "该手机号对应的账号已注销或被禁用，请联系客服");
+        }
+        if (user == null) {
+            User newUser = new User();
+            newUser.setUsername(phone);
+            newUser.setPassword(passwordEncoder.encode(java.util.UUID.randomUUID().toString()));
+            // 与微信注册一致：持久化身份从零工开始，role 只代表本次登录端
+            newUser.setRole(UserRole.USER);
+            newUser.setNickname(nextDefaultNickname());
+            newUser.setPhone(phone);
+            newUser.setStatus("正常");
+            user = userRepository.save(newUser);
+        }
+        return Result.success(buildTokenResponse(user, role));
+    }
+
+    private static boolean isActiveAccount(User user) {
+        return !StringUtils.hasText(user.getStatus()) || "正常".equals(user.getStatus());
+    }
+
+    private synchronized boolean allowSmsLoginSend(String ip) {
+        String today = java.time.LocalDate.now().toString();
+        if (!today.equals(smsLoginSendDay)) {
+            smsLoginSendByIp.clear();
+            smsLoginSendDay = today;
+        }
+        int[] count = smsLoginSendByIp.computeIfAbsent(ip == null ? "unknown" : ip, k -> new int[1]);
+        if (count[0] >= SMS_LOGIN_SEND_LIMIT_PER_IP) return false;
+        count[0]++;
+        return true;
     }
 
     /**

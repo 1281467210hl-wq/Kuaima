@@ -5,7 +5,7 @@
       <view class="wb-back" @click="goBack"><image class="back-svg" src="/static/icons/boss-recruit-settings/chevron-left.svg" mode="aspectFit" /></view>
       <text class="wb-title">岗位申请列表</text>
       <!-- 微信小程序原生胶囊已占右上角，自绘胶囊会与其重叠，仅在非小程序端保留 -->
-      <!-- #ifndef MP-WEIXIN -->
+      <!-- #ifdef H5 -->
       <view class="wb-capsule">
         <view class="cap-btn"><image class="cap-svg" src="/static/icons/boss-profile/ellipsis.svg" mode="aspectFit" /></view>
         <view class="cap-divider"></view>

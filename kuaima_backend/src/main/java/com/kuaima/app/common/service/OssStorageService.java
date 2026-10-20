@@ -290,6 +290,26 @@ public class OssStorageService {
     }
 
     /**
+     * 读取本 Bucket 内对象的完整内容（对象 key 或本 Bucket 的 URL 均可）。
+     * 外部链接或未配置 OSS 时返回 null，由调用方决定是否改用 URL；超过 maxBytes 抛异常，避免大文件占满内存。
+     */
+    public byte[] readObjectBytes(String value, long maxBytes) {
+        if (!isOssConfigured() || !StringUtils.hasText(value)) return null;
+        String key = objectKey(value.trim());
+        if (!StringUtils.hasText(key)) return null;
+        ObjectStream stream = openObject(key, null, null);
+        if (stream.objectLength() > maxBytes) {
+            try { stream.content().close(); } catch (java.io.IOException ignored) { }
+            throw new IllegalArgumentException("图片过大，请重新上传");
+        }
+        try (java.io.InputStream in = stream.content()) {
+            return in.readNBytes((int) maxBytes);
+        } catch (java.io.IOException e) {
+            throw new IllegalStateException("读取图片失败，请重新上传", e);
+        }
+    }
+
+    /**
      * 浏览器内联预览地址：强制 Content-Disposition: inline，并按扩展名纠正 Content-Type，
      * 避免对象元数据为 octet-stream 时浏览器直接触发下载。
      */

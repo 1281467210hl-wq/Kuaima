@@ -344,9 +344,12 @@ export default {
           enterpriseApproved: ['APPROVED', 'PASSED', '已通过', '已认证'].includes(enterpriseStatus),
         }
         if (assetSummary) {
-          const cents = Number(assetSummary.balance)
+          const balanceYuan = Number(assetSummary.balanceYuan)
+          const cents = Number(assetSummary.balanceFen ?? assetSummary.balance)
           const rewardCents = Number(assetSummary.rewardAmount)
-          this.stats.balance = Number.isFinite(cents) ? (cents / 100).toFixed(2) : this.stats.balance
+          this.stats.balance = Number.isFinite(balanceYuan)
+            ? balanceYuan.toFixed(2)
+            : (Number.isFinite(cents) ? (cents / 100).toFixed(2) : this.stats.balance)
           this.assets = [
             { value: assetSummary.points ?? 0, label: '积分', page: 'points' },
             { value: assetSummary.couponCount ?? 0, label: '券包(个)', page: 'voucher' },
@@ -355,8 +358,10 @@ export default {
         }
         // 支付页返回时，资产汇总接口可能仍是旧快照；以钱包和奖励金专用接口的最新余额覆盖展示。
         if (walletBalance) {
+          const walletYuan = Number(walletBalance.balanceYuan)
           const walletCents = Number(walletBalance.balanceFen ?? walletBalance.balance)
-          if (Number.isFinite(walletCents)) this.stats.balance = (walletCents / 100).toFixed(2)
+          if (Number.isFinite(walletYuan)) this.stats.balance = walletYuan.toFixed(2)
+          else if (Number.isFinite(walletCents)) this.stats.balance = (walletCents / 100).toFixed(2)
         }
         if (rewardOverview) {
           const rewardAmount = Number(rewardOverview.balance ?? rewardOverview.amount)

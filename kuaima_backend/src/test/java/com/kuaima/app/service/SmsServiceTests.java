@@ -57,4 +57,43 @@ class SmsServiceTests {
         assertEquals(SmsService.VerifyResult.EXPIRED_OR_USED,
                 service.verifyCodeResult("13900131234", "123456"));
     }
+
+    @Test
+    void verifyCodeResult_shouldVoidCodeAfterTooManyWrongAttempts() {
+        SmsService service = mockService();
+        assertNull(service.sendCode("13900131234"));
+
+        for (int i = 0; i < SmsService.MAX_FAILED_ATTEMPTS; i++) {
+            assertEquals(SmsService.VerifyResult.INVALID, service.verifyCodeResult("13900131234", "000001"));
+        }
+
+        // 连续输错达到上限后，即使输入正确验证码也已作废，防止暴力猜测
+        assertEquals(SmsService.VerifyResult.EXPIRED_OR_USED,
+                service.verifyCodeResult("13900131234", "123456"));
+    }
+
+    @Test
+    void isLoginAllowed_shouldOnlyAllowWhitelistedPhonesInMockMode() {
+        SmsService service = mockService();
+        ReflectionTestUtils.setField(service, "mockLoginPhones", "13900130001, 13900130002");
+
+        assertTrue(service.isLoginAllowed("13900130001"));
+        assertEquals(false, service.isLoginAllowed("13900139999"));
+
+        ReflectionTestUtils.setField(service, "mockLoginPhones", "");
+        assertEquals(false, service.isLoginAllowed("13900130001"));
+
+        ReflectionTestUtils.setField(service, "mockEnabled", false);
+        assertTrue(service.isLoginAllowed("13900139999"));
+    }
+
+    private SmsService mockService() {
+        SmsService service = new SmsService();
+        ReflectionTestUtils.setField(service, "mockEnabled", true);
+        ReflectionTestUtils.setField(service, "mockCode", "123456");
+        ReflectionTestUtils.setField(service, "codeExpiration", 300);
+        ReflectionTestUtils.setField(service, "resendInterval", -1);
+        ReflectionTestUtils.setField(service, "dailyLimit", 10);
+        return service;
+    }
 }

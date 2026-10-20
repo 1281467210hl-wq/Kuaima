@@ -8,6 +8,7 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Index;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -17,7 +18,10 @@ import lombok.Setter;
         @Index(name = "idx_tp_worker", columnList = "worker_id"),
         @Index(name = "idx_tp_type", columnList = "type"),
         @Index(name = "idx_tp_favorite", columnList = "favorite")
-})
+}, uniqueConstraints = @UniqueConstraint(
+        name = "uk_talent_pool_boss_worker",
+        columnNames = {"boss_id", "worker_id"}
+))
 @Setter
 @Getter
 public class TalentPool extends BaseEntity {

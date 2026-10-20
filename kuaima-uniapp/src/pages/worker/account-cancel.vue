@@ -18,6 +18,7 @@
 import AppNavBar from "@/components/AppNavBar.vue";
 import SafeBottomAction from "@/components/safe-bottom-action.vue";
 import { cancelAccount } from "@/api/backend";
+import { handleTokenInvalid } from "@/api/auth";
 const checks = [
   "当前没有进行中的订单",
   "钱包余额已经处理",
@@ -31,11 +32,10 @@ function submit() {
     success: async ({ confirm }) => {
       if (!confirm) return;
       try {
-        await cancelAccount(
-          uni.getStorageSync("userId") || "2001",
-          "用户主动注销",
-        );
-        uni.showToast({ title: "注销申请已提交", icon: "success" });
+        // 原来缺少 userId 时会回退到 2001，可能注销到别人的账号；现在由后端按登录态识别
+        await cancelAccount("用户主动注销");
+        // 注销立即生效，旧登录态已不可用：清理本地登录信息并回到登录页
+        await handleTokenInvalid({ toastTitle: "账号已注销" });
       } catch (error) {
         uni.showToast({ title: error.message || "注销失败", icon: "none" });
       }
